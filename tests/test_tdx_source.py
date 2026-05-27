@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import pandas as pd
+import pytest
+
+from trending_winning.data import tdx as tdx_module
+from trending_winning.data.tdx import diagnose_tdx_source, fetch_tdx_bars
+
+
+class FakeTq:
+    def __init__(self, payload: dict[str, pd.DataFrame]) -> None:
+        self.payload = payload
+        self.initialize_calls: list[str] = []
+        self.market_calls: list[dict[str, object]] = []
+        self.refresh_calls: list[tuple[list[str], str]] = []
+
+    def initialize(self, caller_path: str) -> None:
+        self.initialize_calls.append(caller_path)
+
+    def refresh_kline(self, stock_list: list[str], period: str) -> str:
+        self.refresh_calls.append((stock_list, period))
+        return '{"ErrorId":"0","Msg":"ok"}'
+
+    def get_market_data(self, **kwargs: object) -> dict[str, pd.DataFrame]:
+        self.market_calls.append(kwargs)
+        return self.payload
+
+
+class ErrorTq(FakeTq):
+    def __init__(self) -> None:
+        super().__init__({})
+
+    def get_market_data(self, **kwargs: object) -> dict[str, object]:
+        self.market_calls.append(kwargs)
+        return {"error": -5, "msg": "period unsupported"}
+
+
+class InitErrorTq(FakeTq):
+    def __init__(self) -> None:
+        super().__init__({})
+
+    def initialize(self, caller_path: str) -> None:
+        self.initialize_calls.append(caller_path)
+        raise RuntimeError("not logged in")
+
+
+class PeriodPayloadTq(FakeTq):
+    def __init__(self, payloads_by_period: dict[str, dict[str, pd.DataFrame]]) -> None:
+        super().__init__({})
+        self.payloads_by_period = payloads_by_period
+
+    def get_market_data(self, **kwargs: object) -> dict[str, pd.DataFrame]:
+        self.market_calls.append(kwargs)
+        return self.payloads_by_period[str(kwargs["period"])]
+
+
+def _payload() -> dict[str, pd.DataFrame]:
+    index = pd.to_datetime(["2026-05-25 10:30:00", "2026-05-25 11:30:00"])
+    return {
+        "Open": pd.DataFrame({"000001.SZ": [10.0, 10.6], "600519.SH": [100.0, 101.0]}, index=index),
+        "High": pd.DataFrame({"000001.SZ": [10.8, 11.4], "600519.SH": [102.0, 103.0]}, index=index),
+        "Low": pd.DataFrame({"000001.SZ": [9.9, 10.4], "600519.SH": [99.0, 100.5]}, index=index),
+        "Close": pd.DataFrame({"000001.SZ": [10.7, 11.2], "600519.SH": [101.5, 102.5]}, index=index),
+        "Volume": pd.DataFrame({"000001.SZ": [1000.0, 1200.0], "600519.SH": [500.0, 520.0]}, index=index),
+        "Amount": pd.DataFrame({"000001.SZ": [10700.0, 13440.0], "600519.SH": [50750.0, 53300.0]}, index=index),
+    }
+
+
+def _daily_payload() -> dict[str, pd.DataFrame]:
+    index = pd.to_datetime(["2026-05-24", "2026-05-25"])
+    return {
+        "Open": pd.DataFrame({"000001.SZ": [9.8, 10.0]}, index=index),
+        "High": pd.DataFrame({"000001.SZ": [10.1, 10.8]}, index=index),
+        "Low": pd.DataFrame({"000001.SZ": [9.6, 9.9]}, index=index),
+        "Close": pd.DataFrame({"000001.SZ": [9.9, 10.7]}, index=index),
+        "Volume": pd.DataFrame({"000001.SZ": [9000.0, 10000.0]}, index=index),
+        "Amount": pd.DataFrame({"000001.SZ": [89100.0, 107000.0]}, index=index),
+    }
+
+
+def test_fetch_tdx_bars_supports_60m_batch_payload() -> None:
+    fake = FakeTq(_payload())
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ", "600519.SH"),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        timeframe="60m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert fake.initialize_calls
+    assert fake.refresh_calls == []
+    assert fake.market_calls[0]["period"] == "1h"
+    assert fake.market_calls[0]["stock_list"] == ["000001.SZ", "600519.SH"]
+    assert fake.market_calls[0]["start_time"] == "20260525093000"
+    assert fake.market_calls[0]["end_time"] == "20260525150000"
+    assert fake.market_calls[0]["dividend_type"] == "front"
+    assert list(out.columns) == ["date", "stock_code", "open", "high", "low", "close", "volume", "amount"]
+    assert out["stock_code"].tolist() == ["000001.SZ", "000001.SZ", "600519.SH", "600519.SH"]
+    assert out.loc[out["stock_code"] == "000001.SZ", "close"].tolist() == [10.7, 11.2]
+
+
+def test_fetch_tdx_bars_supports_1d_daily_payload() -> None:
+    fake = FakeTq(_daily_payload())
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ",),
+        start="2026-05-24",
+        end="2026-05-25",
+        timeframe="1d",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert fake.market_calls[0]["period"] == "1d"
+    assert fake.refresh_calls == []
+    assert out["date"].tolist() == [pd.Timestamp("2026-05-24"), pd.Timestamp("2026-05-25")]
+    assert out["close"].tolist() == [9.9, 10.7]
+
+
+def test_fetch_tdx_bars_initializes_new_client_even_when_python_reuses_id(monkeypatch) -> None:
+    fake = FakeTq(_payload())
+    monkeypatch.setattr(tdx_module, "_INITIALIZED_CLIENT_ID", id(fake))
+
+    fetch_tdx_bars(
+        symbols=("000001.SZ",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        timeframe="60m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert fake.initialize_calls
+
+
+def test_fetch_tdx_bars_refreshes_5m_cache() -> None:
+    fake = FakeTq(_payload())
+
+    fetch_tdx_bars(
+        symbols=("000001.SZ",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        timeframe="5m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert fake.refresh_calls == [(["000001.SZ"], "5m")]
+
+
+def test_fetch_tdx_bars_rejects_non_target_timeframe() -> None:
+    with pytest.raises(ValueError, match="timeframe"):
+        fetch_tdx_bars(
+            symbols=("000001.SZ",),
+            start="2026-05-25",
+            end="2026-05-25",
+            timeframe="1m",
+            tq_client=FakeTq(_payload()),
+        )
+
+
+def test_fetch_tdx_bars_rejects_start_after_end_before_tdx_request() -> None:
+    fake = FakeTq(_payload())
+
+    with pytest.raises(ValueError, match="start 不能晚于 end"):
+        fetch_tdx_bars(
+            symbols=("000001.SZ",),
+            start="2026-05-26",
+            end="2026-05-25",
+            timeframe="60m",
+            tq_client=fake,
+        )
+
+    assert fake.initialize_calls == []
+    assert fake.refresh_calls == []
+    assert fake.market_calls == []
+
+
+def test_fetch_tdx_bars_reports_tdx_error_payload() -> None:
+    with pytest.raises(ValueError, match="period unsupported"):
+        fetch_tdx_bars(
+            symbols=("000001.SZ",),
+            start="2026-05-25",
+            end="2026-05-25",
+            timeframe="60m",
+            tq_client=ErrorTq(),
+        )
+
+
+def test_diagnose_tdx_source_reports_each_timeframe_sample_request() -> None:
+    fake = PeriodPayloadTq({"1d": _daily_payload(), "30m": _payload(), "1h": _payload()})
+
+    report = diagnose_tdx_source(
+        symbols=("000001.SZ",),
+        timeframes=("1d", "30m", "60m"),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        tq_client=fake,
+    )
+
+    by_timeframe = report.set_index("timeframe")
+    assert by_timeframe.loc["1d", "status"] == "ok"
+    assert by_timeframe.loc["30m", "status"] == "ok"
+    assert by_timeframe.loc["60m", "status"] == "ok"
+    assert by_timeframe.loc["60m", "tdx_period"] == "1h"
+    assert by_timeframe.loc["30m", "rows"] == 2
+    assert by_timeframe.loc["30m", "start"] == pd.Timestamp("2026-05-25 10:30:00")
+    assert by_timeframe.loc["30m", "end"] == pd.Timestamp("2026-05-25 11:30:00")
+    assert [call["period"] for call in fake.market_calls] == ["1d", "30m", "1h"]
+
+
+def test_diagnose_tdx_source_rejects_start_after_end_before_initialization() -> None:
+    fake = PeriodPayloadTq({"30m": _payload()})
+
+    with pytest.raises(ValueError, match="start 不能晚于 end"):
+        diagnose_tdx_source(
+            symbols=("000001.SZ",),
+            timeframes=("30m",),
+            start="2026-05-26",
+            end="2026-05-25",
+            tq_client=fake,
+        )
+
+    assert fake.initialize_calls == []
+    assert fake.market_calls == []
+
+
+def test_diagnose_tdx_source_reports_initialization_error_per_timeframe() -> None:
+    fake = InitErrorTq()
+
+    report = diagnose_tdx_source(
+        symbols=("000001.SZ",),
+        timeframes=("30m", "60m"),
+        start="2026-05-25",
+        end="2026-05-25",
+        tq_client=fake,
+    )
+
+    assert report["timeframe"].tolist() == ["30m", "60m"]
+    assert report["status"].tolist() == ["init_error", "init_error"]
+    assert report["rows"].tolist() == [0, 0]
+    assert report["message"].str.contains("TDX 初始化失败").all()

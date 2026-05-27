@@ -1,0 +1,370 @@
+from __future__ import annotations
+
+import pytest
+import pandas as pd
+
+from trending_winning.backtest.stats import (
+    compute_decision_reason_statistics,
+    compute_equity_statistics,
+    compute_grouped_trade_statistics,
+    compute_period_returns,
+    compute_trade_statistics,
+    summarize_order_decisions,
+    summarize_strategy_filter_decisions,
+)
+
+
+def test_compute_trade_statistics_reports_risk_adjusted_and_streak_metrics() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [5.0, -2.0, -1.0, 4.0, -3.0],
+            "holding_bars": [3, 2, 4, 2, 5],
+            "r_multiple": [1.5, -0.8, -0.3, 1.2, -1.0],
+            "mae_pct": [-1.0, -2.5, -1.2, -0.8, -3.4],
+            "mfe_pct": [6.0, 1.5, 0.4, 4.8, 0.7],
+            "mae_r": [-0.3, -1.0, -0.4, -0.2, -1.1],
+            "mfe_r": [1.8, 0.6, 0.1, 1.4, 0.2],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+
+    assert stats["trade_count"] == 5.0
+    assert stats["gross_profit"] == 0.09
+    assert stats["gross_loss"] == 0.06
+    assert stats["profit_factor"] == 1.5
+    assert stats["max_consecutive_losses"] == 2.0
+    assert stats["max_consecutive_wins"] == 1.0
+    assert stats["avg_holding_bars"] == 3.2
+    assert stats["return_std"] > 0
+    assert "sharpe_per_trade" in stats
+    assert "sortino_per_trade" in stats
+    assert "max_drawdown_duration" in stats
+    assert stats["avg_r_multiple"] == pytest.approx(0.12)
+    assert stats["median_r_multiple"] == pytest.approx(-0.3)
+    assert stats["avg_mae_pct"] == pytest.approx(-1.78)
+    assert stats["avg_mfe_pct"] == pytest.approx(2.68)
+    assert stats["avg_mae_r"] == pytest.approx(-0.6)
+    assert stats["avg_mfe_r"] == pytest.approx(0.82)
+
+
+def test_compute_trade_statistics_reports_return_distribution_and_tail_risk() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [-10.0, -5.0, 0.0, 5.0, 20.0],
+            "holding_bars": [1, 1, 1, 1, 1],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+
+    assert stats["return_p05"] == pytest.approx(-0.09)
+    assert stats["return_p25"] == pytest.approx(-0.05)
+    assert stats["return_p50"] == pytest.approx(0.0)
+    assert stats["return_p75"] == pytest.approx(0.05)
+    assert stats["return_p95"] == pytest.approx(0.17)
+    assert stats["cvar_95"] == pytest.approx(-0.1)
+
+
+def test_compute_trade_statistics_reports_r_profit_factor_and_sqn() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [5.0, -2.0, 1.0, -1.0],
+            "holding_bars": [1, 1, 1, 1],
+            "r_multiple": [2.0, -1.0, 0.5, -0.5],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+
+    expected_r = pd.Series([2.0, -1.0, 0.5, -0.5])
+    expected_sqn = (len(expected_r) ** 0.5) * expected_r.mean() / expected_r.std(ddof=0)
+    assert stats["r_profit_factor"] == pytest.approx(2.5 / 1.5)
+    assert stats["system_quality_number"] == pytest.approx(expected_sqn)
+
+
+def test_compute_trade_statistics_reports_portfolio_capital_contribution_metrics() -> None:
+    trades = pd.DataFrame(
+        {
+            "strategy_name": ["trend_signal_bar", "range_signal_bar"],
+            "return_pct": [2.0, -1.5],
+            "raw_return_pct": [10.0, -5.0],
+            "capital_fraction": [0.2, 0.3],
+            "margin_fraction": [0.2, 0.45],
+            "holding_bars": [2, 3],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+    grouped = compute_grouped_trade_statistics(trades, by="strategy_name").set_index("strategy_name")
+
+    assert stats["return_contribution"] == pytest.approx(0.005)
+    assert stats["capital_turnover"] == pytest.approx(0.5)
+    assert stats["avg_capital_fraction"] == pytest.approx(0.25)
+    assert stats["max_capital_fraction"] == pytest.approx(0.3)
+    assert stats["margin_turnover"] == pytest.approx(0.65)
+    assert stats["avg_margin_fraction"] == pytest.approx(0.325)
+    assert stats["max_margin_fraction"] == pytest.approx(0.45)
+    assert stats["capital_exposure_bars"] == pytest.approx(1.3)
+    assert stats["margin_exposure_bars"] == pytest.approx(1.75)
+    assert stats["avg_capital_exposure_per_trade"] == pytest.approx(0.65)
+    assert stats["avg_margin_exposure_per_trade"] == pytest.approx(0.875)
+    assert stats["capital_weighted_raw_return"] == pytest.approx(0.01)
+    assert grouped.loc["trend_signal_bar", "return_contribution"] == pytest.approx(0.02)
+    assert grouped.loc["trend_signal_bar", "capital_weighted_raw_return"] == pytest.approx(0.1)
+    assert grouped.loc["range_signal_bar", "return_contribution"] == pytest.approx(-0.015)
+
+
+def test_compute_grouped_trade_statistics_reports_strategy_and_symbol_breakdowns() -> None:
+    trades = pd.DataFrame(
+        {
+            "strategy_name": ["trend", "trend", "range", "range"],
+            "stock_code": ["000001.SZ", "000002.SZ", "000001.SZ", "000002.SZ"],
+            "return_pct": [5.0, -2.0, 1.0, 3.0],
+            "holding_bars": [3, 2, 1, 4],
+        }
+    )
+
+    by_strategy = compute_grouped_trade_statistics(trades, by="strategy_name")
+    by_symbol = compute_grouped_trade_statistics(trades, by="stock_code")
+
+    assert by_strategy.set_index("strategy_name").loc["trend", "trade_count"] == 2.0
+    assert by_strategy.set_index("strategy_name").loc["trend", "total_return"] == pytest.approx(0.029)
+    assert by_strategy.set_index("strategy_name").loc["range", "win_rate"] == 1.0
+    assert by_symbol.set_index("stock_code").loc["000002.SZ", "trade_count"] == 2.0
+
+
+def test_compute_equity_statistics_reports_annualized_return_and_exposure_metrics() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29"]),
+            "net_value": [1.0, 1.02, 1.01, 1.05, 1.04],
+            "gross_exposure": [0.0, 0.5, 1.0, 0.25, 0.0],
+            "open_positions": [0, 1, 2, 1, 0],
+        }
+    )
+
+    stats = compute_equity_statistics(equity, periods_per_year=4)
+    period_returns = equity["net_value"].pct_change().dropna()
+    expected_volatility = period_returns.std(ddof=0) * (4**0.5)
+
+    assert stats["total_return"] == pytest.approx(0.04)
+    assert stats["annualized_return"] == pytest.approx(0.04)
+    assert stats["annualized_volatility"] == pytest.approx(expected_volatility)
+    assert stats["calmar_ratio"] == pytest.approx(0.04 / abs(stats["max_drawdown"]))
+    assert stats["avg_gross_exposure"] == pytest.approx(0.35)
+    assert stats["max_gross_exposure"] == pytest.approx(1.0)
+    assert stats["exposure_bar_ratio"] == pytest.approx(0.6)
+    assert stats["avg_open_positions"] == pytest.approx(0.8)
+    assert stats["max_open_positions"] == pytest.approx(2.0)
+
+
+def test_compute_equity_statistics_keeps_single_point_curve_numeric() -> None:
+    stats = compute_equity_statistics(pd.DataFrame({"date": [pd.Timestamp("2026-05-25")], "net_value": [1.0]}))
+
+    assert stats["total_return"] == 0.0
+    assert stats["equity_return_std"] == 0.0
+    assert stats["annualized_return"] == 0.0
+    assert stats["annualized_volatility"] == 0.0
+    assert stats["avg_gross_exposure"] == 0.0
+
+
+def test_compute_period_returns_reports_monthly_equity_returns() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-29", "2026-05-31", "2026-06-01", "2026-06-30"]),
+            "net_value": [1.0, 1.1, 1.2, 1.5],
+        }
+    )
+
+    monthly = compute_period_returns(equity, freq="M")
+
+    assert monthly["period"].tolist() == ["2026-05", "2026-06"]
+    by_period = monthly.set_index("period")
+    assert by_period.loc["2026-05", "return"] == pytest.approx(0.1)
+    assert by_period.loc["2026-06", "start_net_value"] == pytest.approx(1.1)
+    assert by_period.loc["2026-06", "return"] == pytest.approx((1.5 - 1.1) / 1.1)
+
+
+def test_compute_period_returns_reports_period_drawdown_and_observation_count() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-29", "2026-05-30", "2026-05-31", "2026-06-01"]),
+            "net_value": [1.0, 1.2, 1.1, 1.3],
+        }
+    )
+
+    monthly = compute_period_returns(equity, freq="M")
+
+    by_period = monthly.set_index("period")
+    assert by_period.loc["2026-05", "observation_count"] == 3
+    assert by_period.loc["2026-05", "max_drawdown"] == pytest.approx(1.1 / 1.2 - 1.0)
+    assert by_period.loc["2026-06", "observation_count"] == 1
+    assert by_period.loc["2026-06", "max_drawdown"] == 0.0
+
+
+def test_compute_period_returns_includes_first_period_observation_against_prior_close() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-31", "2026-06-01"]),
+            "net_value": [1.2, 1.1],
+        }
+    )
+
+    monthly = compute_period_returns(equity, freq="M")
+    june = monthly.set_index("period").loc["2026-06"]
+
+    assert june["start_net_value"] == pytest.approx(1.2)
+    assert june["end_net_value"] == pytest.approx(1.1)
+    assert june["return"] == pytest.approx(1.1 / 1.2 - 1.0)
+    assert june["max_drawdown"] == pytest.approx(1.1 / 1.2 - 1.0)
+    assert june["observation_count"] == 1
+
+
+def test_summarize_order_decisions_reports_rates_and_allocation_usage() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["accepted", "rejected", "accepted", "rejected", "rejected", "rejected", "rejected"],
+            "reason": ["", "no_fill", "", "no_capital", "actual_risk_too_high", "chase_too_far", "invalid_order"],
+            "capital_fraction": [0.25, 0.0, 0.35, 0.0, 0.0, 0.0, 0.0],
+            "risk_fraction": [0.01, 0.0, 0.015, 0.0, 0.0, 0.0, 0.0],
+            "margin_fraction": [0.25, 0.0, 0.7, 0.0, 0.0, 0.0, 0.0],
+            "actual_entry_price": [10.0, 0.0, 20.0, 30.0, 11.0, 12.0, 0.0],
+            "actual_risk_pct": [0.03, 0.0, 0.04, 0.06, 0.1, 0.08, 0.0],
+            "actual_chase_pct": [0.01, 0.0, 0.02, 0.03, 0.1, 0.05, 0.0],
+            "actual_reward_to_risk": [2.0, 0.0, 1.5, 1.0, 0.9, 1.2, 0.0],
+        }
+    )
+
+    stats = summarize_order_decisions(decisions)
+
+    assert stats["order_count"] == 7.0
+    assert stats["acceptance_rate"] == pytest.approx(2 / 7)
+    assert stats["rejection_rate"] == pytest.approx(5 / 7)
+    assert stats["rejected_no_fill_count"] == 1.0
+    assert stats["rejected_no_capital_count"] == 1.0
+    assert stats["rejected_actual_risk_too_high_count"] == 1.0
+    assert stats["rejected_chase_too_far_count"] == 1.0
+    assert stats["rejected_invalid_order_count"] == 1.0
+    assert stats["rejected_duplicate_order_id_count"] == 0.0
+    assert stats["avg_accepted_capital_fraction"] == pytest.approx(0.3)
+    assert stats["max_accepted_capital_fraction"] == pytest.approx(0.35)
+    assert stats["avg_accepted_risk_fraction"] == pytest.approx(0.0125)
+    assert stats["max_accepted_risk_fraction"] == pytest.approx(0.015)
+    assert stats["avg_accepted_margin_fraction"] == pytest.approx(0.475)
+    assert stats["max_accepted_margin_fraction"] == pytest.approx(0.7)
+    assert stats["avg_executed_actual_risk_pct"] == pytest.approx(0.062)
+    assert stats["max_executed_actual_risk_pct"] == pytest.approx(0.1)
+    assert stats["avg_executed_actual_chase_pct"] == pytest.approx(0.042)
+    assert stats["max_executed_actual_chase_pct"] == pytest.approx(0.1)
+    assert stats["avg_executed_actual_reward_to_risk"] == pytest.approx(1.32)
+    assert stats["min_executed_actual_reward_to_risk"] == pytest.approx(0.9)
+
+
+def test_summarize_order_decisions_reports_custom_rejection_reasons() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["rejected", "rejected", "rejected", "accepted"],
+            "reason": ["price_limit_blocked", "price_limit_blocked", "daily_open_filtered", ""],
+        }
+    )
+
+    stats = summarize_order_decisions(decisions)
+
+    assert stats["rejected_price_limit_blocked_count"] == 2.0
+    assert stats["rejected_daily_open_filtered_count"] == 1.0
+
+
+def test_compute_decision_reason_statistics_groups_by_strategy_status_and_reason() -> None:
+    decisions = pd.DataFrame(
+        {
+            "strategy_name": ["trend_signal_bar", "trend_signal_bar", "range_signal_bar", "range_signal_bar"],
+            "detector_name": ["trend", "trend", "range", "range"],
+            "status": ["accepted", "rejected", "rejected", "rejected"],
+            "reason": ["", "no_fill", "no_capital", "no_capital"],
+            "actual_risk_pct": [0.03, 0.0, 0.04, 0.06],
+            "actual_chase_pct": [0.01, 0.0, 0.02, 0.03],
+            "actual_reward_to_risk": [2.0, 0.0, 1.5, 1.0],
+        }
+    )
+
+    stats = compute_decision_reason_statistics(decisions)
+    by_key = stats.set_index(["strategy_name", "detector_name", "status", "reason"])
+
+    assert by_key.loc[("trend_signal_bar", "trend", "accepted", ""), "decision_count"] == 1
+    assert by_key.loc[("trend_signal_bar", "trend", "accepted", ""), "decision_rate"] == pytest.approx(0.25)
+    assert by_key.loc[("trend_signal_bar", "trend", "accepted", ""), "group_decision_count"] == 2
+    assert by_key.loc[("trend_signal_bar", "trend", "accepted", ""), "group_decision_rate"] == pytest.approx(0.5)
+    assert by_key.loc[("trend_signal_bar", "trend", "rejected", "no_fill"), "decision_count"] == 1
+    assert by_key.loc[("trend_signal_bar", "trend", "rejected", "no_fill"), "group_decision_rate"] == pytest.approx(0.5)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "decision_count"] == 2
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "decision_rate"] == pytest.approx(0.5)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "group_decision_count"] == 2
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "group_decision_rate"] == pytest.approx(1.0)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "avg_actual_risk_pct"] == pytest.approx(0.05)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "max_actual_risk_pct"] == pytest.approx(0.06)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "avg_actual_chase_pct"] == pytest.approx(0.025)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "max_actual_chase_pct"] == pytest.approx(0.03)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "avg_actual_reward_to_risk"] == pytest.approx(1.25)
+    assert by_key.loc[("range_signal_bar", "range", "rejected", "no_capital"), "min_actual_reward_to_risk"] == pytest.approx(1.0)
+
+
+def test_compute_decision_reason_statistics_handles_missing_execution_metric_columns() -> None:
+    decisions = pd.DataFrame(
+        {
+            "strategy_name": ["trend_signal_bar"],
+            "detector_name": ["trend"],
+            "status": ["rejected"],
+            "reason": ["higher_timeframe_mismatch"],
+        }
+    )
+
+    stats = compute_decision_reason_statistics(decisions)
+    row = stats.iloc[0]
+
+    assert row["decision_count"] == 1
+    assert row["avg_actual_risk_pct"] == 0.0
+    assert row["max_actual_risk_pct"] == 0.0
+    assert row["avg_actual_chase_pct"] == 0.0
+    assert row["max_actual_chase_pct"] == 0.0
+    assert row["avg_actual_reward_to_risk"] == 0.0
+    assert row["min_actual_reward_to_risk"] == 0.0
+
+
+def test_summarize_strategy_filter_decisions_reports_higher_timeframe_reasons() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["accepted", "rejected", "rejected", "rejected", "rejected"],
+            "reason": [
+                "",
+                "higher_timeframe_mismatch",
+                "higher_timeframe_no_context",
+                "higher_timeframe_stale",
+                "signal_bar_no_liquidity",
+            ],
+        }
+    )
+
+    stats = summarize_strategy_filter_decisions(decisions)
+
+    assert stats["strategy_signal_count"] == 5.0
+    assert stats["strategy_accepted_signal_count"] == 1.0
+    assert stats["strategy_rejected_signal_count"] == 4.0
+    assert stats["strategy_filter_acceptance_rate"] == pytest.approx(0.2)
+    assert stats["strategy_rejected_higher_timeframe_mismatch_count"] == 1.0
+    assert stats["strategy_rejected_higher_timeframe_no_context_count"] == 1.0
+    assert stats["strategy_rejected_higher_timeframe_stale_count"] == 1.0
+    assert stats["strategy_rejected_signal_bar_no_liquidity_count"] == 1.0
+
+
+def test_summarize_strategy_filter_decisions_reports_custom_rejection_reasons() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["rejected", "rejected", "accepted"],
+            "reason": ["same_timeframe_middle", "same_timeframe_middle", ""],
+        }
+    )
+
+    stats = summarize_strategy_filter_decisions(decisions)
+
+    assert stats["strategy_rejected_same_timeframe_middle_count"] == 2.0

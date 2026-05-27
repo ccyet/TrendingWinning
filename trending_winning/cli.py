@@ -1,0 +1,778 @@
+from __future__ import annotations
+
+import argparse
+from collections.abc import Mapping
+from dataclasses import fields
+from pathlib import Path
+
+import pandas as pd
+
+from trending_winning.backtest.experiment import (
+    PortfolioExperimentConfig,
+    SingleStrategyExperimentConfig,
+    build_portfolio_benchmark_report,
+    run_portfolio_parameter_sweep,
+    run_portfolio_experiment,
+    run_single_strategy_parameter_sweep,
+    run_single_strategy_experiment,
+    save_portfolio_benchmark,
+)
+from trending_winning.backtest.engine import BacktestConfig, run_backtest
+from trending_winning.data.repository import MarketDataRepository
+from trending_winning.data.tdx import diagnose_tdx_source
+from trending_winning.strategy import StrategyConfig, scan_bars
+
+
+def _parse_float_list(value: str) -> list[float]:
+    return [float(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def _parse_int_list(value: str) -> list[int]:
+    return [int(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def _parse_float_mapping(value: str) -> dict[str, float]:
+    return {key: float(raw) for key, raw in _parse_key_value_pairs(value).items()}
+
+
+def _parse_int_mapping(value: str) -> dict[str, int]:
+    return {key: int(raw) for key, raw in _parse_key_value_pairs(value).items()}
+
+
+def _parse_text_mapping(value: str) -> dict[str, str]:
+    return _parse_key_value_pairs(value)
+
+
+def _parse_generic_sweep_grid(items: list[str], config: object) -> dict[str, list[object]]:
+    """解析通用参数网格；字段合法性由实验配置 dataclass 决定。"""
+    if not items:
+        return {}
+    field_names = {field.name for field in fields(type(config))}
+    grid: dict[str, list[object]] = {}
+    for item in items:
+        if "=" not in item:
+            raise ValueError(f"--grid 必须使用 field=value1,value2 格式：{item}")
+        key, raw_values = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError(f"--grid 字段和值不能为空：{item}")
+        if key not in field_names:
+            raise ValueError(f"--grid 不支持配置字段：{key}")
+        current_value = getattr(config, key)
+        values_text = _split_grid_values(raw_values, current_value)
+        if not values_text:
+            raise ValueError(f"--grid 字段和值不能为空：{item}")
+        grid[key] = [_parse_grid_value(value, current_value) for value in values_text]
+    return grid
+
+
+def _split_grid_values(raw_values: str, current_value: object) -> list[str]:
+    separator = ";" if isinstance(current_value, Mapping) else ","
+    return [value.strip() for value in raw_values.split(separator) if value.strip()]
+
+
+def _parse_grid_value(value: str, current_value: object) -> object:
+    if isinstance(current_value, bool):
+        return _parse_bool_value(value)
+    if isinstance(current_value, int):
+        return int(value)
+    if isinstance(current_value, float):
+        return float(value)
+    if isinstance(current_value, Mapping):
+        return _parse_grid_mapping(value)
+    if isinstance(current_value, tuple):
+        return tuple(part.strip() for part in value.split("+") if part.strip())
+    if current_value is None:
+        return _infer_grid_scalar(value)
+    return value
+
+
+def _parse_grid_mapping(value: str) -> dict[str, object]:
+    """解析 mapping 型 grid 单元；多个键值用 + 连接，多个方案由上层 ; 分隔。"""
+    normalized = value.strip()
+    if normalized == "{}":
+        return {}
+    result: dict[str, object] = {}
+    for item in normalized.split("+"):
+        text = item.strip()
+        if not text:
+            continue
+        if "=" in text:
+            key, raw = text.split("=", 1)
+        elif ":" in text:
+            key, raw = text.split(":", 1)
+        else:
+            raise ValueError(f"mapping grid 必须使用 key=value 或 key:value：{text}")
+        key = key.strip()
+        if not key:
+            raise ValueError(f"mapping grid 的 key 不能为空：{text}")
+        result[key] = _infer_grid_scalar(raw.strip())
+    return result
+
+
+def _parse_bool_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"布尔参数只支持 true/false：{value}")
+
+
+def _infer_grid_scalar(value: str) -> object:
+    normalized = value.strip().lower()
+    if normalized in {"none", "null"}:
+        return None
+    if normalized in {"true", "false"}:
+        return _parse_bool_value(normalized)
+    try:
+        if any(char in value for char in (".", "e", "E")):
+            return float(value)
+        return int(value)
+    except ValueError:
+        return value
+
+
+def _parse_key_value_pairs(value: str) -> dict[str, str]:
+    pairs: dict[str, str] = {}
+    for item in value.split(","):
+        text = item.strip()
+        if not text:
+            continue
+        if "=" not in text:
+            raise ValueError(f"映射参数必须使用 key=value 格式：{text}")
+        key, raw = text.split("=", 1)
+        key = key.strip()
+        raw = raw.strip()
+        if not key or not raw:
+            raise ValueError(f"映射参数不能为空：{text}")
+        pairs[key] = raw
+    return pairs
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="TDX-only trend strategy toolkit")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    fetch_parser = subparsers.add_parser("fetch", help="fetch minute bars from TDX")
+    fetch_parser.add_argument("--symbols", required=True)
+    fetch_parser.add_argument("--timeframe", required=True, choices=["1d", "5m", "15m", "30m", "60m"])
+    fetch_parser.add_argument("--start", required=True)
+    fetch_parser.add_argument("--end", required=True)
+    fetch_parser.add_argument("--adjust", default="qfq")
+    fetch_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    fetch_parser.add_argument("--tdx-path", default="")
+
+    doctor_parser = subparsers.add_parser("tdx-doctor", help="diagnose TDX import, login and sample K-line requests")
+    doctor_parser.add_argument("--symbols", required=True)
+    doctor_parser.add_argument("--timeframes", default="1d,5m,15m,30m,60m")
+    doctor_parser.add_argument("--start", required=True)
+    doctor_parser.add_argument("--end", required=True)
+    doctor_parser.add_argument("--adjust", default="qfq")
+    doctor_parser.add_argument("--tdx-path", default="")
+
+    prepare_parser = subparsers.add_parser("prepare-data", help="audit local data and fetch only missing/bad bars from TDX")
+    prepare_parser.add_argument("--symbols", required=True)
+    prepare_parser.add_argument("--timeframes", required=True)
+    prepare_parser.add_argument("--start", required=True)
+    prepare_parser.add_argument("--end", required=True)
+    prepare_parser.add_argument("--adjust", default="qfq")
+    prepare_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    prepare_parser.add_argument("--tdx-path", default="")
+    prepare_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+    prepare_parser.add_argument("--allow-incomplete-after-update", action="store_true")
+
+    plan_parser = subparsers.add_parser("plan-data", help="audit local data and print the TDX fetch plan")
+    plan_parser.add_argument("--symbols", required=True)
+    plan_parser.add_argument("--timeframes", required=True)
+    plan_parser.add_argument("--start", required=True)
+    plan_parser.add_argument("--end", required=True)
+    plan_parser.add_argument("--adjust", default="qfq")
+    plan_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    plan_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+
+    audit_parser = subparsers.add_parser("audit-data", help="audit local parquet coverage before backtesting")
+    audit_parser.add_argument("--symbols", required=True)
+    audit_parser.add_argument("--timeframe", required=True, choices=["1d", "5m", "15m", "30m", "60m"])
+    audit_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
+    audit_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
+    audit_parser.add_argument("--start", required=True)
+    audit_parser.add_argument("--end", required=True)
+    audit_parser.add_argument("--adjust", default="qfq")
+    audit_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+
+    scan_parser = subparsers.add_parser("backtest", help="scan local bars and run a breakout backtest")
+    scan_parser.add_argument("--symbols", required=True)
+    scan_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
+    scan_parser.add_argument("--start", required=True)
+    scan_parser.add_argument("--end", required=True)
+    scan_parser.add_argument("--adjust", default="qfq")
+    scan_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+
+    single_parser = subparsers.add_parser("single-backtest", help="run one detector strategy without portfolio allocation")
+    single_parser.add_argument("--symbols", required=True)
+    single_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
+    single_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
+    single_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
+    single_parser.add_argument("--start", required=True)
+    single_parser.add_argument("--end", required=True)
+    single_parser.add_argument("--adjust", default="qfq")
+    single_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    single_parser.add_argument("--detector", required=True, choices=["trend", "range", "channel", "reversal"])
+    single_parser.add_argument("--risk-reward", type=float, default=2.0)
+    single_parser.add_argument("--max-holding-bars", type=int, default=12)
+    single_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
+    single_parser.add_argument("--max-chase-pct", type=float, default=None)
+    single_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+    single_parser.add_argument("--fee-rate", type=float, default=0.0)
+    single_parser.add_argument("--slippage-bps", type=float, default=0.0)
+    single_parser.add_argument("--initial-equity", type=float, default=1.0)
+    single_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    single_parser.add_argument("--allow-bad-data", action="store_true")
+    single_parser.add_argument("--output-dir", default="")
+    single_parser.add_argument("--trend-lookback", type=int, default=20)
+    single_parser.add_argument("--trend-min-score", type=float, default=1.0)
+    single_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
+    single_parser.add_argument("--trend-min-body-ratio", type=float, default=0.45)
+    single_parser.add_argument("--trend-pullback-lookback", type=int, default=5)
+    single_parser.add_argument("--trend-h2-min-pullback-legs", type=int, default=2)
+    single_parser.add_argument("--range-lookback", type=int, default=20)
+    single_parser.add_argument("--range-middle-low", type=float, default=0.25)
+    single_parser.add_argument("--range-middle-high", type=float, default=0.75)
+    single_parser.add_argument("--range-false-break-buffer", type=float, default=0.0)
+    single_parser.add_argument("--range-strong-close-pos", type=float, default=0.65)
+    single_parser.add_argument("--range-min-score", type=float, default=0.8)
+    single_parser.add_argument("--channel-method", choices=["regression", "swing"], default="regression")
+    single_parser.add_argument("--channel-lookback", type=int, default=40)
+    single_parser.add_argument("--channel-sigma-multiple", type=float, default=2.0)
+    single_parser.add_argument("--channel-break-buffer", type=float, default=0.0)
+    single_parser.add_argument("--channel-swing-left-bars", type=int, default=2)
+    single_parser.add_argument("--channel-swing-right-bars", type=int, default=2)
+    single_parser.add_argument("--reversal-lookback", type=int, default=20)
+    single_parser.add_argument("--reversal-strong-close-pos", type=float, default=0.65)
+    single_parser.add_argument("--reversal-min-body-ratio", type=float, default=0.45)
+    single_parser.add_argument("--reversal-old-extreme-tolerance-pct", type=float, default=0.01)
+    single_parser.add_argument("--disable-reversal-old-extreme-test", action="store_true")
+    single_parser.add_argument("--disable-reversal-structure-confirmation", action="store_true")
+
+    single_sweep_parser = subparsers.add_parser("single-sweep", help="run one detector parameter grid without portfolio allocation")
+    single_sweep_parser.add_argument("--symbols", required=True)
+    single_sweep_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
+    single_sweep_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
+    single_sweep_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
+    single_sweep_parser.add_argument("--start", required=True)
+    single_sweep_parser.add_argument("--end", required=True)
+    single_sweep_parser.add_argument("--adjust", default="qfq")
+    single_sweep_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    single_sweep_parser.add_argument("--detector", required=True, choices=["trend", "range", "channel", "reversal"])
+    single_sweep_parser.add_argument("--risk-rewards", required=True)
+    single_sweep_parser.add_argument("--max-holding-bars-list", required=True)
+    single_sweep_parser.add_argument("--trend-min-scores", default="")
+    single_sweep_parser.add_argument("--grid", action="append", default=[])
+    single_sweep_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
+    single_sweep_parser.add_argument("--max-chase-pct", type=float, default=None)
+    single_sweep_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+    single_sweep_parser.add_argument("--fee-rate", type=float, default=0.0)
+    single_sweep_parser.add_argument("--slippage-bps", type=float, default=0.0)
+    single_sweep_parser.add_argument("--initial-equity", type=float, default=1.0)
+    single_sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    single_sweep_parser.add_argument("--allow-bad-data", action="store_true")
+    single_sweep_parser.add_argument("--output-dir", default="")
+    single_sweep_parser.add_argument("--trend-lookback", type=int, default=20)
+    single_sweep_parser.add_argument("--trend-min-score", type=float, default=1.0)
+    single_sweep_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
+    single_sweep_parser.add_argument("--trend-min-body-ratio", type=float, default=0.45)
+    single_sweep_parser.add_argument("--trend-pullback-lookback", type=int, default=5)
+    single_sweep_parser.add_argument("--trend-h2-min-pullback-legs", type=int, default=2)
+    single_sweep_parser.add_argument("--range-lookback", type=int, default=20)
+    single_sweep_parser.add_argument("--range-middle-low", type=float, default=0.25)
+    single_sweep_parser.add_argument("--range-middle-high", type=float, default=0.75)
+    single_sweep_parser.add_argument("--range-false-break-buffer", type=float, default=0.0)
+    single_sweep_parser.add_argument("--range-strong-close-pos", type=float, default=0.65)
+    single_sweep_parser.add_argument("--range-min-score", type=float, default=0.8)
+    single_sweep_parser.add_argument("--channel-method", choices=["regression", "swing"], default="regression")
+    single_sweep_parser.add_argument("--channel-lookback", type=int, default=40)
+    single_sweep_parser.add_argument("--channel-sigma-multiple", type=float, default=2.0)
+    single_sweep_parser.add_argument("--channel-break-buffer", type=float, default=0.0)
+    single_sweep_parser.add_argument("--channel-swing-left-bars", type=int, default=2)
+    single_sweep_parser.add_argument("--channel-swing-right-bars", type=int, default=2)
+    single_sweep_parser.add_argument("--reversal-lookback", type=int, default=20)
+    single_sweep_parser.add_argument("--reversal-strong-close-pos", type=float, default=0.65)
+    single_sweep_parser.add_argument("--reversal-min-body-ratio", type=float, default=0.45)
+    single_sweep_parser.add_argument("--reversal-old-extreme-tolerance-pct", type=float, default=0.01)
+    single_sweep_parser.add_argument("--disable-reversal-old-extreme-test", action="store_true")
+    single_sweep_parser.add_argument("--disable-reversal-structure-confirmation", action="store_true")
+
+    portfolio_parser = subparsers.add_parser("portfolio-backtest", help="run independent detector strategies as a portfolio")
+    portfolio_parser.add_argument("--symbols", required=True)
+    portfolio_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
+    portfolio_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
+    portfolio_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
+    portfolio_parser.add_argument("--start", required=True)
+    portfolio_parser.add_argument("--end", required=True)
+    portfolio_parser.add_argument("--adjust", default="qfq")
+    portfolio_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    portfolio_parser.add_argument("--detectors", default="trend,range,channel")
+    portfolio_parser.add_argument("--risk-reward", type=float, default=2.0)
+    portfolio_parser.add_argument("--max-holding-bars", type=int, default=12)
+    portfolio_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
+    portfolio_parser.add_argument("--max-chase-pct", type=float, default=None)
+    portfolio_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+    portfolio_parser.add_argument("--fee-rate", type=float, default=0.0)
+    portfolio_parser.add_argument("--slippage-bps", type=float, default=0.0)
+    portfolio_parser.add_argument("--initial-equity", type=float, default=1.0)
+    portfolio_parser.add_argument("--max-open-positions", type=int, default=5)
+    portfolio_parser.add_argument("--capital-per-trade", type=float, default=None)
+    portfolio_parser.add_argument("--risk-per-trade", type=float, default=None)
+    portfolio_parser.add_argument("--max-capital-per-trade", type=float, default=1.0)
+    portfolio_parser.add_argument("--short-margin-rate", type=float, default=1.0)
+    portfolio_parser.add_argument("--reserve-cash", type=float, default=0.0)
+    portfolio_parser.add_argument("--allow-same-symbol-overlap", action="store_true")
+    portfolio_parser.add_argument("--strategy-priority", default="")
+    portfolio_parser.add_argument("--strategy-capital-limit", default="")
+    portfolio_parser.add_argument("--sector-capital-limit", default="")
+    portfolio_parser.add_argument("--symbol-sector-map", default="")
+    portfolio_parser.add_argument("--sector-metadata-key", default="sector")
+    portfolio_parser.add_argument("--default-sector", default="UNKNOWN")
+    portfolio_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    portfolio_parser.add_argument("--trend-lookback", type=int, default=20)
+    portfolio_parser.add_argument("--trend-min-score", type=float, default=1.0)
+    portfolio_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
+    portfolio_parser.add_argument("--trend-min-body-ratio", type=float, default=0.45)
+    portfolio_parser.add_argument("--trend-pullback-lookback", type=int, default=5)
+    portfolio_parser.add_argument("--trend-h2-min-pullback-legs", type=int, default=2)
+    portfolio_parser.add_argument("--range-lookback", type=int, default=20)
+    portfolio_parser.add_argument("--range-middle-low", type=float, default=0.25)
+    portfolio_parser.add_argument("--range-middle-high", type=float, default=0.75)
+    portfolio_parser.add_argument("--range-false-break-buffer", type=float, default=0.0)
+    portfolio_parser.add_argument("--range-strong-close-pos", type=float, default=0.65)
+    portfolio_parser.add_argument("--range-min-score", type=float, default=0.8)
+    portfolio_parser.add_argument("--channel-method", choices=["regression", "swing"], default="regression")
+    portfolio_parser.add_argument("--channel-lookback", type=int, default=40)
+    portfolio_parser.add_argument("--channel-sigma-multiple", type=float, default=2.0)
+    portfolio_parser.add_argument("--channel-break-buffer", type=float, default=0.0)
+    portfolio_parser.add_argument("--channel-swing-left-bars", type=int, default=2)
+    portfolio_parser.add_argument("--channel-swing-right-bars", type=int, default=2)
+    portfolio_parser.add_argument("--reversal-lookback", type=int, default=20)
+    portfolio_parser.add_argument("--reversal-strong-close-pos", type=float, default=0.65)
+    portfolio_parser.add_argument("--reversal-min-body-ratio", type=float, default=0.45)
+    portfolio_parser.add_argument("--reversal-old-extreme-tolerance-pct", type=float, default=0.01)
+    portfolio_parser.add_argument("--disable-reversal-old-extreme-test", action="store_true")
+    portfolio_parser.add_argument("--disable-reversal-structure-confirmation", action="store_true")
+    portfolio_parser.add_argument("--allow-bad-data", action="store_true")
+    portfolio_parser.add_argument("--output-dir", default="")
+    portfolio_parser.add_argument("--benchmark", action="store_true")
+
+    sweep_parser = subparsers.add_parser("portfolio-sweep", help="run a parameter grid with one shared data load")
+    sweep_parser.add_argument("--symbols", required=True)
+    sweep_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
+    sweep_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
+    sweep_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
+    sweep_parser.add_argument("--start", required=True)
+    sweep_parser.add_argument("--end", required=True)
+    sweep_parser.add_argument("--adjust", default="qfq")
+    sweep_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    sweep_parser.add_argument("--detectors", default="trend,range,channel")
+    sweep_parser.add_argument("--risk-rewards", required=True)
+    sweep_parser.add_argument("--max-holding-bars-list", required=True)
+    sweep_parser.add_argument("--grid", action="append", default=[])
+    sweep_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
+    sweep_parser.add_argument("--max-chase-pct", type=float, default=None)
+    sweep_parser.add_argument("--min-coverage-ratio", type=float, default=None)
+    sweep_parser.add_argument("--fee-rate", type=float, default=0.0)
+    sweep_parser.add_argument("--slippage-bps", type=float, default=0.0)
+    sweep_parser.add_argument("--initial-equity", type=float, default=1.0)
+    sweep_parser.add_argument("--max-open-positions-list", default="5")
+    sweep_parser.add_argument("--capital-per-trade", type=float, default=None)
+    sweep_parser.add_argument("--risk-per-trade", type=float, default=None)
+    sweep_parser.add_argument("--max-capital-per-trade", type=float, default=1.0)
+    sweep_parser.add_argument("--short-margin-rate", type=float, default=1.0)
+    sweep_parser.add_argument("--reserve-cash", type=float, default=0.0)
+    sweep_parser.add_argument("--allow-same-symbol-overlap", action="store_true")
+    sweep_parser.add_argument("--strategy-priority", default="")
+    sweep_parser.add_argument("--strategy-capital-limit", default="")
+    sweep_parser.add_argument("--sector-capital-limit", default="")
+    sweep_parser.add_argument("--symbol-sector-map", default="")
+    sweep_parser.add_argument("--sector-metadata-key", default="sector")
+    sweep_parser.add_argument("--default-sector", default="UNKNOWN")
+    sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    sweep_parser.add_argument("--trend-lookback", type=int, default=20)
+    sweep_parser.add_argument("--trend-min-score", type=float, default=1.0)
+    sweep_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
+    sweep_parser.add_argument("--trend-min-body-ratio", type=float, default=0.45)
+    sweep_parser.add_argument("--trend-pullback-lookback", type=int, default=5)
+    sweep_parser.add_argument("--trend-h2-min-pullback-legs", type=int, default=2)
+    sweep_parser.add_argument("--range-lookback", type=int, default=20)
+    sweep_parser.add_argument("--range-middle-low", type=float, default=0.25)
+    sweep_parser.add_argument("--range-middle-high", type=float, default=0.75)
+    sweep_parser.add_argument("--range-false-break-buffer", type=float, default=0.0)
+    sweep_parser.add_argument("--range-strong-close-pos", type=float, default=0.65)
+    sweep_parser.add_argument("--range-min-score", type=float, default=0.8)
+    sweep_parser.add_argument("--channel-method", choices=["regression", "swing"], default="regression")
+    sweep_parser.add_argument("--channel-lookback", type=int, default=40)
+    sweep_parser.add_argument("--channel-sigma-multiple", type=float, default=2.0)
+    sweep_parser.add_argument("--channel-break-buffer", type=float, default=0.0)
+    sweep_parser.add_argument("--channel-swing-left-bars", type=int, default=2)
+    sweep_parser.add_argument("--channel-swing-right-bars", type=int, default=2)
+    sweep_parser.add_argument("--reversal-lookback", type=int, default=20)
+    sweep_parser.add_argument("--reversal-strong-close-pos", type=float, default=0.65)
+    sweep_parser.add_argument("--reversal-min-body-ratio", type=float, default=0.45)
+    sweep_parser.add_argument("--reversal-old-extreme-tolerance-pct", type=float, default=0.01)
+    sweep_parser.add_argument("--disable-reversal-old-extreme-test", action="store_true")
+    sweep_parser.add_argument("--disable-reversal-structure-confirmation", action="store_true")
+    sweep_parser.add_argument("--allow-bad-data", action="store_true")
+    sweep_parser.add_argument("--output-dir", default="")
+
+    args = parser.parse_args()
+    symbols = tuple(item.strip() for item in args.symbols.split(",") if item.strip())
+    if args.command == "tdx-doctor":
+        result = diagnose_tdx_source(
+            symbols=symbols,
+            timeframes=tuple(item.strip() for item in args.timeframes.split(",") if item.strip()),
+            start=args.start,
+            end=args.end,
+            adjust=args.adjust,
+            tqcenter_path=args.tdx_path,
+        )
+        print(result.to_string(index=False))
+        return
+
+    repo = MarketDataRepository(Path(args.data_root), adjust=args.adjust)
+    if args.command == "fetch":
+        result = repo.update_from_tdx(
+            symbols=symbols,
+            start=args.start,
+            end=args.end,
+            timeframe=args.timeframe,
+            tqcenter_path=args.tdx_path,
+        )
+        print(result.to_string(index=False))
+        return
+
+    if args.command == "prepare-data":
+        result = repo.prepare_from_tdx(
+            symbols=symbols,
+            timeframes=tuple(item.strip() for item in args.timeframes.split(",") if item.strip()),
+            start=args.start,
+            end=args.end,
+            tqcenter_path=args.tdx_path,
+            min_coverage_ratio=args.min_coverage_ratio,
+            strict_after_update=not bool(args.allow_incomplete_after_update),
+        )
+        print(result.to_string(index=False))
+        return
+
+    if args.command == "plan-data":
+        result = repo.plan_from_tdx(
+            symbols=symbols,
+            timeframes=tuple(item.strip() for item in args.timeframes.split(",") if item.strip()),
+            start=args.start,
+            end=args.end,
+            min_coverage_ratio=args.min_coverage_ratio,
+        )
+        print(result.to_string(index=False))
+        return
+
+    if args.command == "audit-data":
+        timeframes = [str(args.timeframe)]
+        higher_timeframe = str(args.higher_timeframe).strip()
+        if higher_timeframe and higher_timeframe != args.timeframe:
+            timeframes.append(higher_timeframe)
+        frames = [
+            repo.audit_bars(
+                timeframe=timeframe,
+                symbols=symbols,
+                start=args.start,
+                end=args.end,
+            )
+            for timeframe in timeframes
+        ]
+        result = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+        print(result.to_string(index=False))
+        return
+
+    if args.command == "single-backtest":
+        config = SingleStrategyExperimentConfig(
+            name="single-backtest",
+            data_root=str(args.data_root),
+            symbols=symbols,
+            timeframe=args.timeframe,
+            higher_timeframe=str(args.higher_timeframe),
+            higher_timeframe_max_age_minutes=args.higher_timeframe_max_age_minutes,
+            start=args.start,
+            end=args.end,
+            adjust=args.adjust,
+            detector=str(args.detector),
+            risk_reward=float(args.risk_reward),
+            max_holding_bars=int(args.max_holding_bars),
+            max_actual_risk_pct=args.max_actual_risk_pct,
+            max_chase_pct=args.max_chase_pct,
+            min_coverage_ratio=args.min_coverage_ratio,
+            fee_rate=float(args.fee_rate),
+            slippage_bps=float(args.slippage_bps),
+            initial_equity=float(args.initial_equity),
+            intrabar_exit_policy=str(args.intrabar_exit_policy),
+            strict_data_quality=not bool(args.allow_bad_data),
+            output_dir=args.output_dir,
+            trend_lookback=int(args.trend_lookback),
+            trend_min_score=float(args.trend_min_score),
+            trend_strong_close_pos=float(args.trend_strong_close_pos),
+            trend_min_body_ratio=float(args.trend_min_body_ratio),
+            trend_pullback_lookback=int(args.trend_pullback_lookback),
+            trend_h2_min_pullback_legs=int(args.trend_h2_min_pullback_legs),
+            range_lookback=int(args.range_lookback),
+            range_middle_low=float(args.range_middle_low),
+            range_middle_high=float(args.range_middle_high),
+            range_false_break_buffer=float(args.range_false_break_buffer),
+            range_strong_close_pos=float(args.range_strong_close_pos),
+            range_min_score=float(args.range_min_score),
+            channel_method=str(args.channel_method),
+            channel_lookback=int(args.channel_lookback),
+            channel_sigma_multiple=float(args.channel_sigma_multiple),
+            channel_break_buffer=float(args.channel_break_buffer),
+            channel_swing_left_bars=int(args.channel_swing_left_bars),
+            channel_swing_right_bars=int(args.channel_swing_right_bars),
+            reversal_lookback=int(args.reversal_lookback),
+            reversal_strong_close_pos=float(args.reversal_strong_close_pos),
+            reversal_min_body_ratio=float(args.reversal_min_body_ratio),
+            reversal_old_extreme_tolerance_pct=float(args.reversal_old_extreme_tolerance_pct),
+            reversal_require_old_extreme_test=not bool(args.disable_reversal_old_extreme_test),
+            reversal_require_structure_confirmation=not bool(args.disable_reversal_structure_confirmation),
+        )
+        experiment = run_single_strategy_experiment(config, save=bool(args.output_dir))
+        result = experiment.backtest
+        print(result.stats)
+        if not result.equity_curve.empty:
+            print(result.equity_curve.tail(20).to_string(index=False))
+        if not result.trades.empty:
+            print(result.trades.to_string(index=False))
+        return
+
+    if args.command == "single-sweep":
+        config = SingleStrategyExperimentConfig(
+            name="single-sweep",
+            data_root=str(args.data_root),
+            symbols=symbols,
+            timeframe=args.timeframe,
+            higher_timeframe=str(args.higher_timeframe),
+            higher_timeframe_max_age_minutes=args.higher_timeframe_max_age_minutes,
+            start=args.start,
+            end=args.end,
+            adjust=args.adjust,
+            detector=str(args.detector),
+            max_actual_risk_pct=args.max_actual_risk_pct,
+            max_chase_pct=args.max_chase_pct,
+            min_coverage_ratio=args.min_coverage_ratio,
+            fee_rate=float(args.fee_rate),
+            slippage_bps=float(args.slippage_bps),
+            initial_equity=float(args.initial_equity),
+            intrabar_exit_policy=str(args.intrabar_exit_policy),
+            strict_data_quality=not bool(args.allow_bad_data),
+            output_dir=args.output_dir,
+            trend_lookback=int(args.trend_lookback),
+            trend_min_score=float(args.trend_min_score),
+            trend_strong_close_pos=float(args.trend_strong_close_pos),
+            trend_min_body_ratio=float(args.trend_min_body_ratio),
+            trend_pullback_lookback=int(args.trend_pullback_lookback),
+            trend_h2_min_pullback_legs=int(args.trend_h2_min_pullback_legs),
+            range_lookback=int(args.range_lookback),
+            range_middle_low=float(args.range_middle_low),
+            range_middle_high=float(args.range_middle_high),
+            range_false_break_buffer=float(args.range_false_break_buffer),
+            range_strong_close_pos=float(args.range_strong_close_pos),
+            range_min_score=float(args.range_min_score),
+            channel_method=str(args.channel_method),
+            channel_lookback=int(args.channel_lookback),
+            channel_sigma_multiple=float(args.channel_sigma_multiple),
+            channel_break_buffer=float(args.channel_break_buffer),
+            channel_swing_left_bars=int(args.channel_swing_left_bars),
+            channel_swing_right_bars=int(args.channel_swing_right_bars),
+            reversal_lookback=int(args.reversal_lookback),
+            reversal_strong_close_pos=float(args.reversal_strong_close_pos),
+            reversal_min_body_ratio=float(args.reversal_min_body_ratio),
+            reversal_old_extreme_tolerance_pct=float(args.reversal_old_extreme_tolerance_pct),
+            reversal_require_old_extreme_test=not bool(args.disable_reversal_old_extreme_test),
+            reversal_require_structure_confirmation=not bool(args.disable_reversal_structure_confirmation),
+        )
+        grid: dict[str, list[object]] = {
+            "risk_reward": _parse_float_list(args.risk_rewards),
+            "max_holding_bars": _parse_int_list(args.max_holding_bars_list),
+        }
+        if str(args.trend_min_scores).strip():
+            grid["trend_min_score"] = _parse_float_list(args.trend_min_scores)
+        grid.update(_parse_generic_sweep_grid(args.grid, config))
+        result = run_single_strategy_parameter_sweep(config, grid=grid, save=bool(args.output_dir))
+        print(result.table.to_string(index=False))
+        if args.output_dir:
+            print(f"sweep.csv saved: {Path(args.output_dir).expanduser() / 'sweep.csv'}")
+        return
+
+    if args.command == "portfolio-backtest":
+        config = PortfolioExperimentConfig(
+            name="portfolio-backtest",
+            data_root=str(args.data_root),
+            symbols=symbols,
+            timeframe=args.timeframe,
+            higher_timeframe=str(args.higher_timeframe),
+            higher_timeframe_max_age_minutes=args.higher_timeframe_max_age_minutes,
+            start=args.start,
+            end=args.end,
+            adjust=args.adjust,
+            detectors=tuple(item.strip() for item in args.detectors.split(",") if item.strip()),
+            risk_reward=float(args.risk_reward),
+            max_holding_bars=int(args.max_holding_bars),
+            max_actual_risk_pct=args.max_actual_risk_pct,
+            max_chase_pct=args.max_chase_pct,
+            min_coverage_ratio=args.min_coverage_ratio,
+            fee_rate=float(args.fee_rate),
+            slippage_bps=float(args.slippage_bps),
+            initial_equity=float(args.initial_equity),
+            max_open_positions=int(args.max_open_positions),
+            capital_per_trade=args.capital_per_trade,
+            risk_per_trade=args.risk_per_trade,
+            max_capital_per_trade=float(args.max_capital_per_trade),
+            short_margin_rate=float(args.short_margin_rate),
+            reserve_cash=float(args.reserve_cash),
+            allow_same_symbol_overlap=bool(args.allow_same_symbol_overlap),
+            strategy_priority=_parse_int_mapping(args.strategy_priority),
+            strategy_capital_limit=_parse_float_mapping(args.strategy_capital_limit),
+            sector_capital_limit=_parse_float_mapping(args.sector_capital_limit),
+            symbol_sector_map=_parse_text_mapping(args.symbol_sector_map),
+            sector_metadata_key=str(args.sector_metadata_key),
+            default_sector=str(args.default_sector),
+            intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trend_lookback=int(args.trend_lookback),
+            trend_min_score=float(args.trend_min_score),
+            trend_strong_close_pos=float(args.trend_strong_close_pos),
+            trend_min_body_ratio=float(args.trend_min_body_ratio),
+            trend_pullback_lookback=int(args.trend_pullback_lookback),
+            trend_h2_min_pullback_legs=int(args.trend_h2_min_pullback_legs),
+            range_lookback=int(args.range_lookback),
+            range_middle_low=float(args.range_middle_low),
+            range_middle_high=float(args.range_middle_high),
+            range_false_break_buffer=float(args.range_false_break_buffer),
+            range_strong_close_pos=float(args.range_strong_close_pos),
+            range_min_score=float(args.range_min_score),
+            channel_method=str(args.channel_method),
+            channel_lookback=int(args.channel_lookback),
+            channel_sigma_multiple=float(args.channel_sigma_multiple),
+            channel_break_buffer=float(args.channel_break_buffer),
+            channel_swing_left_bars=int(args.channel_swing_left_bars),
+            channel_swing_right_bars=int(args.channel_swing_right_bars),
+            reversal_lookback=int(args.reversal_lookback),
+            reversal_strong_close_pos=float(args.reversal_strong_close_pos),
+            reversal_min_body_ratio=float(args.reversal_min_body_ratio),
+            reversal_old_extreme_tolerance_pct=float(args.reversal_old_extreme_tolerance_pct),
+            reversal_require_old_extreme_test=not bool(args.disable_reversal_old_extreme_test),
+            reversal_require_structure_confirmation=not bool(args.disable_reversal_structure_confirmation),
+            strict_data_quality=not bool(args.allow_bad_data),
+            output_dir=args.output_dir,
+        )
+        experiment = run_portfolio_experiment(config, save=bool(args.output_dir))
+        result = experiment.backtest
+        print(result.stats)
+        if not result.equity_curve.empty:
+            print(result.equity_curve.tail(20).to_string(index=False))
+        if not result.trades.empty:
+            print(result.trades.to_string(index=False))
+        if args.benchmark:
+            report = build_portfolio_benchmark_report(experiment)
+            if args.output_dir:
+                save_portfolio_benchmark(config, report)
+            print(
+                {
+                    "bar_count": report.bar_count,
+                    "elapsed_seconds": report.elapsed_seconds,
+                    "bars_per_second": report.bars_per_second,
+                }
+            )
+        return
+
+    if args.command == "portfolio-sweep":
+        config = PortfolioExperimentConfig(
+            name="portfolio-sweep",
+            data_root=str(args.data_root),
+            symbols=symbols,
+            timeframe=args.timeframe,
+            higher_timeframe=str(args.higher_timeframe),
+            higher_timeframe_max_age_minutes=args.higher_timeframe_max_age_minutes,
+            start=args.start,
+            end=args.end,
+            adjust=args.adjust,
+            detectors=tuple(item.strip() for item in args.detectors.split(",") if item.strip()),
+            max_actual_risk_pct=args.max_actual_risk_pct,
+            max_chase_pct=args.max_chase_pct,
+            min_coverage_ratio=args.min_coverage_ratio,
+            fee_rate=float(args.fee_rate),
+            slippage_bps=float(args.slippage_bps),
+            initial_equity=float(args.initial_equity),
+            capital_per_trade=args.capital_per_trade,
+            risk_per_trade=args.risk_per_trade,
+            max_capital_per_trade=float(args.max_capital_per_trade),
+            short_margin_rate=float(args.short_margin_rate),
+            reserve_cash=float(args.reserve_cash),
+            allow_same_symbol_overlap=bool(args.allow_same_symbol_overlap),
+            strategy_priority=_parse_int_mapping(args.strategy_priority),
+            strategy_capital_limit=_parse_float_mapping(args.strategy_capital_limit),
+            sector_capital_limit=_parse_float_mapping(args.sector_capital_limit),
+            symbol_sector_map=_parse_text_mapping(args.symbol_sector_map),
+            sector_metadata_key=str(args.sector_metadata_key),
+            default_sector=str(args.default_sector),
+            intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trend_lookback=int(args.trend_lookback),
+            trend_min_score=float(args.trend_min_score),
+            trend_strong_close_pos=float(args.trend_strong_close_pos),
+            trend_min_body_ratio=float(args.trend_min_body_ratio),
+            trend_pullback_lookback=int(args.trend_pullback_lookback),
+            trend_h2_min_pullback_legs=int(args.trend_h2_min_pullback_legs),
+            range_lookback=int(args.range_lookback),
+            range_middle_low=float(args.range_middle_low),
+            range_middle_high=float(args.range_middle_high),
+            range_false_break_buffer=float(args.range_false_break_buffer),
+            range_strong_close_pos=float(args.range_strong_close_pos),
+            range_min_score=float(args.range_min_score),
+            channel_method=str(args.channel_method),
+            channel_lookback=int(args.channel_lookback),
+            channel_sigma_multiple=float(args.channel_sigma_multiple),
+            channel_break_buffer=float(args.channel_break_buffer),
+            channel_swing_left_bars=int(args.channel_swing_left_bars),
+            channel_swing_right_bars=int(args.channel_swing_right_bars),
+            reversal_lookback=int(args.reversal_lookback),
+            reversal_strong_close_pos=float(args.reversal_strong_close_pos),
+            reversal_min_body_ratio=float(args.reversal_min_body_ratio),
+            reversal_old_extreme_tolerance_pct=float(args.reversal_old_extreme_tolerance_pct),
+            reversal_require_old_extreme_test=not bool(args.disable_reversal_old_extreme_test),
+            reversal_require_structure_confirmation=not bool(args.disable_reversal_structure_confirmation),
+            strict_data_quality=not bool(args.allow_bad_data),
+            output_dir=args.output_dir,
+        )
+        result = run_portfolio_parameter_sweep(
+            config,
+            grid={
+                "risk_reward": _parse_float_list(args.risk_rewards),
+                "max_holding_bars": _parse_int_list(args.max_holding_bars_list),
+                "max_open_positions": _parse_int_list(args.max_open_positions_list),
+                **_parse_generic_sweep_grid(args.grid, config),
+            },
+            save=bool(args.output_dir),
+        )
+        print(result.table.to_string(index=False))
+        if args.output_dir:
+            print(f"sweep.csv saved: {Path(args.output_dir).expanduser() / 'sweep.csv'}")
+        return
+
+    bundle = repo.load_backtest_data(
+        timeframe=args.timeframe,
+        symbols=symbols,
+        start=args.start,
+        end=args.end,
+    )
+    scanned = scan_bars(bundle.bars, StrategyConfig())
+    result = run_backtest(scanned, BacktestConfig())
+    print(result.stats)
+    if not result.trades.empty:
+        print(result.trades.to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()

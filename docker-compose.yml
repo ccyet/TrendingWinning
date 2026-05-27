@@ -1,0 +1,9 @@
+services:
+  trending-winning:
+    build: .
+    ports:
+      - "8520:8501"
+    environment:
+      TDX_TQCENTER_PATH: "${TDX_TQCENTER_PATH:-}"
+    volumes:
+      - "/Users/a1234/Desktop/trend-backtest/data:/data"

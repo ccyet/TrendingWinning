@@ -1,0 +1,1516 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Al Brooks Always-In 策略算法草图</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --ink: #141b24;
+      --muted: #617080;
+      --line: #d7dee8;
+      --surface: #ffffff;
+      --green: #0f8b6f;
+      --red: #b42318;
+      --blue: #245b89;
+      --orange: #bf6a02;
+      --slate: #344054;
+      --soft-green: #eaf7f1;
+      --soft-red: #fef3f2;
+      --soft-blue: #eef5ff;
+      --soft-orange: #fff7ed;
+      --shadow: 0 14px 36px rgba(20, 27, 36, 0.08);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.58;
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 28px 60px;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin: -12px 0 18px;
+      padding: 10px 0;
+      background: rgba(245, 247, 250, 0.92);
+      backdrop-filter: blur(8px);
+    }
+
+    button {
+      border: 1px solid #cfd7e3;
+      border-radius: 6px;
+      background: #fff;
+      color: #1f2937;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 720;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 31px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 19px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    p { margin: 0; }
+
+    .subtitle {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 900px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .edit {
+      outline: none;
+    }
+
+    .edit:focus {
+      background: #fff8d6;
+      box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.45);
+      border-radius: 4px;
+    }
+
+    .panel,
+    .hero-panel {
+      background: var(--surface);
+      border: 1px solid #e1e6ee;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+      gap: 18px;
+      padding: 22px;
+      margin-bottom: 18px;
+      align-items: stretch;
+    }
+
+    .principle-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .principle {
+      border: 1px solid #e3e9f1;
+      border-radius: 7px;
+      padding: 13px;
+      background: #fbfcfe;
+      min-height: 122px;
+    }
+
+    .principle b {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .principle span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status-board {
+      border: 1px solid #dfe6ef;
+      border-radius: 7px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      border-bottom: 1px solid #edf0f5;
+      min-height: 82px;
+    }
+
+    .status-row:last-child { border-bottom: 0; }
+
+    .state-id {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+      text-align: center;
+      padding: 12px;
+    }
+
+    .state-id.long { background: var(--green); }
+    .state-id.short { background: var(--red); }
+    .state-id.range { background: var(--blue); }
+    .state-id.watch { background: var(--orange); }
+
+    .state-copy {
+      padding: 12px 14px;
+    }
+
+    .state-copy b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .state-copy span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 20px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    .section-head p {
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 760px;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .pipe-step {
+      position: relative;
+      border: 1px solid #e1e7f0;
+      border-radius: 7px;
+      background: #fbfcfe;
+      padding: 13px 12px;
+      min-height: 132px;
+    }
+
+    .pipe-step::after {
+      content: "";
+      position: absolute;
+      right: -9px;
+      top: 50%;
+      width: 8px;
+      height: 1px;
+      background: #cfd7e3;
+    }
+
+    .pipe-step:last-child::after { display: none; }
+
+    .pipe-step b {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .pipe-step span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .detector-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .detector-card {
+      border: 1px solid #e1e7f0;
+      border-radius: 7px;
+      background: #fff;
+      padding: 13px 12px;
+      min-height: 136px;
+    }
+
+    .detector-card b {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .detector-card span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .backtest-modes {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mode-card {
+      border: 1px solid #e1e7f0;
+      border-left: 4px solid var(--blue);
+      border-radius: 7px;
+      background: #fbfcfe;
+      padding: 13px 14px;
+    }
+
+    .mode-card b {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .mode-card span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .rules-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .math-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .rule-card {
+      border: 1px solid #e1e7f0;
+      border-radius: 7px;
+      background: #fff;
+      padding: 14px;
+    }
+
+    .rule-card.green { background: var(--soft-green); border-color: #c8eadb; }
+    .rule-card.red { background: var(--soft-red); border-color: #f4c7c3; }
+    .rule-card.blue { background: var(--soft-blue); border-color: #cfe0f7; }
+    .rule-card.orange { background: var(--soft-orange); border-color: #f6d7b8; }
+
+    .math-card {
+      border: 1px solid #e1e7f0;
+      border-radius: 7px;
+      background: #fff;
+      padding: 14px;
+      min-height: 260px;
+    }
+
+    .math-card b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .math-card p {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .formula {
+      margin-top: 10px;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: #26313f;
+      background: rgba(255,255,255,.74);
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 6px;
+      padding: 11px;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .chart-card {
+      border: 1px solid #e1e7f0;
+      border-radius: 7px;
+      background: #fbfcfe;
+      padding: 13px;
+      overflow: hidden;
+    }
+
+    .chart-card p {
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 62px;
+      margin-bottom: 10px;
+    }
+
+    svg.strategy-chart {
+      display: block;
+      width: 100%;
+      min-width: 330px;
+      height: auto;
+      border: 1px solid #e5eaf2;
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    .grid-line { stroke: #edf1f6; stroke-width: 1; }
+    .wick { stroke-width: 2; stroke-linecap: round; }
+    .body { stroke-width: 1.5; rx: 2; }
+    .up .wick, .up .body { stroke: var(--green); fill: #dff7ef; }
+    .down .wick, .down .body { stroke: #c2410c; fill: #ffead5; }
+    .line-blue { stroke: var(--blue); stroke-width: 2.2; fill: none; }
+    .line-green { stroke: var(--green); stroke-width: 2.2; fill: none; }
+    .line-red { stroke: var(--red); stroke-width: 2.2; fill: none; }
+    .line-orange { stroke: var(--orange); stroke-width: 2.2; fill: none; }
+    .dash { stroke-dasharray: 6 5; }
+    .label {
+      fill: #253142;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .small-label {
+      fill: #667085;
+      font-size: 11px;
+    }
+    .box-green { fill: none; stroke: var(--green); stroke-width: 2.4; stroke-dasharray: 5 4; }
+    .box-orange { fill: none; stroke: var(--orange); stroke-width: 2.4; }
+    .box-red { fill: none; stroke: var(--red); stroke-width: 2.4; stroke-dasharray: 5 4; }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #edf0f5;
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 760;
+    }
+
+    td {
+      color: #344054;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 760;
+      margin: 0 5px 6px 0;
+      background: #eef4ff;
+      color: #1d4ed8;
+    }
+
+    .tag.green { background: #ecfdf3; color: #047857; }
+    .tag.red { background: #fef3f2; color: #b42318; }
+    .tag.orange { background: #fff7ed; color: #c2410c; }
+
+    .decision-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .decision {
+      border: 1px solid #e1e7f0;
+      border-left: 4px solid var(--blue);
+      border-radius: 7px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .decision b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .decision span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1080px) {
+      header,
+      .hero-panel,
+      .matrix {
+        grid-template-columns: 1fr;
+      }
+      .note { text-align: left; }
+      .principle-grid,
+      .pipeline,
+      .math-grid,
+      .detector-grid,
+      .backtest-modes,
+      .chart-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      main { padding: 20px 14px 42px; }
+      .principle-grid,
+      .pipeline,
+      .rules-grid,
+      .math-grid,
+      .detector-grid,
+      .backtest-modes,
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+      .pipe-step::after { display: none; }
+      .section-head { display: block; }
+      svg.strategy-chart { min-width: 0; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      main { max-width: none; padding: 16px; }
+      .toolbar { display: none; }
+      .panel,
+      .hero-panel { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="toolbar" aria-label="编辑工具">
+      <button type="button" onclick="window.print()">打印 / 另存 PDF</button>
+      <button type="button" class="primary" onclick="exportEditedHtml()">导出修正版 HTML</button>
+    </div>
+
+    <header>
+      <div>
+        <h1 class="edit" contenteditable="true">Al Brooks Always-In 趋势策略算法草图</h1>
+        <p class="subtitle edit" contenteditable="true">把 Brooks 的 always-in、市场周期、信号K/入场K、H2/L2、突破挂单和失败突破，重设计为可落地到 5m / 15m / 30m / 60m 的状态机策略；不做打板，不做同级别中部，不做第一次反转。</p>
+      </div>
+      <p class="note edit" contenteditable="true">来源：本地 albrooks_combined_pages.html 的结构化总结。这里是算法化设计，不摘录原文。所有文字可直接点击修改。</p>
+    </header>
+
+    <section class="hero-panel" aria-label="策略总纲">
+      <div>
+        <h2 class="edit" contenteditable="true">总纲：不是识别单一形态，而是维护“必须持仓时的方向”</h2>
+        <div class="principle-grid">
+          <div class="principle">
+            <b class="edit" contenteditable="true">1. Always-In 先行</b>
+            <span class="edit" contenteditable="true">每根 K 后更新 AI_LONG / AI_SHORT / RANGE / WATCH。没有足够反证前，不轻易从趋势切到反转。</span>
+          </div>
+          <div class="principle">
+            <b class="edit" contenteditable="true">2. 背景大于信号</b>
+            <span class="edit" contenteditable="true">同一根信号K，在强趋势里是回撤入场，在区间中可能只是中部噪声。</span>
+          </div>
+          <div class="principle">
+            <b class="edit" contenteditable="true">3. 入场用 stop order</b>
+            <span class="edit" contenteditable="true">突破只在信号K上方/下方挂单进场；不等回测，不靠主观追价。</span>
+          </div>
+          <div class="principle">
+            <b class="edit" contenteditable="true">4. 涨停开盘过滤</b>
+            <span class="edit" contenteditable="true">日K开盘等于该板块涨停价的样本直接过滤，避免打板和一字板影响回测。</span>
+          </div>
+          <div class="principle">
+            <b class="edit" contenteditable="true">5. 实际风险过滤</b>
+            <span class="edit" contenteditable="true">先确定结构止损，再看 entry 到 stop 的风险是否可接受；错过好价位就跳过。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-board" aria-label="Always-In 状态机">
+        <div class="status-row">
+          <div class="state-id long edit" contenteditable="true">AI<br>LONG</div>
+          <div class="state-copy">
+            <b class="edit" contenteditable="true">偏多持仓状态</b>
+            <span class="edit" contenteditable="true">优先找 H1/H2、信号K高点上方挂单、小回撤趋势延续；空头信号只当减仓或观察。</span>
+          </div>
+        </div>
+        <div class="status-row">
+          <div class="state-id short edit" contenteditable="true">AI<br>SHORT</div>
+          <div class="state-copy">
+            <b class="edit" contenteditable="true">偏空持仓状态</b>
+            <span class="edit" contenteditable="true">优先找 L1/L2、信号K低点下方挂单、小反弹趋势延续；多头信号只当离场或观察。</span>
+          </div>
+        </div>
+        <div class="status-row">
+          <div class="state-id range edit" contenteditable="true">RANGE</div>
+          <div class="state-copy">
+            <b class="edit" contenteditable="true">交易区间状态</b>
+            <span class="edit" contenteditable="true">同级别中部不交易，只在上下沿做失败突破；强突破和跟随出现后才切趋势。</span>
+          </div>
+        </div>
+        <div class="status-row">
+          <div class="state-id watch edit" contenteditable="true">WATCH</div>
+          <div class="state-copy">
+            <b class="edit" contenteditable="true">过渡与反转观察</b>
+            <span class="edit" contenteditable="true">第一次反转只观察或离场；旧趋势破线、回测旧极端失败、第二次强反向信号齐备后，才允许切换 always-in 方向。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section" aria-label="算法架构">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">算法架构</h2>
+          <p class="edit" contenteditable="true">模式识别必须解耦：趋势、通道、区间、反转分别是独立 detector。单一策略回测只加载一个 detector 和对应 trigger，不牵涉其他模块；组合策略回测再由 portfolio 层统一处理信号冲突、资金占用和仓位分配。</p>
+        </div>
+        <p class="note edit" contenteditable="true">原则：detector 只识别模式并输出标准事件；strategy 只消费事件；portfolio 才处理多策略组合和仓位。</p>
+      </div>
+      <div class="pipeline">
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L0 TDX K线</b>
+          <span class="edit" contenteditable="true">5m / 15m / 30m / 60m OHLCV，沿用现有 TDX-only 数据层。</span>
+        </div>
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L1 Bar Features</b>
+          <span class="edit" contenteditable="true">实体、上下影、收盘位置、重叠率、连续同向收盘、跟随K。</span>
+        </div>
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L2 独立 Detectors</b>
+          <span class="edit" contenteditable="true">trend / channel / range / reversal 分开计算，各自输出事件，不互相调用。</span>
+        </div>
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L3 Strategy Adapter</b>
+          <span class="edit" contenteditable="true">单策略只绑定一个 detector，例如 TrendH2Strategy 只消费 trend events。</span>
+        </div>
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L4 Trigger + Risk</b>
+          <span class="edit" contenteditable="true">信号K挂单、信号K流动性过滤、结构止损、实际风险过滤和零流动性拒单，仍属于单策略内部。</span>
+        </div>
+        <div class="pipe-step">
+          <b class="edit" contenteditable="true">L5 Backtest Mode</b>
+          <span class="edit" contenteditable="true">single_strategy 只测一个策略；portfolio_strategy 才组合多策略与仓位。</span>
+        </div>
+      </div>
+
+      <div class="detector-grid" aria-label="独立模式识别模块">
+        <div class="detector-card">
+          <b class="edit" contenteditable="true">TrendDetector</b>
+          <span class="edit" contenteditable="true">只识别趋势状态、H1/H2、L1/L2、小回撤趋势。输出 trend_state、pullback_legs、signal_bar，不读取区间或反转模块。</span>
+        </div>
+        <div class="detector-card">
+          <b class="edit" contenteditable="true">ChannelDetector</b>
+          <span class="edit" contenteditable="true">只识别回归通道、摆动点通道、通道位置、通道破坏或过冲。输出 upper/lower/channel_pos/slope，不决定是否交易。</span>
+        </div>
+        <div class="detector-card">
+          <b class="edit" contenteditable="true">RangeDetector</b>
+          <span class="edit" contenteditable="true">只识别区间上下沿、区间中部、失败突破。输出 range_high/range_low/range_pos/failed_break，不调用趋势策略。</span>
+        </div>
+        <div class="detector-card">
+          <b class="edit" contenteditable="true">ReversalDetector</b>
+          <span class="edit" contenteditable="true">只识别第一次反转观察、第二次反转确认、CHoCH、旧极端测试失败。默认不产生第一笔反手交易。</span>
+        </div>
+      </div>
+
+      <div class="backtest-modes" aria-label="回测模式边界">
+        <div class="mode-card">
+          <b class="edit" contenteditable="true">单一策略回测</b>
+          <span class="edit" contenteditable="true">输入：一个 detector 的事件流。输出：该策略自己的订单、成交、止损止盈、收益曲线。不得读取其他 detector 的状态，不做仓位竞争，不做资金再分配。</span>
+        </div>
+        <div class="mode-card">
+          <b class="edit" contenteditable="true">组合策略回测</b>
+          <span class="edit" contenteditable="true">输入：多个单策略信号。由 portfolio 层处理信号优先级、互斥规则、最大持仓数、单票/行业暴露、资金占用和动态仓位分配。</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section" aria-label="核心规则">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">核心规则定义</h2>
+          <p class="edit" contenteditable="true">先把 Brooks 语言转成可计算字段。这里的阈值是第一版参数，后续回测再调；各 detector 独立输出事件，单策略只消费自己的事件。</p>
+        </div>
+        <p class="note edit" contenteditable="true">重点：不要让单根漂亮 K 线越过背景过滤。</p>
+      </div>
+
+      <div class="rules-grid">
+        <div class="rule-card blue">
+          <h3 class="edit" contenteditable="true">0. 解耦回测边界</h3>
+          <p class="edit" contenteditable="true">单策略回测不做跨模块推理；组合策略回测另设 portfolio 层。</p>
+          <div class="formula edit" contenteditable="true"># 每个 detector 只负责一种模式识别，输出标准事件，不直接下单。
+DetectorEvent = {
+  detector_name,          # trend / channel / range / reversal
+  symbol, timeframe, bar_time,
+  event_type,             # 例如 H2_SETUP、CHANNEL_BREAK、FAILED_BREAKDOWN
+  direction,              # long / short / neutral
+  signal_bar_id,
+  confidence,
+  metadata                # 仅保存本 detector 内部字段
+}
+
+# 单策略回测：只绑定一个 detector，禁止读取其他 detector 状态。
+SingleStrategyBacktest(detector_name):
+  events = run_detector(detector_name, bars)
+  orders = strategy.consume(events)
+  strategy_filter_decisions keep accepted / signal_bar_no_liquidity / invalid_signal_order
+  wrapped_strategy_filter_decisions = base_filter_decisions + higher_timeframe_filter_decisions
+  trades = execution.simulate(orders)
+  trades keep order_id / event_id / signal_bar_index / planned_entry / stop / target / r_multiple / mae / mfe / metadata
+  order_decisions keep accepted / no_fill / no_liquidity / already_open / no_bars
+  trades sorted by actual entry_time, not stock_code
+  return single_strategy_metrics(trades)
+
+# 组合策略回测：只在 portfolio 层合并多个单策略结果。
+PortfolioBacktest(strategies):
+  all_signals = collect(strategy.signals for strategy in strategies)
+  candidate_trades = execution.simulate(all_signals)
+  candidate_trades sorted by actual entry_time, priority, symbol, order_id
+  each candidate risk_fraction = risk_per_share / actual_entry_price
+  trades, order_decisions = portfolio_allocator.allocate(candidate_trades)
+  order_decisions keep status / reason / capital_fraction / risk_fraction
+  rejected reasons include no_fill / no_liquidity / no_bars / max_open_positions / same_symbol_overlap / no_capital
+  equity_curve = mark_to_market(trades, bars)
+  return {
+    trade_metrics: win_rate / profit_factor / expectancy,
+    equity_metrics: total_return / max_drawdown / annualized_return / calmar_ratio,
+    exposure_metrics: avg_gross_exposure / max_gross_exposure / avg_open_positions
+  }</div>
+        </div>
+
+        <div class="rule-card">
+          <h3 class="edit" contenteditable="true">0A. 数据覆盖审计</h3>
+          <p class="edit" contenteditable="true">回测前必须知道本地分钟 K 是否完整，也要知道哪些 K 线没有真实成交。覆盖度只统计已观测交易日内的 5m/15m/30m/60m 交易时段，不把未观测整日猜成交易日。</p>
+          <div class="formula edit" contenteditable="true"># A股分钟K预期时间轴，按上午和下午两个交易时段生成。
+SessionTimes(tf, day) =
+  range(09:30 + tf, 11:30, step=tf)
+  UNION range(13:00 + tf, 15:00, step=tf)
+
+ExpectedRows = count(SessionTimes(tf, observed_session_days))
+ZeroLiquidityRows = count(Volume == 0 OR Amount == 0)
+TradableObservedRows = count(unique(bar_time in SessionTimes AND Volume > 0 AND Amount > 0))
+MissingRows = ExpectedRows - TradableObservedRows
+CoverageRatio = TradableObservedRows / max(ExpectedRows, 1)
+MaxMissingGapMinutes = max_consecutive_missing_bars * tf_minutes
+
+# 严格质量门禁默认对缺文件、空窗口、缺字段、重复K、非法OHLC失败。
+# 零流动性K不计入可交易覆盖率，进入审计提示，回测数据包传给 detector 前先剔除。
+# 裸策略/撮合入口仍由 strategy/execution 层二次拒绝。
+# 如果设置 min_coverage_ratio，则覆盖率也进入硬门禁。
+If min_coverage_ratio is set
+  AND ExpectedRows > 0
+  AND CoverageRatio < min_coverage_ratio:
+    DataGate = FAIL</div>
+        </div>
+
+        <div class="rule-card">
+          <h3 class="edit" contenteditable="true">1. K 线质量</h3>
+          <p class="edit" contenteditable="true">判断趋势K、信号K、入场K的基础。收盘位置和实体占比优先于形态名字。</p>
+          <div class="formula edit" contenteditable="true"># K线质量用于判断趋势K、信号K、入场K，先量化单根K线本身。
+Range = High - Low                  # 全振幅，衡量这一根K的波动范围。
+Body = abs(Close - Open)            # 实体长度，衡量多空一方的控制力度。
+ClosePos = (Close - Low) / max(Range, eps)
+                                     # 收盘位置，越接近1越偏多，越接近0越偏空。
+BodyRatio = Body / max(Range, eps)  # 实体占比，过滤十字星和犹豫K。
+OverlapRatio = overlap(CurrentRange, PrevRange) / Range
+                                     # 与上一根K的重叠程度，重叠越高越偏区间。
+
+# 强牛K：上涨、收在高位、实体足够大。
+StrongBullBar = Close > Open
+  AND ClosePos >= 0.65
+  AND BodyRatio >= 0.45
+
+# 强熊K：下跌、收在低位、实体足够大。
+StrongBearBar = Close < Open
+  AND ClosePos <= 0.35
+  AND BodyRatio >= 0.45</div>
+        </div>
+
+        <div class="rule-card">
+          <h3 class="edit" contenteditable="true">2. 市场周期评分</h3>
+          <p class="edit" contenteditable="true">把“趋势、通道、区间、过渡”变成互斥倾向，不直接用一个通道突破替代全局状态。</p>
+          <div class="formula edit" contenteditable="true"># 市场周期评分用于先判背景，再决定是否允许开仓。
+# BullScore 越高，说明市场越接近多头趋势。
+BullScore =
+  HigherHighCount(N)        # 近期更高高点数量，代表上攻结构。
+  + HigherLowCount(N)       # 近期更高低点数量，代表回撤被承接。
+  + CloseAboveEMA20Count(N) # 收在均线上方的K数，代表多头持续性。
+  + StrongBullBarCount(N)   # 强牛K数量，代表主动买盘。
+  + FollowThroughUpCount(N) # 突破后的跟随K数量，代表突破质量。
+  - DeepPullbackCount(N)    # 深回撤扣分，避免把宽震荡当趋势。
+
+# RangeScore 越高，说明市场越接近交易区间。
+RangeScore =
+  OverlapBarCount(N)        # K线重叠数量，重叠多说明没有单边效率。
+  + TailBarCount(N)         # 长影线数量，说明上下都容易被打回。
+  + FailedBreakoutCount(N)  # 失败突破数量，说明区间边界有效。
+  + EMAFlatness(N)          # 均线走平程度，趋势斜率不足。
+  - FollowThroughCount(N)   # 有效跟随K越多，越不像区间。</div>
+        </div>
+
+        <div class="rule-card green">
+          <h3 class="edit" contenteditable="true">3. Always-In 切换</h3>
+          <p class="edit" contenteditable="true">方向切换必须有强证据。趋势中第一次破线默认先看成回撤或过渡，不立刻反手。</p>
+          <div class="formula edit" contenteditable="true"># Always-In 状态每根K更新一次，交易信号必须服从状态。
+# 多头评分明显强于空头，且不是区间，切到 AI_LONG。
+If BullScore - BearScore >= trend_threshold
+  AND RangeScore < range_threshold:
+    State = AI_LONG
+
+# 空头评分明显强于多头，且不是区间，切到 AI_SHORT。
+If BearScore - BullScore >= trend_threshold
+  AND RangeScore < range_threshold:
+    State = AI_SHORT
+
+# 区间评分高，且多空评分差距不大，切到 RANGE。
+If RangeScore >= range_threshold
+  AND abs(BullScore - BearScore) < neutral_band:
+    State = RANGE
+
+# 从空头切多头必须有破下降通道、回测失败和强牛信号。
+FlipToLong requires:
+  PriorState == AI_SHORT
+  AND BearChannelBroken
+  AND TestOfOldLowFails
+  AND StrongBullSignal</div>
+        </div>
+
+        <div class="rule-card orange">
+          <h3 class="edit" contenteditable="true">4. Setup 优先级</h3>
+          <p class="edit" contenteditable="true">同一根 K 可能触发多个结构，按背景优先级选择，避免重复开仓。</p>
+          <div class="formula edit" contenteditable="true"># 同一根K可能满足多个条件，必须按状态优先级去重。
+# AI_LONG：只找顺势买点，空头信号不反手。
+AI_LONG priority:
+  1. SmallPullbackTrendContinuation      # 小回撤趋势延续，优先级最高。
+  2. H2 after two-legged pullback        # 两段回撤后的第二次多头入场。
+  3. SignalBarStopEntry above signal high# 信号K高点上方挂单。
+  4. FailedBreakdown at range low        # 区间下沿假跌破后的多头机会。
+
+# RANGE：同级别中部禁做，只处理区间边缘。
+RANGE priority:
+  1. FailedBreakout at range high/low    # 上沿/下沿失败突破。
+  2. BreakoutMode wait only              # 突破模式只等待，不提前下注。
+  3. No trade in same-timeframe middle 50%# 当前级别区间中部不开仓。
+
+# WATCH：反转观察，不做第一笔反手。
+WATCH priority:
+  1. First reversal signal = exit/watch only       # 第一次反转只观察或离场。
+  2. Second reversal signal after break + failed test# 第二次确认后才允许新方向挂单。
+  3. Otherwise no fresh reverse entry              # 证据不足不反手。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section" aria-label="数学化定义">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">数学化定义：结构、通道、趋势</h2>
+          <p class="edit" contenteditable="true">所有主观描述必须落到公式字段。结构用分形摆动点和高低点序列，通道用滚动回归或摆动点趋势线，趋势用加权评分和状态转移。</p>
+        </div>
+        <p class="note edit" contenteditable="true">实现时这些定义应变成独立模块：bar_features、market_structure、trend_channel、always_in_state、setup_detector。</p>
+      </div>
+
+      <div class="math-grid">
+        <div class="math-card">
+          <b class="edit" contenteditable="true">1. 基础 K 线变量</b>
+          <p class="edit" contenteditable="true">所有结构判断先从 OHLCV 派生字段开始，不直接用形态名称。</p>
+          <div class="formula edit" contenteditable="true"># 第 i 根K线的基础字段，后续所有结构、通道、趋势判断都从这里派生。
+K_i = (O_i, H_i, L_i, C_i, V_i)       # 开、高、低、收、成交量。
+Range_i = H_i - L_i                   # 单根K线全振幅。
+Body_i = abs(C_i - O_i)               # 实体长度。
+ClosePos_i = (C_i - L_i) / max(Range_i, eps)
+                                      # 收盘在本根K线中的相对位置。
+BodyRatio_i = Body_i / max(Range_i, eps)
+                                      # 实体占全振幅比例。
+UpperTail_i = H_i - max(O_i, C_i)     # 上影线长度。
+LowerTail_i = min(O_i, C_i) - L_i     # 下影线长度。
+ATR_i = mean(TrueRange, N_atr)        # 平均真实波幅，用于统一不同价格股票的波动尺度。
+Ret_i = log(C_i / C_{i-1})            # 对数收益率，用于趋势斜率标准化。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">1A. 日K涨停开盘过滤</b>
+          <p class="edit" contenteditable="true">不考虑打板策略。若日K开盘价等于该板块涨停价，则该标的当日所有分钟级信号从回测样本中剔除。</p>
+          <div class="formula edit" contenteditable="true"># 根据股票代码或交易所板块确定涨停幅度，用于过滤打板/一字板样本。
+BoardLimitPct(symbol, board) =
+  0.10 if board in [MAIN_SH, MAIN_SZ]              # 主板普通股票按10%。
+  0.20 if symbol startswith 688 or board == STAR   # 科创板按20%。
+  0.20 if symbol startswith 300/301 or board == CHINEXT
+                                                     # 创业板按20%。
+  0.30 if board == BJ or symbol startswith 4/8/920 # 北交所按30%。
+
+PrevClose_D = DailyClose_{D-1}       # 前一交易日收盘价。
+LimitUpOpen_D =
+  round_to_tick(PrevClose_D * (1 + BoardLimitPct), 0.01)
+                                     # 理论涨停开盘价，按0.01元最小价位取整。
+
+LimitOpenFiltered_D =
+  abs(DailyOpen_D - LimitUpOpen_D) &lt;= limit_open_tick_tolerance
+  OR DailyOpen_D / PrevClose_D - 1 &gt;= BoardLimitPct - limit_open_pct_tolerance
+                                     # 价格精确等于或接近涨停开盘，都视为需过滤。
+
+If LimitOpenFiltered_D:
+  exclude all intraday bars of symbol on D          # 剔除该股票当日所有分钟K。
+  exclude all entries whose signal_date == D        # 同时剔除当日所有入场信号。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">2. 摆动点与市场结构</b>
+          <p class="edit" contenteditable="true">结构不是肉眼画线，先定义 pivot high / pivot low，再计算 HH、HL、LH、LL。</p>
+          <div class="formula edit" contenteditable="true"># m 是摆动点确认窗口；必须等右侧 m 根K完成后，pivot 才算确认。
+PivotHigh_i =
+  H_i == max(H_{i-m ... i+m})          # 当前高点是左右窗口最高点。
+  AND H_i &gt; max(H_{i-m ... i-1})      # 当前高点必须高于左侧历史高点。
+
+PivotLow_i =
+  L_i == min(L_{i-m ... i+m})          # 当前低点是左右窗口最低点。
+  AND L_i &lt; min(L_{i-m ... i-1})      # 当前低点必须低于左侧历史低点。
+
+# 用确认后的摆动点判断结构：更高高点、更高低点、更低高点、更低低点。
+HH_i = PivotHigh_i AND PH_i &gt; last(PH)
+LH_i = PivotHigh_i AND PH_i &lt;= last(PH)
+HL_i = PivotLow_i  AND PL_i &gt; last(PL)
+LL_i = PivotLow_i  AND PL_i &lt;= last(PL)
+
+# 结构分数为正偏多，为负偏空。
+StructureScore_N =
+  count(HH, N) + count(HL, N)
+  - count(LH, N) - count(LL, N)</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">3. 结构突破 BOS / CHoCH</b>
+          <p class="edit" contenteditable="true">突破结构必须基于已确认摆动点，避免当前 K 自己制造参照物。</p>
+          <div class="formula edit" contenteditable="true"># 结构突破必须参考已经确认的摆动点，不能用当前K临时制造参照。
+LastSwingHigh_i = last confirmed PivotHigh before i # 最近一个已确认摆动高点。
+LastSwingLow_i  = last confirmed PivotLow before i  # 最近一个已确认摆动低点。
+
+BOS_Up_i =
+  C_i &gt; LastSwingHigh_i * (1 + bos_buffer) # 收盘突破前摆动高点。
+  AND ClosePos_i &gt;= strong_close_pos       # 且收盘质量足够强。
+
+BOS_Down_i =
+  C_i &lt; LastSwingLow_i * (1 - bos_buffer)  # 收盘跌破前摆动低点。
+  AND ClosePos_i &lt;= 1 - strong_close_pos   # 且收盘质量足够弱。
+
+CHoCH_Up_i =
+  prior State == AI_SHORT                  # 原状态为空头。
+  AND BOS_Up_i                             # 出现向上结构突破。
+  AND BearChannelBroken_i                  # 同时破下降通道，才进入反转观察。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">4. 回归趋势通道</b>
+          <p class="edit" contenteditable="true">通道第一版用 log(close) 滚动回归，残差和 ATR 共同确定宽度。</p>
+          <div class="formula edit" contenteditable="true"># 回归通道用于客观描述趋势斜率和通道位置。
+For window W = [i-N+1 ... i]:       # 取最近 N 根K作为通道窗口。
+x_t = 0 ... N-1                    # 时间序列编号。
+y_t = log(C_t)                     # 用收盘价对数，减少价格尺度影响。
+
+beta_i = cov(x, y) / var(x)        # 回归斜率，代表趋势速度。
+alpha_i = mean(y) - beta_i * mean(x)# 回归截距。
+MidLog_t = alpha_i + beta_i * x_t  # 通道中线的对数价格。
+Resid_t = y_t - MidLog_t           # 价格偏离中线的残差。
+Sigma_i = 1.4826 * median(abs(Resid - median(Resid)))
+                                    # 稳健残差波动，降低异常K影响。
+
+Upper_i = exp(MidLog_i + k_sigma * Sigma_i) # 通道上轨。
+Lower_i = exp(MidLog_i - k_sigma * Sigma_i) # 通道下轨。
+ChannelPos_i = (C_i - Lower_i) / max(Upper_i - Lower_i, eps)
+                                    # 当前价格在通道中的位置，0靠下轨，1靠上轨。
+SlopeZ_i = beta_i / max(std(Ret, N), eps)
+                                    # 标准化斜率，用于跨股票比较趋势强弱。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">5. 摆动点趋势通道</b>
+          <p class="edit" contenteditable="true">第二版可用摆动点画人工风格通道，适合 Brooks 的趋势线/通道线语言。</p>
+          <div class="formula edit" contenteditable="true"># 摆动点通道更接近人工画线：用两个确认低点画上升支撑线。
+BullSupportLine:
+  use last two confirmed PivotLow:
+  (t1, PL_1), (t2, PL_2)            # 最近两个已确认摆动低点。
+  support(t) = PL_1 + (PL_2 - PL_1) * (t - t1) / (t2 - t1)
+                                    # 由两个低点外推得到支撑线。
+
+ChannelWidth =
+  max(H_t - support(t), t in W)     # 通道宽度取窗口内高点到支撑线的最大距离。
+
+UpperSwing(t) = support(t) + ChannelWidth # 上轨。
+LowerSwing(t) = support(t)                # 下轨，即支撑线。
+
+BullChannelBreak_i =
+  C_i &lt; LowerSwing(i) * (1 - channel_break_buffer)
+                                    # 收盘跌破上升通道下轨，趋势受损。
+  OR C_i &gt; UpperSwing(i) * (1 + channel_overshoot_buffer)
+                                    # 收盘过冲上轨，可能进入高潮或获利区。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">6. 趋势评分</b>
+          <p class="edit" contenteditable="true">趋势由斜率、结构、均线位置、收盘强度、跟随K、回撤深度共同决定。</p>
+          <div class="formula edit" contenteditable="true"># 趋势评分综合斜率、结构、均线、收盘质量和跟随K。
+MAAlign_i =
+  1 if C_i &gt; EMA20_i &gt; EMA50_i     # 多头均线排列。
+ -1 if C_i &lt; EMA20_i &lt; EMA50_i     # 空头均线排列。
+  0 otherwise                       # 均线缠绕，不加方向分。
+
+FollowUp_N = count(C_t &gt; H_{t-1}, N)      # 向上跟随K数量。
+FollowDown_N = count(C_t &lt; L_{t-1}, N)    # 向下跟随K数量。
+DeepPullback_N = count(ChannelPos_t &lt; 0.25, N)
+                                             # 多头趋势中的深回撤次数。
+DeepBounce_N = count(ChannelPos_t &gt; 0.75, N)
+                                             # 空头趋势中的深反弹次数。
+
+TrendScore_i =
+  w_slope * SlopeZ_i                  # 趋势斜率贡献。
+  + w_struct * StructureScore_N       # 高低点结构贡献。
+  + w_ma * MAAlign_i                  # 均线排列贡献。
+  + w_close * mean(2 * ClosePos_t - 1, N)
+                                      # 收盘质量贡献。
+  + w_follow * (FollowUp_N - FollowDown_N)
+                                      # 跟随K方向贡献。
+  - w_pullback * DeepPullback_N       # 深回撤扣分。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">7. 交易区间评分</b>
+          <p class="edit" contenteditable="true">区间不是“没趋势”，而是重叠多、突破失败多、均线斜率弱、上下沿清楚。</p>
+          <div class="formula edit" contenteditable="true"># 区间评分用于识别同级别震荡，避免在中部开仓。
+Overlap_i =
+  intersection([L_i,H_i], [L_{i-1},H_{i-1}])
+  / max(Range_i, eps)                 # 与上一根K重叠比例。
+
+TailRatio_i = (UpperTail_i + LowerTail_i) / max(Range_i, eps)
+                                      # 上下影线占比，影线多说明突破易失败。
+EMAFlat_i = abs(EMA20_i - EMA20_{i-N}) / max(ATR_i, eps)
+                                      # 均线斜率越小，越偏区间。
+
+RangeHigh_i = max(PivotHigh, N_range) # 区间上沿，取窗口内摆动高点最大值。
+RangeLow_i = min(PivotLow, N_range)   # 区间下沿，取窗口内摆动低点最小值。
+RangeWidthATR_i = (RangeHigh_i - RangeLow_i) / max(ATR_i, eps)
+                                      # 区间宽度用ATR标准化。
+
+RangeScore_i =
+  w_overlap * mean(Overlap, N)        # 重叠越多，区间分越高。
+  + w_tail * mean(TailRatio, N)       # 影线越多，区间分越高。
+  + w_fail * FailedBreakoutCount_N    # 失败突破越多，边界越可靠。
+  - w_slope * abs(SlopeZ_i)           # 斜率越强，越不像区间。
+  - w_width * max(RangeWidthATR_i - max_range_atr, 0)
+                                      # 区间过宽时扣分，避免混成宽通道。
+
+RangePos_i =
+  (C_i - RangeLow_i) / max(RangeHigh_i - RangeLow_i, eps)
+                                      # 当前价格在区间里的相对位置。
+
+NoTradeSameTfMiddle_i =
+  State_i == RANGE                    # 只有在同级别被判为区间时生效。
+  AND RangePos_i &gt;= 0.25
+  AND RangePos_i &lt;= 0.75              # 25%-75%定义为中部禁做区。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">8. Always-In 状态转移</b>
+          <p class="edit" contenteditable="true">状态是策略核心，交易信号必须服从状态，不允许形态单独开仓。</p>
+          <div class="formula edit" contenteditable="true"># Always-In 是状态机，不是单根K形态判断。
+# 趋势分达到阈值且不是区间，才允许切趋势状态。
+If TrendScore_i &gt;= trend_on
+  AND RangeScore_i &lt; range_on:
+    State_i = AI_LONG                 # 多头趋势状态，只优先找多头setup。
+
+If TrendScore_i &lt;= -trend_on
+  AND RangeScore_i &lt; range_on:
+    State_i = AI_SHORT                # 空头趋势状态，只优先找空头setup。
+
+If RangeScore_i &gt;= range_on
+  AND abs(TrendScore_i) &lt; trend_neutral:
+    State_i = RANGE                   # 区间状态，同级别中部不开仓。
+
+If prior AI_SHORT and CHoCH_Up_i:
+    State_i = WATCH                   # 空转多的第一次结构变化，只进入观察。
+
+FirstReversalSignal_i =
+  State_{i-1} in [AI_LONG, AI_SHORT]  # 原来处在明确趋势中。
+  AND opposite CHoCH appears          # 出现反向结构变化。
+Action = exit_or_watch_only           # 第一次反转只离场或观察，不反手。
+
+SecondReversalSignal_i =
+  prior FirstReversalSignal exists within N bars # N根内出现过第一次反转。
+  AND TestOfOldExtremeFails_i         # 回测旧高/旧低失败。
+  AND StrongOppositeSignal_i          # 出现强反向信号K。
+
+State flip from WATCH to AI_LONG/AI_SHORT requires:
+  SecondReversalSignal_i              # 必须是第二次确认。
+  AND TestOfOldExtremeFails_i         # 旧趋势极端位置测试失败。
+  AND stop entry is triggered beyond SignalBar
+                                      # 必须上破/下破信号K触发挂单。
+  AND optional FollowThrough_{i+1}    # 成交后可用下一根跟随K决定持有强度。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">9. H2 / L2 数学定义</b>
+          <p class="edit" contenteditable="true">H2/L2 不是机械数两根 K，而是趋势背景下两段回撤后的第二次顺势触发。</p>
+          <div class="formula edit" contenteditable="true"># H2/L2 用来交易趋势中的两段回撤，不是逆势反转。
+BullPullback_i =
+  State_i == AI_LONG                  # 只有多头 always-in 状态才找 H2。
+  AND C_i &lt; recent swing high         # 价格从最近高点回撤。
+  AND ChannelPos_i &lt;= pullback_channel_pos
+                                      # 回撤进入通道中下部，风险更合理。
+
+DownLeg =
+  sequence from local high to next PivotLow
+  with lower close or lower low       # 下跌腿以更低收盘或更低低点确认。
+
+BullH2Setup_i =
+  State_i == AI_LONG
+  AND count(DownLeg since last swing high) &gt;= 2
+                                      # 至少两段回撤，避免第一脚就追。
+  AND min(TrendScore during pullback) &gt; -trend_neutral
+                                      # 回撤过程中不能变成强空头。
+  AND StrongBullBar_i                 # 当前必须出现强牛信号K。
+
+Entry_i = H_i + tick                  # 多头在信号K高点上方挂单。
+Stop_i = min(L_i, PullbackLow_i) - tick
+                                      # 止损放在信号K低点或回撤低点外侧。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">10. 突破与信号K挂单</b>
+          <p class="edit" contenteditable="true">突破不等回测。只在信号K高点上方或低点下方挂 stop order；成交后再用跟随K决定持有或退出。</p>
+          <div class="formula edit" contenteditable="true"># 突破只做信号K挂单，不等待回测。
+BreakoutUp_i =
+  C_i &gt; max(RangeHigh_{i-1}, Upper_{i-1}) * (1 + breakout_buffer)
+                                      # 收盘突破前一根已知压力或通道上轨。
+  AND ClosePos_i &gt;= strong_close_pos # 收在高位，说明突破质量较好。
+  AND BodyRatio_i &gt;= min_body_ratio  # 实体足够大，过滤假突破和十字K。
+
+BullSignalBar_i =
+  StrongBullBar_i                     # 当前是强牛信号K。
+  AND BreakoutUp_i                    # 同时完成突破。
+  AND NOT NoTradeSameTfMiddle_i       # 不能位于同级别区间中部。
+
+LongStopEntry_i = H_i + tick          # 买入 stop 挂在信号K高点上方。
+LongStop_i = min(L_i, PullbackLow_i, Lower_i) - tick
+                                      # 结构止损取信号K低点、回撤低点、通道下轨更保守者。
+
+EntryTriggered_{i+1} =
+  H_{i+1} &gt;= LongStopEntry_i          # 下一根触及挂单价才成交。
+
+FollowThroughUp_{i+1} =
+  C_{i+1} &gt; LongStopEntry_i           # 成交K收在入场价上方。
+  OR C_{i+1} &gt; H_i                    # 或直接突破信号K高点，说明有跟随。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">11. 失败突破</b>
+          <p class="edit" contenteditable="true">区间策略只做极端。失败突破要求先突破区间，再收回区间，并出现反向信号。</p>
+          <div class="formula edit" contenteditable="true"># 失败突破只在区间边缘交易，中部禁做。
+FailedBreakdown_i =
+  State_{i-1} == RANGE                # 前一根处在同级别区间状态。
+  AND L_i &lt; RangeLow_{i-1} * (1 - false_break_buffer)
+                                      # 盘中跌破区间下沿。
+  AND C_i &gt; RangeLow_{i-1}            # 收盘重新回到区间内。
+  AND ClosePos_i &gt;= strong_close_pos  # 收盘靠上，说明下破失败。
+
+FailedBreakout_i =
+  State_{i-1} == RANGE                # 前一根处在同级别区间状态。
+  AND H_i &gt; RangeHigh_{i-1} * (1 + false_break_buffer)
+                                      # 盘中突破区间上沿。
+  AND C_i &lt; RangeHigh_{i-1}           # 收盘重新回到区间内。
+  AND ClosePos_i &lt;= 1 - strong_close_pos
+                                      # 收盘靠下，说明上破失败。
+
+NoTradeSameTfMiddle =
+  State_i == RANGE
+  AND C_i between 25% and 75% of [RangeLow, RangeHigh]
+                                      # 当前价格处在区间中部。
+  AND signal_tf == range_tf           # 只约束同级别；高低级别需另行共振。</div>
+        </div>
+
+        <div class="math-card">
+          <b class="edit" contenteditable="true">12. 风险、仓位、目标</b>
+          <p class="edit" contenteditable="true">所有 setup 最终必须过实际风险过滤，不能只因为形态成立就交易。</p>
+          <div class="formula edit" contenteditable="true"># 风控先于收益目标；风险不合格的setup直接跳过。
+ActualRiskPct_i =
+  abs(Entry_i - Stop_i) / Entry_i     # 入场价到结构止损的实际风险比例。
+
+ValidRisk_i =
+  ActualRiskPct_i &lt;= max_actual_risk_pct
+                                      # 单笔实际风险不能超过参数上限。
+  AND Entry_i is not worse than SignalBar close by max_chase_pct
+                                      # 挂单成交价不能离信号K收盘太远，避免追高。
+
+SignalBarStopStrategy rejects setup if:
+  max_actual_risk_pct is set AND ActualRiskPct_i &gt; max_actual_risk_pct
+  OR max_chase_pct is set AND ChasePct_i &gt; max_chase_pct
+                                      # 两个上限都是可选参数；设空则关闭对应过滤。
+
+PositionSize_i =
+  floor(AccountEquity * risk_budget_pct / abs(FilledEntry_i - Stop_i))
+                                      # 按真实成交后的风险预算反推出仓位，跳空成交不低估风险。
+
+Target_1R = Entry_i + direction * abs(Entry_i - Stop_i)
+                                      # 1R目标。
+Target_2R = Entry_i + direction * 2 * abs(Entry_i - Stop_i)
+                                      # 2R目标。
+MeasuredMoveTarget = BreakoutLevel + direction * RangeHeight
+                                      # 区间高度测算目标。
+
+RiskPerShare_i = abs(FilledEntry_i - Stop_i)
+                                      # 成交后真实每股风险。
+RMultiple_i = NetReturnPct_i / 100 * FilledEntry_i / RiskPerShare_i
+                                      # 每笔交易最终赚亏多少 R。
+NetReturnPct_i =
+  direction * (SlippedExit_i / SlippedEntry_i - 1) * 100
+  - 2 * fee_rate * 100
+                                      # 成本模型进入所有单策略、组合和参数遍历回测。
+SlippedEntry_i = RawEntryFill_i * (1 + direction * slippage_bps / 10000)
+SlippedExit_i = RawExitFill_i * (1 - direction * slippage_bps / 10000)
+                                      # 滑点按买入抬高、卖出压低处理；空头方向相反。
+MAE_pct_i = min(0, direction * (AdversePrice_i / FilledEntry_i - 1) * 100)
+                                      # 持仓期最大不利波动百分比。
+MFE_pct_i = max(0, direction * (FavorablePrice_i / FilledEntry_i - 1) * 100)
+                                      # 持仓期最大有利波动百分比。
+MAE_R_i = MAE_pct_i / 100 * FilledEntry_i / RiskPerShare_i
+MFE_R_i = MFE_pct_i / 100 * FilledEntry_i / RiskPerShare_i
+                                      # 把路径波动统一换算成 R，方便比较不同价格股票。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section" aria-label="K线策略图">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">K线呈现：三类可交易场景</h2>
+          <p class="edit" contenteditable="true">先只做这三类，足够支撑第一版回测：趋势回撤顺势、同级别区间极端失败突破、二次反转确认。其它 Brooks 形态先归入这三类，不散开。</p>
+        </div>
+        <p class="note edit" contenteditable="true">图里的文字也是策略口径，你可以直接改。</p>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3 class="edit" contenteditable="true">A. AI_LONG：H2 / 信号K上方挂单</h3>
+          <p class="edit" contenteditable="true">高周期 always-in 偏多；回撤两段不转为空头；出现强牛信号K后，只在信号K高点上方挂单进场，不等回测。</p>
+          <svg class="strategy-chart" viewBox="0 0 420 260" role="img" aria-label="AI_LONG H2 买入示意">
+            <line class="grid-line" x1="28" y1="42" x2="390" y2="42"></line>
+            <line class="grid-line" x1="28" y1="95" x2="390" y2="95"></line>
+            <line class="grid-line" x1="28" y1="148" x2="390" y2="148"></line>
+            <line class="grid-line" x1="28" y1="201" x2="390" y2="201"></line>
+            <polyline class="line-blue" points="38,192 90,170 142,142 194,116 246,96 298,80 380,58"></polyline>
+            <polyline class="line-blue dash" points="38,222 90,203 142,178 194,153 246,132 298,116 380,95"></polyline>
+            <g class="up"><line class="wick" x1="54" y1="170" x2="54" y2="220"></line><rect class="body" x="45" y="184" width="18" height="26"></rect></g>
+            <g class="up"><line class="wick" x1="88" y1="145" x2="88" y2="202"></line><rect class="body" x="79" y="158" width="18" height="32"></rect></g>
+            <g class="up"><line class="wick" x1="122" y1="120" x2="122" y2="180"></line><rect class="body" x="113" y="134" width="18" height="35"></rect></g>
+            <g class="down"><line class="wick" x1="156" y1="128" x2="156" y2="186"></line><rect class="body" x="147" y="142" width="18" height="31"></rect></g>
+            <g class="down"><line class="wick" x1="190" y1="135" x2="190" y2="198"></line><rect class="body" x="181" y="150" width="18" height="34"></rect></g>
+            <g class="up"><line class="wick" x1="224" y1="112" x2="224" y2="185"></line><rect class="body" x="215" y="128" width="18" height="45"></rect></g>
+            <rect class="box-green" x="204" y="102" width="40" height="90" rx="4"></rect>
+            <g class="up"><line class="wick" x1="258" y1="82" x2="258" y2="150"></line><rect class="body" x="249" y="96" width="18" height="42"></rect></g>
+            <g class="up"><line class="wick" x1="292" y1="58" x2="292" y2="128"></line><rect class="body" x="283" y="72" width="18" height="43"></rect></g>
+            <line class="line-green dash" x1="214" y1="112" x2="382" y2="112"></line>
+            <line class="line-red dash" x1="214" y1="185" x2="382" y2="185"></line>
+            <text class="label" x="250" y="106">Entry: 信号K高点上破</text>
+            <text class="small-label" x="252" y="181">Stop: 回撤低点外侧</text>
+            <text class="label" x="207" y="92">H2 信号K</text>
+          </svg>
+        </div>
+
+        <div class="chart-card">
+          <h3 class="edit" contenteditable="true">B. RANGE：区间极端失败突破</h3>
+          <p class="edit" contenteditable="true">区间里多数突破失败；同级别中部不做，只在上下沿外侧失败后回到区间内交易。</p>
+          <svg class="strategy-chart" viewBox="0 0 420 260" role="img" aria-label="交易区间失败突破示意">
+            <line class="grid-line" x1="28" y1="48" x2="390" y2="48"></line>
+            <line class="grid-line" x1="28" y1="108" x2="390" y2="108"></line>
+            <line class="grid-line" x1="28" y1="168" x2="390" y2="168"></line>
+            <line class="grid-line" x1="28" y1="220" x2="390" y2="220"></line>
+            <rect x="42" y="72" width="326" height="116" fill="#eef5ff" stroke="#cfe0f7"></rect>
+            <line class="line-blue" x1="42" y1="72" x2="368" y2="72"></line>
+            <line class="line-blue" x1="42" y1="188" x2="368" y2="188"></line>
+            <text class="label" x="52" y="64">Range High</text>
+            <text class="label" x="52" y="206">Range Low</text>
+            <g class="up"><line class="wick" x1="62" y1="102" x2="62" y2="172"></line><rect class="body" x="53" y="120" width="18" height="34"></rect></g>
+            <g class="down"><line class="wick" x1="96" y1="88" x2="96" y2="158"></line><rect class="body" x="87" y="104" width="18" height="34"></rect></g>
+            <g class="up"><line class="wick" x1="130" y1="78" x2="130" y2="150"></line><rect class="body" x="121" y="94" width="18" height="37"></rect></g>
+            <g class="down"><line class="wick" x1="164" y1="86" x2="164" y2="176"></line><rect class="body" x="155" y="104" width="18" height="50"></rect></g>
+            <g class="down"><line class="wick" x1="198" y1="130" x2="198" y2="218"></line><rect class="body" x="189" y="150" width="18" height="48"></rect></g>
+            <rect class="box-orange" x="214" y="174" width="40" height="62" rx="4"></rect>
+            <g class="up"><line class="wick" x1="234" y1="178" x2="234" y2="232"></line><rect class="body" x="225" y="190" width="18" height="28"></rect></g>
+            <g class="up"><line class="wick" x1="268" y1="142" x2="268" y2="205"></line><rect class="body" x="259" y="158" width="18" height="35"></rect></g>
+            <g class="up"><line class="wick" x1="302" y1="108" x2="302" y2="176"></line><rect class="body" x="293" y="126" width="18" height="35"></rect></g>
+            <line class="line-green dash" x1="226" y1="183" x2="370" y2="183"></line>
+            <line class="line-red dash" x1="226" y1="232" x2="370" y2="232"></line>
+            <text class="label" x="210" y="166">下破失败</text>
+            <text class="small-label" x="256" y="184">回到区间内才买</text>
+          </svg>
+        </div>
+
+        <div class="chart-card">
+          <h3 class="edit" contenteditable="true">C. WATCH：第一次反转不做</h3>
+          <p class="edit" contenteditable="true">第一次反转只用于观察或离场；旧趋势破线、回测旧低/旧高失败后，等第二次强反向信号，再按信号K挂单切换 always-in。</p>
+          <svg class="strategy-chart" viewBox="0 0 420 260" role="img" aria-label="主要趋势反转示意">
+            <line class="grid-line" x1="28" y1="48" x2="390" y2="48"></line>
+            <line class="grid-line" x1="28" y1="105" x2="390" y2="105"></line>
+            <line class="grid-line" x1="28" y1="162" x2="390" y2="162"></line>
+            <line class="grid-line" x1="28" y1="219" x2="390" y2="219"></line>
+            <polyline class="line-red" points="42,52 94,78 146,106 198,138 250,168"></polyline>
+            <polyline class="line-red dash" points="42,82 94,112 146,145 198,176 250,207"></polyline>
+            <g class="down"><line class="wick" x1="62" y1="58" x2="62" y2="116"></line><rect class="body" x="53" y="74" width="18" height="31"></rect></g>
+            <g class="down"><line class="wick" x1="96" y1="78" x2="96" y2="140"></line><rect class="body" x="87" y="92" width="18" height="36"></rect></g>
+            <g class="down"><line class="wick" x1="130" y1="104" x2="130" y2="166"></line><rect class="body" x="121" y="118" width="18" height="36"></rect></g>
+            <g class="down"><line class="wick" x1="164" y1="130" x2="164" y2="196"></line><rect class="body" x="155" y="146" width="18" height="34"></rect></g>
+            <g class="up"><line class="wick" x1="198" y1="128" x2="198" y2="202"></line><rect class="body" x="189" y="146" width="18" height="38"></rect></g>
+            <g class="up"><line class="wick" x1="232" y1="104" x2="232" y2="176"></line><rect class="body" x="223" y="120" width="18" height="40"></rect></g>
+            <line class="line-orange dash" x1="196" y1="122" x2="334" y2="122"></line>
+            <text class="label" x="238" y="116">破下降通道</text>
+            <g class="down"><line class="wick" x1="266" y1="142" x2="266" y2="212"></line><rect class="body" x="257" y="158" width="18" height="30"></rect></g>
+            <rect class="box-red" x="246" y="136" width="40" height="84" rx="4"></rect>
+            <g class="up"><line class="wick" x1="300" y1="110" x2="300" y2="190"></line><rect class="body" x="291" y="124" width="18" height="50"></rect></g>
+            <rect class="box-green" x="280" y="100" width="40" height="98" rx="4"></rect>
+            <g class="up"><line class="wick" x1="334" y1="78" x2="334" y2="154"></line><rect class="body" x="325" y="92" width="18" height="46"></rect></g>
+            <line class="line-green dash" x1="292" y1="108" x2="382" y2="108"></line>
+            <text class="label" x="247" y="230">回测旧低失败</text>
+            <text class="label" x="288" y="90">强牛信号</text>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section" aria-label="参数与待定口径">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">参数表与待定口径</h2>
+          <p class="edit" contenteditable="true">这一版先做可回测、可遍历的最小闭环。你修正后，我再把这些字段映射回 Python 策略模块。</p>
+        </div>
+        <p class="note edit" contenteditable="true">建议先不要追求 Brooks 全形态覆盖，先把状态机跑稳。</p>
+      </div>
+
+      <div class="matrix">
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>模块</th>
+                <th>参数</th>
+                <th>初值</th>
+                <th>用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Bar</td>
+                <td>strong_close_pos</td>
+                <td class="edit" contenteditable="true">0.65 / 0.35</td>
+                <td class="edit" contenteditable="true">牛/熊强收盘位置阈值</td>
+              </tr>
+              <tr>
+                <td>Bar</td>
+                <td>min_body_ratio</td>
+                <td class="edit" contenteditable="true">0.45</td>
+                <td class="edit" contenteditable="true">趋势K或信号K的实体要求</td>
+              </tr>
+              <tr>
+                <td>Cycle</td>
+                <td>cycle_lookback</td>
+                <td class="edit" contenteditable="true">20</td>
+                <td class="edit" contenteditable="true">市场周期和趋势评分窗口</td>
+              </tr>
+              <tr>
+                <td>DailyFilter</td>
+                <td>limit_open_filter</td>
+                <td class="edit" contenteditable="true">on</td>
+                <td class="edit" contenteditable="true">日K开盘等于板块涨停价时剔除当日分钟信号</td>
+              </tr>
+              <tr>
+                <td>DailyFilter</td>
+                <td>board_limit_pct</td>
+                <td class="edit" contenteditable="true">主板10% / 688和300为20% / BJ为30%</td>
+                <td class="edit" contenteditable="true">按股票代码或交易所板块识别涨跌幅限制</td>
+              </tr>
+              <tr>
+                <td>Structure</td>
+                <td>pivot_left / pivot_right</td>
+                <td class="edit" contenteditable="true">2 / 2</td>
+                <td class="edit" contenteditable="true">确认摆动高低点的左右 K 数</td>
+              </tr>
+              <tr>
+                <td>Structure</td>
+                <td>bos_buffer</td>
+                <td class="edit" contenteditable="true">0.2%</td>
+                <td class="edit" contenteditable="true">结构突破 BOS 的最小越界缓冲</td>
+              </tr>
+              <tr>
+                <td>Channel</td>
+                <td>channel_lookback</td>
+                <td class="edit" contenteditable="true">40</td>
+                <td class="edit" contenteditable="true">回归趋势通道窗口</td>
+              </tr>
+              <tr>
+                <td>Channel</td>
+                <td>k_sigma</td>
+                <td class="edit" contenteditable="true">2.0</td>
+                <td class="edit" contenteditable="true">通道残差带宽倍数</td>
+              </tr>
+              <tr>
+                <td>State</td>
+                <td>trend_threshold</td>
+                <td class="edit" contenteditable="true">4</td>
+                <td class="edit" contenteditable="true">切 AI_LONG / AI_SHORT 的最低净分</td>
+              </tr>
+              <tr>
+                <td>Range</td>
+                <td>range_overlap_min</td>
+                <td class="edit" contenteditable="true">0.55</td>
+                <td class="edit" contenteditable="true">判断区间重叠的最低比例</td>
+              </tr>
+              <tr>
+                <td>Range</td>
+                <td>same_tf_middle_no_trade</td>
+                <td class="edit" contenteditable="true">25%-75%</td>
+                <td class="edit" contenteditable="true">同级别区间中部完全禁做</td>
+              </tr>
+              <tr>
+                <td>Setup</td>
+                <td>pullback_leg_min</td>
+                <td class="edit" contenteditable="true">2</td>
+                <td class="edit" contenteditable="true">H2/L2 至少需要的回撤腿数</td>
+              </tr>
+              <tr>
+                <td>Trigger</td>
+                <td>followthrough_bars</td>
+                <td class="edit" contenteditable="true">1</td>
+                <td class="edit" contenteditable="true">突破后验证跟随 K 的数量</td>
+              </tr>
+              <tr>
+                <td>Trigger</td>
+                <td>entry_order_mode</td>
+                <td class="edit" contenteditable="true">signal_bar_stop</td>
+                <td class="edit" contenteditable="true">信号K高点上方/低点下方挂单进场，不等回测</td>
+              </tr>
+              <tr>
+                <td>Reversal</td>
+                <td>first_reversal_trade</td>
+                <td class="edit" contenteditable="true">off</td>
+                <td class="edit" contenteditable="true">第一次反转只观察或离场，基本不反手</td>
+              </tr>
+              <tr>
+                <td>Risk</td>
+                <td>max_actual_risk_pct</td>
+                <td class="edit" contenteditable="true">3%</td>
+                <td class="edit" contenteditable="true">入场价到结构止损的最大允许风险</td>
+              </tr>
+              <tr>
+                <td>MTF</td>
+                <td>direction_tf / setup_tf / trigger_tf</td>
+                <td class="edit" contenteditable="true">60m / 15m / 5m</td>
+                <td class="edit" contenteditable="true">多周期分工，可按回测结果调整</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="decision-list">
+          <div>
+            <span class="tag green">AI_LONG</span>
+            <span class="tag red">AI_SHORT</span>
+            <span class="tag">RANGE</span>
+            <span class="tag orange">WATCH</span>
+          </div>
+          <div class="decision">
+            <b class="edit" contenteditable="true">已定稿 1：不做打板，过滤涨停开盘</b>
+            <span class="edit" contenteditable="true">日K open 等于该板块涨停价时，剔除当日所有分钟级信号；首板不独立加权，不作为策略入口。</span>
+          </div>
+          <div class="decision">
+            <b class="edit" contenteditable="true">已定稿 2：同级别中部完全禁做</b>
+            <span class="edit" contenteditable="true">若当前交易级别处在区间 25%-75% 中部，不开新仓；只允许上下沿失败突破或趋势状态切换后的信号。</span>
+          </div>
+          <div class="decision">
+            <b class="edit" contenteditable="true">已定稿 3：突破用信号K挂单</b>
+            <span class="edit" contenteditable="true">多头信号在信号K高点上方挂买入 stop，空头信号在信号K低点下方挂卖出 stop；不等待回测买入。</span>
+          </div>
+          <div class="decision">
+            <b class="edit" contenteditable="true">已定稿 4：基本不做第一次反转</b>
+            <span class="edit" contenteditable="true">第一次反转信号只用于观察、减仓或离场；需要第二次反向信号和结构确认，才允许新方向挂单。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function exportEditedHtml() {
+      const clone = document.documentElement.cloneNode(true);
+      const html = "<!doctype html>\n" + clone.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "albrooks_always_in_strategy_edited.html";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

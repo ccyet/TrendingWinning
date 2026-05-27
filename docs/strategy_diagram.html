@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrendingWinning 策略图</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --ink: #17202a;
+      --muted: #637083;
+      --line: #c7ced8;
+      --surface: #ffffff;
+      --tdx: #1f6feb;
+      --signal: #0f8b6f;
+      --risk: #bf6a02;
+      --danger: #b42318;
+      --shadow: 0 14px 38px rgba(29, 41, 57, 0.08);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 32px 28px 56px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin: -14px 0 18px;
+      padding: 10px 0;
+      background: rgba(246, 247, 249, 0.92);
+      backdrop-filter: blur(8px);
+    }
+
+    button {
+      border: 1px solid #cfd7e3;
+      border-radius: 6px;
+      background: #fff;
+      color: #1f2937;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 720;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: #17202a;
+      border-color: #17202a;
+      color: #fff;
+    }
+
+    button:hover {
+      border-color: #98a2b3;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+      max-width: 420px;
+    }
+
+    .diagram {
+      background: var(--surface);
+      border: 1px solid #e1e6ee;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      overflow-x: auto;
+      margin-top: 18px;
+    }
+
+    .architecture,
+    .kline-board {
+      background: var(--surface);
+      border: 1px solid #e1e6ee;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      margin-top: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .section-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 680px;
+    }
+
+    .layer-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .layer-row {
+      display: grid;
+      grid-template-columns: 110px minmax(220px, 1fr) minmax(280px, 1.35fr) minmax(220px, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .layer-id {
+      border: 1px solid #d8e0ea;
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #334155;
+      padding: 12px;
+      font-weight: 760;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .layer-cell {
+      border: 1px solid #e1e7f0;
+      border-radius: 6px;
+      background: #fff;
+      padding: 11px 12px;
+      min-height: 70px;
+    }
+
+    .layer-cell b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 5px;
+      color: #111827;
+    }
+
+    .layer-cell span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .layer-cell.data { border-left: 4px solid var(--tdx); }
+    .layer-cell.signal { border-left: 4px solid var(--signal); }
+    .layer-cell.risk { border-left: 4px solid var(--risk); }
+    .layer-cell.exec { border-left: 4px solid var(--danger); }
+
+    .level-rules {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .level-rule {
+      border: 1px solid #e4e7ec;
+      border-radius: 6px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+
+    .level-rule b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .level-rule span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kline-layout {
+      display: grid;
+      grid-template-columns: minmax(720px, 1.6fr) minmax(300px, 0.75fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .chart-shell {
+      border: 1px solid #e1e7f0;
+      border-radius: 6px;
+      background: #fbfcfe;
+      padding: 12px;
+      overflow-x: auto;
+    }
+
+    .kline-chart {
+      width: 100%;
+      min-width: 700px;
+      height: auto;
+      display: block;
+    }
+
+    .grid-line { stroke: #e5eaf2; stroke-width: 1; }
+    .axis-label { fill: #667085; font-size: 12px; }
+    .wick { stroke-width: 2; stroke-linecap: round; }
+    .body { stroke-width: 1.5; rx: 2; }
+    .up .wick,
+    .up .body { stroke: #0f8b6f; fill: #dff7ef; }
+    .down .wick,
+    .down .body { stroke: #c2410c; fill: #ffead5; }
+    .channel-band { fill: rgba(31, 111, 235, 0.08); }
+    .channel-line { stroke: #1f6feb; stroke-width: 2.5; fill: none; }
+    .channel-mid { stroke: #7da7ed; stroke-width: 1.5; stroke-dasharray: 8 7; fill: none; }
+    .risk-line { stroke-width: 2; stroke-dasharray: 7 6; }
+    .risk-line.stop { stroke: #b42318; }
+    .risk-line.entry { stroke: #0f8b6f; }
+    .risk-line.target { stroke: #bf6a02; }
+    .chart-label {
+      fill: #17202a;
+      font-size: 13px;
+      font-weight: 720;
+    }
+    .chart-note {
+      fill: #667085;
+      font-size: 12px;
+    }
+    .highlight-box {
+      fill: none;
+      stroke: #0f8b6f;
+      stroke-width: 2.5;
+      stroke-dasharray: 6 5;
+    }
+    .trigger-box {
+      fill: none;
+      stroke: #bf6a02;
+      stroke-width: 3;
+    }
+    .arrow-line {
+      stroke: #17202a;
+      stroke-width: 2;
+      fill: none;
+      marker-end: url(#arrowHead);
+    }
+    .holding-window {
+      stroke: #8b93a1;
+      stroke-width: 1.6;
+      stroke-dasharray: 4 5;
+      fill: none;
+    }
+
+    .legend-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-item {
+      border: 1px solid #e1e7f0;
+      border-radius: 6px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .legend-item b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .legend-item span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-right: 7px;
+      vertical-align: -1px;
+    }
+
+    .legend-dot.green { background: var(--signal); }
+    .legend-dot.blue { background: var(--tdx); }
+    .legend-dot.orange { background: var(--risk); }
+    .legend-dot.red { background: var(--danger); }
+
+    .flow {
+      min-width: 1220px;
+      display: grid;
+      grid-template-columns: 1.05fr 1.35fr 1.35fr 1.2fr 1.35fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .lane {
+      border: 1px solid #e3e8ef;
+      border-radius: var(--radius);
+      background: #fbfcfe;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 560px;
+    }
+
+    .lane-title {
+      font-weight: 760;
+      font-size: 15px;
+      color: #111827;
+      padding-bottom: 9px;
+      border-bottom: 1px solid #e5eaf2;
+    }
+
+    .node {
+      position: relative;
+      border: 1px solid #d8e0ea;
+      border-left: 4px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 12px 12px 11px;
+      min-height: 86px;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+
+    .node p,
+    .node ul {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      padding-left: 0;
+    }
+
+    .node ul {
+      list-style: none;
+      display: grid;
+      gap: 3px;
+    }
+
+    .tdx { border-left-color: var(--tdx); }
+    .signal { border-left-color: var(--signal); }
+    .risk { border-left-color: var(--risk); }
+    .danger { border-left-color: var(--danger); }
+
+    .connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #7c8797;
+      font-size: 12px;
+      min-height: 22px;
+    }
+
+    .connector::before,
+    .connector::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: #d8dee8;
+    }
+
+    .connector span {
+      padding: 0 8px;
+      white-space: nowrap;
+    }
+
+    .decision {
+      border-style: dashed;
+      background: #fffdf8;
+    }
+
+    .edit {
+      outline: none;
+    }
+
+    .edit:focus {
+      background: #fff8d6;
+      box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.45);
+      border-radius: 4px;
+    }
+
+    .matrix {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    section.panel {
+      background: var(--surface);
+      border: 1px solid #e1e6ee;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #edf0f5;
+      padding: 9px 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      color: #334155;
+      background: #f8fafc;
+      font-weight: 720;
+    }
+
+    td {
+      color: #344054;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eef4ff;
+      color: #1d4ed8;
+      margin-right: 6px;
+      margin-bottom: 4px;
+    }
+
+    .tag.green { background: #ecfdf3; color: #047857; }
+    .tag.orange { background: #fff7ed; color: #c2410c; }
+    .tag.red { background: #fef3f2; color: #b42318; }
+
+    .callouts {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .callout {
+      border: 1px solid #e4e7ec;
+      background: #fff;
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .callout b {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .callout span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      main { padding: 20px 14px 36px; }
+      header { display: block; }
+      .note { text-align: left; margin-top: 12px; }
+      .matrix { grid-template-columns: 1fr; }
+      .callouts { grid-template-columns: 1fr 1fr; }
+      .section-head { display: block; }
+      .layer-row { grid-template-columns: 1fr; }
+      .level-rules { grid-template-columns: 1fr 1fr; }
+      .kline-layout { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      main { max-width: none; padding: 16px; }
+      .diagram,
+      section.panel,
+      .callout { box-shadow: none; }
+      .flow { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="toolbar" aria-label="编辑工具">
+      <button type="button" onclick="window.print()">打印 / 另存 PDF</button>
+      <button type="button" class="primary" onclick="exportEditedHtml()">导出修正版 HTML</button>
+    </div>
+
+    <header>
+      <div>
+        <h1 class="edit" contenteditable="true">TrendingWinning 趋势突破策略图</h1>
+        <div class="subtitle edit" contenteditable="true">当前版本：TDX 分钟 K 线 → 标志K → 趋势通道 → 突破触发 → 止盈止损回测</div>
+      </div>
+      <div class="note edit" contenteditable="true">所有文字块可直接点击修改。你修正后，我再按这张图回写代码和参数结构。</div>
+    </header>
+
+    <section class="architecture" aria-label="策略架构层级">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">策略架构层级</h2>
+          <p class="edit" contenteditable="true">从数据到交易分成五层：TDX 分钟 K 线负责真实行情，结构识别负责抽象形态，多周期决策负责过滤，执行层负责回测和参数扫描。</p>
+        </div>
+        <div class="note edit" contenteditable="true">这部分用于定系统边界：每层只输出标准字段，下一层只消费字段，不直接耦合内部实现。</div>
+      </div>
+
+      <div class="layer-stack">
+        <div class="layer-row">
+          <div class="layer-id edit" contenteditable="true">L0<br>数据源</div>
+          <div class="layer-cell data">
+            <b class="edit" contenteditable="true">TDX 分钟 K 线</b>
+            <span class="edit" contenteditable="true">5m / 15m / 30m / 60m，全程去掉 akshare 通道。</span>
+          </div>
+          <div class="layer-cell data">
+            <b class="edit" contenteditable="true">标准 OHLCV</b>
+            <span class="edit" contenteditable="true">date、stock_code、open、high、low、close、volume、amount。</span>
+          </div>
+          <div class="layer-cell data">
+            <b class="edit" contenteditable="true">本地 parquet 缓存</b>
+            <span class="edit" contenteditable="true">按周期和复权方式落盘，扫描时批量读取。</span>
+          </div>
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-id edit" contenteditable="true">L1<br>多周期状态</div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">60m 定方向</b>
+            <span class="edit" contenteditable="true">判断主趋势是否允许做多，过滤逆势突破。</span>
+          </div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">30m 找结构</b>
+            <span class="edit" contenteditable="true">识别通道、平台、压缩区和前高压力。</span>
+          </div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">15m / 5m 找触发</b>
+            <span class="edit" contenteditable="true">突破、回踩确认、二次启动和止损位置。</span>
+          </div>
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-id edit" contenteditable="true">L2<br>结构识别</div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">标志K</b>
+            <span class="edit" contenteditable="true">放量、大振幅、实体强，后续可拆成涨停、反包、缺口、长阳。</span>
+          </div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">趋势通道</b>
+            <span class="edit" contenteditable="true">当前为滚动回归通道，可替换为高低点趋势线或 Donchian 通道。</span>
+          </div>
+          <div class="layer-cell signal">
+            <b class="edit" contenteditable="true">压力与保护位</b>
+            <span class="edit" contenteditable="true">上一根上轨、标志K低点、通道下轨、前高前低。</span>
+          </div>
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-id edit" contenteditable="true">L3<br>决策触发</div>
+          <div class="layer-cell risk">
+            <b class="edit" contenteditable="true">突破 trigger</b>
+            <span class="edit" contenteditable="true">收盘突破上一根上轨，同时量能满足阈值。</span>
+          </div>
+          <div class="layer-cell risk">
+            <b class="edit" contenteditable="true">多周期共振</b>
+            <span class="edit" contenteditable="true">高周期不逆势，中周期有结构，低周期给入场。</span>
+          </div>
+          <div class="layer-cell risk">
+            <b class="edit" contenteditable="true">交易过滤</b>
+            <span class="edit" contenteditable="true">是否回踩确认、是否允许高开、是否排除长上影。</span>
+          </div>
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-id edit" contenteditable="true">L4<br>执行回测</div>
+          <div class="layer-cell exec">
+            <b class="edit" contenteditable="true">入场与退出</b>
+            <span class="edit" contenteditable="true">触发 K 收盘入场，止损、止盈、最大持仓 K 数退出。</span>
+          </div>
+          <div class="layer-cell exec">
+            <b class="edit" contenteditable="true">批量遍历</b>
+            <span class="edit" contenteditable="true">按股票池、周期、参数组合做高性能扫描。</span>
+          </div>
+          <div class="layer-cell exec">
+            <b class="edit" contenteditable="true">Web 工作台</b>
+            <span class="edit" contenteditable="true">参数可视化、信号复盘、交易明细、后续 Docker 部署。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="level-rules" aria-label="多周期职责">
+        <div class="level-rule">
+          <b class="edit" contenteditable="true">60m</b>
+          <span class="edit" contenteditable="true">只做趋势许可：上升或震荡偏上才允许做多。</span>
+        </div>
+        <div class="level-rule">
+          <b class="edit" contenteditable="true">30m</b>
+          <span class="edit" contenteditable="true">确认结构：通道抬升、压缩、平台突破前蓄势。</span>
+        </div>
+        <div class="level-rule">
+          <b class="edit" contenteditable="true">15m</b>
+          <span class="edit" contenteditable="true">识别标志K和突破前的成交量变化。</span>
+        </div>
+        <div class="level-rule">
+          <b class="edit" contenteditable="true">5m</b>
+          <span class="edit" contenteditable="true">执行 trigger：突破、回踩、止损位置更精细。</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="kline-board" aria-label="K线策略演示">
+      <div class="section-head">
+        <div>
+          <h2 class="edit" contenteditable="true">K线策略演示</h2>
+          <p class="edit" contenteditable="true">这张图把策略落到 K 线上：先出现标志K，再形成上升通道，突破上一根通道上轨后触发入场，并用标志K低点或通道下轨做保护。</p>
+        </div>
+        <div class="note edit" contenteditable="true">先按“60m 定方向、30m 画结构、15m 找标志K、5m 触发交易”画，具体口径你可以直接改右侧文字。</div>
+      </div>
+
+      <div class="kline-layout">
+        <div class="chart-shell">
+          <svg class="kline-chart" viewBox="0 0 980 520" role="img" aria-label="K线展示标志K、趋势通道、突破触发和风控线">
+            <defs>
+              <marker id="arrowHead" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0,0 L8,4.5 L0,9 Z" fill="#17202a"></path>
+              </marker>
+            </defs>
+
+            <rect x="0" y="0" width="980" height="520" fill="#fbfcfe"></rect>
+            <line class="grid-line" x1="58" y1="80" x2="920" y2="80"></line>
+            <line class="grid-line" x1="58" y1="150" x2="920" y2="150"></line>
+            <line class="grid-line" x1="58" y1="220" x2="920" y2="220"></line>
+            <line class="grid-line" x1="58" y1="290" x2="920" y2="290"></line>
+            <line class="grid-line" x1="58" y1="360" x2="920" y2="360"></line>
+            <line class="grid-line" x1="58" y1="430" x2="920" y2="430"></line>
+            <line class="grid-line" x1="58" y1="80" x2="58" y2="455"></line>
+            <line class="grid-line" x1="920" y1="80" x2="920" y2="455"></line>
+
+            <text class="axis-label" x="18" y="84">高</text>
+            <text class="axis-label" x="18" y="433">低</text>
+            <text class="axis-label" x="62" y="485">蓄势</text>
+            <text class="axis-label" x="420" y="485">标志K后抬升</text>
+            <text class="axis-label" x="722" y="485">突破触发</text>
+
+            <polygon class="channel-band" points="72,315 906,158 906,305 72,448"></polygon>
+            <polyline class="channel-line" points="72,315 170,297 268,277 366,255 464,232 562,210 660,190 758,172 906,158"></polyline>
+            <polyline class="channel-mid" points="72,382 170,363 268,344 366,324 464,302 562,280 660,260 758,239 906,218"></polyline>
+            <polyline class="channel-line" points="72,448 170,430 268,410 366,388 464,366 562,345 660,323 758,304 906,305"></polyline>
+            <text class="chart-label" x="774" y="155">上一根通道上轨</text>
+            <text class="chart-note" x="776" y="180">突破判断用 prev_upper</text>
+
+            <line class="risk-line target" x1="702" y1="74" x2="916" y2="74"></line>
+            <text class="chart-label" x="820" y="66">止盈区</text>
+            <line class="risk-line entry" x1="690" y1="138" x2="916" y2="138"></line>
+            <text class="chart-label" x="820" y="130">入场价</text>
+            <line class="risk-line stop" x1="450" y1="338" x2="916" y2="338"></line>
+            <text class="chart-label" x="812" y="358">止损保护</text>
+
+            <g class="candle down"><line class="wick" x1="86" y1="350" x2="86" y2="420"></line><rect class="body" x="75" y="372" width="22" height="38"></rect></g>
+            <g class="candle up"><line class="wick" x1="132" y1="330" x2="132" y2="410"></line><rect class="body" x="121" y="342" width="22" height="48"></rect></g>
+            <g class="candle down"><line class="wick" x1="178" y1="340" x2="178" y2="425"></line><rect class="body" x="167" y="356" width="22" height="54"></rect></g>
+            <g class="candle up"><line class="wick" x1="224" y1="315" x2="224" y2="394"></line><rect class="body" x="213" y="328" width="22" height="45"></rect></g>
+            <g class="candle up"><line class="wick" x1="270" y1="288" x2="270" y2="375"></line><rect class="body" x="259" y="305" width="22" height="52"></rect></g>
+            <g class="candle down"><line class="wick" x1="316" y1="305" x2="316" y2="387"></line><rect class="body" x="305" y="318" width="22" height="47"></rect></g>
+            <g class="candle up"><line class="wick" x1="362" y1="272" x2="362" y2="360"></line><rect class="body" x="351" y="285" width="22" height="55"></rect></g>
+            <g class="candle down"><line class="wick" x1="408" y1="282" x2="408" y2="355"></line><rect class="body" x="397" y="298" width="22" height="36"></rect></g>
+
+            <rect class="highlight-box" x="438" y="196" width="48" height="156" rx="5"></rect>
+            <g class="candle up"><line class="wick" x1="462" y1="205" x2="462" y2="340"></line><rect class="body" x="451" y="220" width="22" height="94"></rect></g>
+            <text class="chart-label" x="430" y="185">标志K</text>
+            <text class="chart-note" x="398" y="372">放量 + 大振幅 + 强实体</text>
+
+            <g class="candle up"><line class="wick" x1="508" y1="206" x2="508" y2="312"></line><rect class="body" x="497" y="226" width="22" height="63"></rect></g>
+            <g class="candle down"><line class="wick" x1="554" y1="218" x2="554" y2="330"></line><rect class="body" x="543" y="238" width="22" height="62"></rect></g>
+            <g class="candle up"><line class="wick" x1="600" y1="192" x2="600" y2="305"></line><rect class="body" x="589" y="210" width="22" height="70"></rect></g>
+            <g class="candle down"><line class="wick" x1="646" y1="208" x2="646" y2="310"></line><rect class="body" x="635" y="228" width="22" height="58"></rect></g>
+            <g class="candle up"><line class="wick" x1="692" y1="172" x2="692" y2="262"></line><rect class="body" x="681" y="190" width="22" height="52"></rect></g>
+
+            <rect class="trigger-box" x="714" y="112" width="50" height="126" rx="5"></rect>
+            <g class="candle up"><line class="wick" x1="738" y1="118" x2="738" y2="226"></line><rect class="body" x="727" y="130" width="22" height="85"></rect></g>
+            <path class="arrow-line" d="M720,105 C700,84 686,75 662,72"></path>
+            <text class="chart-label" x="560" y="66">突破 trigger</text>
+            <text class="chart-note" x="558" y="88">收盘站上上一根上轨</text>
+
+            <g class="candle up"><line class="wick" x1="784" y1="96" x2="784" y2="196"></line><rect class="body" x="773" y="112" width="22" height="62"></rect></g>
+            <g class="candle down"><line class="wick" x1="830" y1="110" x2="830" y2="210"></line><rect class="body" x="819" y="128" width="22" height="55"></rect></g>
+            <g class="candle up"><line class="wick" x1="876" y1="82" x2="876" y2="180"></line><rect class="body" x="865" y="98" width="22" height="58"></rect></g>
+
+            <path class="holding-window" d="M738,252 L900,252 M738,246 L738,258 M900,246 L900,258"></path>
+            <text class="chart-note" x="764" y="275">最大持仓 K 数窗口</text>
+          </svg>
+        </div>
+
+        <div class="legend-panel">
+          <div class="legend-item">
+            <b class="edit" contenteditable="true"><span class="legend-dot green"></span>标志K口径</b>
+            <span class="edit" contenteditable="true">默认要求放量、大振幅、实体强；你可以改成“涨停板、反包、突破前高、低开高走”等更具体分类。</span>
+          </div>
+          <div class="legend-item">
+            <b class="edit" contenteditable="true"><span class="legend-dot blue"></span>趋势通道口径</b>
+            <span class="edit" contenteditable="true">当前画法是上升通道。代码里先用滚动回归，后续可换成手工高低点通道、分形趋势线或箱体突破。</span>
+          </div>
+          <div class="legend-item">
+            <b class="edit" contenteditable="true"><span class="legend-dot orange"></span>突破 trigger</b>
+            <span class="edit" contenteditable="true">当前是 close &gt; prev_upper。可改为盘中触碰、收盘确认、次根确认、回踩上轨再买、二次突破再买。</span>
+          </div>
+          <div class="legend-item">
+            <b class="edit" contenteditable="true"><span class="legend-dot red"></span>止损与退出</b>
+            <span class="edit" contenteditable="true">当前先画成标志K低点或通道下轨保护位。可改成固定百分比、ATR、移动止损、跌破 5m 结构退出。</span>
+          </div>
+          <div class="legend-item">
+            <b class="edit" contenteditable="true">需要你直接修正的交易问题</b>
+            <span class="edit" contenteditable="true">标志K是否必须是首板？突破后是否追入？高开突破是否过滤？止损放在标志K低点还是通道下轨？不同周期冲突时谁优先？</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="diagram" aria-label="策略流程图">
+      <div class="flow">
+        <div class="lane">
+          <div class="lane-title edit" contenteditable="true">1. 数据层</div>
+          <div class="node tdx">
+            <strong class="edit" contenteditable="true">TDX 通道</strong>
+            <ul class="edit" contenteditable="true">
+              <li>只接通达信 tqcenter</li>
+              <li>周期：5m / 15m / 30m / 60m</li>
+              <li>60m 按接口映射为 1h</li>
+            </ul>
+          </div>
+          <div class="connector"><span>标准化</span></div>
+          <div class="node tdx">
+            <strong class="edit" contenteditable="true">本地 parquet</strong>
+            <ul class="edit" contenteditable="true">
+              <li>date, stock_code, OHLCV, amount</li>
+              <li>按 symbol + date 去重</li>
+              <li>目录：market/{周期}/{复权}/</li>
+            </ul>
+          </div>
+          <div class="connector"><span>并行读取</span></div>
+          <div class="node tdx">
+            <strong class="edit" contenteditable="true">多周期聚合</strong>
+            <p class="edit" contenteditable="true">每个标的在不同周期独立扫描，最后汇总最新状态和触发清单。</p>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title edit" contenteditable="true">2. 标志K识别</div>
+          <div class="node signal">
+            <strong class="edit" contenteditable="true">放量 + 大振幅 + 实体</strong>
+            <ul class="edit" contenteditable="true">
+              <li>振幅 ≥ 前 N 根均值 × range_multiple</li>
+              <li>成交量 ≥ 前 N 根均值 × volume_multiple</li>
+              <li>实体 / 全振幅 ≥ min_body_ratio</li>
+            </ul>
+          </div>
+          <div class="connector"><span>通过</span></div>
+          <div class="node signal decision">
+            <strong class="edit" contenteditable="true">当前定义的“标志K”</strong>
+            <p class="edit" contenteditable="true">默认是强波动、强量能、实体足够大的 K。这里可能需要你重新定义：是否要求涨幅、是否允许长上影、是否区分反包/缺口/涨停。</p>
+          </div>
+          <div class="connector"><span>输出字段</span></div>
+          <div class="node signal">
+            <strong class="edit" contenteditable="true">is_landmark</strong>
+            <ul class="edit" contenteditable="true">
+              <li>landmark_range_ratio</li>
+              <li>landmark_volume_ratio</li>
+              <li>landmark_body_ratio</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title edit" contenteditable="true">3. 趋势通道</div>
+          <div class="node signal">
+            <strong class="edit" contenteditable="true">滚动回归中线</strong>
+            <p class="edit" contenteditable="true">对最近 channel_lookback 根 close 做线性回归，得到通道中线和斜率。</p>
+          </div>
+          <div class="connector"><span>扩展通道</span></div>
+          <div class="node signal">
+            <strong class="edit" contenteditable="true">上下轨</strong>
+            <ul class="edit" contenteditable="true">
+              <li>残差包络：高低点偏离拟合线</li>
+              <li>ATR 包络：均值振幅 × band_atr_multiple</li>
+              <li>取更宽的一侧，避免通道过窄</li>
+            </ul>
+          </div>
+          <div class="connector"><span>判方向</span></div>
+          <div class="node signal decision">
+            <strong class="edit" contenteditable="true">通道方向</strong>
+            <p class="edit" contenteditable="true">slope &gt; min_slope 为 up，slope &lt; -min_slope 为 down，否则 flat。这里可改成结构高低点、N 字形、分形趋势线或人工通道。</p>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title edit" contenteditable="true">4. 突破 Trigger</div>
+          <div class="node risk">
+            <strong class="edit" contenteditable="true">只看上一根通道上轨</strong>
+            <p class="edit" contenteditable="true">突破判断使用 prev_channel_upper，避免当前突破 K 抬高通道后自我抵消。</p>
+          </div>
+          <div class="connector"><span>同时满足</span></div>
+          <div class="node risk">
+            <strong class="edit" contenteditable="true">触发条件</strong>
+            <ul class="edit" contenteditable="true">
+              <li>close &gt; prev_upper × (1 + buffer)</li>
+              <li>prev_direction ∈ up / flat</li>
+              <li>volume ≥ 前 N 根均量 × trigger_volume_multiple</li>
+              <li>默认要求当前 K 同时是标志K</li>
+            </ul>
+          </div>
+          <div class="connector"><span>形成信号</span></div>
+          <div class="node risk decision">
+            <strong class="edit" contenteditable="true">breakout_trigger</strong>
+            <p class="edit" contenteditable="true">当前只做向上突破。可补：失败突破、回踩确认、二次突破、下跌趋势反转、假突破过滤。</p>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title edit" contenteditable="true">5. 回测与风控</div>
+          <div class="node danger">
+            <strong class="edit" contenteditable="true">入场</strong>
+            <p class="edit" contenteditable="true">触发 K 的 close 作为 entry_price；同一标的持仓期间不重复开仓。</p>
+          </div>
+          <div class="connector"><span>持仓管理</span></div>
+          <div class="node danger">
+            <strong class="edit" contenteditable="true">退出</strong>
+            <ul class="edit" contenteditable="true">
+              <li>先检查 stop_loss</li>
+              <li>再检查 take_profit</li>
+              <li>最后 max_holding_bars 到期退出</li>
+            </ul>
+          </div>
+          <div class="connector"><span>输出</span></div>
+          <div class="node danger decision">
+            <strong class="edit" contenteditable="true">绩效</strong>
+            <p class="edit" contenteditable="true">trade_count、win_rate、total_return、avg_return、max_drawdown。后续应补滑点、手续费、仓位、组合净值和批量参数扫描。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callouts">
+      <div class="callout">
+        <b class="edit" contenteditable="true">当前策略核心</b>
+        <span class="edit" contenteditable="true">先识别足够强的 K，再确认它突破上一根通道上轨。</span>
+      </div>
+      <div class="callout">
+        <b class="edit" contenteditable="true">当前弱点</b>
+        <span class="edit" contenteditable="true">标志K定义偏粗，趋势通道仍是线性回归口径。</span>
+      </div>
+      <div class="callout">
+        <b class="edit" contenteditable="true">优先修正点</b>
+        <span class="edit" contenteditable="true">标志K分类、趋势通道画法、突破后是否需要回踩确认。</span>
+      </div>
+      <div class="callout">
+        <b class="edit" contenteditable="true">工程边界</b>
+        <span class="edit" contenteditable="true">数据、信号、扫描、回测低耦合，参数可逐步扩展。</span>
+      </div>
+    </div>
+
+    <div class="matrix">
+      <section class="panel">
+        <h2 class="edit" contenteditable="true">默认参数</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>模块</th>
+              <th>参数</th>
+              <th>当前值</th>
+              <th>含义</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>标志K</td>
+              <td>landmark_lookback</td>
+              <td class="edit" contenteditable="true">20</td>
+              <td class="edit" contenteditable="true">计算历史均值的回看 K 数</td>
+            </tr>
+            <tr>
+              <td>标志K</td>
+              <td>range_multiple</td>
+              <td class="edit" contenteditable="true">1.8</td>
+              <td class="edit" contenteditable="true">振幅放大倍数</td>
+            </tr>
+            <tr>
+              <td>标志K</td>
+              <td>volume_multiple</td>
+              <td class="edit" contenteditable="true">1.8</td>
+              <td class="edit" contenteditable="true">成交量放大倍数</td>
+            </tr>
+            <tr>
+              <td>趋势通道</td>
+              <td>channel_lookback</td>
+              <td class="edit" contenteditable="true">40</td>
+              <td class="edit" contenteditable="true">滚动回归窗口</td>
+            </tr>
+            <tr>
+              <td>Trigger</td>
+              <td>close_buffer_pct</td>
+              <td class="edit" contenteditable="true">0.0</td>
+              <td class="edit" contenteditable="true">突破上轨的收盘价缓冲</td>
+            </tr>
+            <tr>
+              <td>回测</td>
+              <td>take_profit / stop_loss</td>
+              <td class="edit" contenteditable="true">6% / 3%</td>
+              <td class="edit" contenteditable="true">固定止盈止损，后续可换动态止损</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h2 class="edit" contenteditable="true">需要你定稿的策略口径</h2>
+        <p>
+          <span class="tag green">标志K</span>
+          <span class="tag">趋势通道</span>
+          <span class="tag orange">突破确认</span>
+          <span class="tag red">风控</span>
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>问题</th>
+              <th>当前实现</th>
+              <th>你可以修正成</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="edit" contenteditable="true">标志K是否必须上涨？</td>
+              <td class="edit" contenteditable="true">不要求，只看振幅、量能、实体。</td>
+              <td class="edit" contenteditable="true">可要求 close &gt; open、涨幅阈值、突破前高、涨停/准涨停。</td>
+            </tr>
+            <tr>
+              <td class="edit" contenteditable="true">趋势通道如何画？</td>
+              <td class="edit" contenteditable="true">close 滚动线性回归 + 残差/ATR 包络。</td>
+              <td class="edit" contenteditable="true">可改为高低点通道、分形趋势线、Donchian、均线带。</td>
+            </tr>
+            <tr>
+              <td class="edit" contenteditable="true">突破是否直接买？</td>
+              <td class="edit" contenteditable="true">突破 K 收盘买入。</td>
+              <td class="edit" contenteditable="true">可改为次根确认、回踩上轨、盘中触发、分批买入。</td>
+            </tr>
+            <tr>
+              <td class="edit" contenteditable="true">多周期如何共振？</td>
+              <td class="edit" contenteditable="true">各周期独立扫描，只汇总最新状态。</td>
+              <td class="edit" contenteditable="true">可要求 60m 定方向、30m 找结构、15m/5m 触发。</td>
+            </tr>
+            <tr>
+              <td class="edit" contenteditable="true">退出规则是否合理？</td>
+              <td class="edit" contenteditable="true">固定止盈、固定止损、固定持仓 K 数。</td>
+              <td class="edit" contenteditable="true">可改为通道下轨止损、标志K低点止损、移动止盈。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    function exportEditedHtml() {
+      const clone = document.documentElement.cloneNode(true);
+      const html = "<!doctype html>\n" + clone.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "strategy_diagram_edited.html";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
