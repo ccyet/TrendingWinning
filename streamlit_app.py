@@ -18,6 +18,7 @@ from trending_winning.multitimeframe import scan_timeframes
 from trending_winning.strategy import StrategyConfig, scan_bars
 
 DEFAULT_DATA_ROOT = "/Users/a1234/Desktop/trend-backtest/data/market/daily"
+DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
@@ -30,17 +31,152 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("数据目录")
-        data_root = st.text_input("行情根目录", DEFAULT_DATA_ROOT)
+        data_root = _directory_picker("行情根目录", DEFAULT_DATA_ROOT, key="data_root_picker")
         adjust = st.selectbox("复权", ["qfq", "hfq", ""], index=0)
-        tdx_path = st.text_input("TDX PYPlugins/user", value="")
+        use_default_tdx_path = st.checkbox("使用系统默认 TDX 路径", value=True, key="tdx_default_path")
+        tdx_path = (
+            ""
+            if use_default_tdx_path
+            else str(_directory_picker("TDX PYPlugins/user", Path.home(), key="tdx_path_picker"))
+        )
 
     fetch_tab, scan_tab, backtest_tab = st.tabs(["TDX K线", "策略扫描", "回测"])
     with fetch_tab:
-        _fetch_panel(Path(data_root), adjust, tdx_path)
+        _fetch_panel(data_root, adjust, tdx_path)
     with scan_tab:
-        _scan_panel(Path(data_root), adjust)
+        _scan_panel(data_root, adjust)
     with backtest_tab:
-        _backtest_panel(Path(data_root), adjust)
+        _backtest_panel(data_root, adjust)
+
+
+def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bool = False) -> Path:
+    """本地文件夹选择器；用下拉框和按钮浏览路径，避免让用户手写目录字符串。"""
+    selected_key = f"{key}_selected_path"
+    current_key = f"{key}_current_path"
+    default_path = Path(default).expanduser()
+    if selected_key not in st.session_state:
+        st.session_state[selected_key] = str(default_path)
+    if current_key not in st.session_state:
+        st.session_state[current_key] = str(_initial_browse_directory(default_path))
+
+    st.markdown(f"**{label}**")
+    quick_cols = st.columns([4, 1])
+    with quick_cols[0]:
+        quick_root = st.selectbox(
+            f"{label}快速位置",
+            _directory_option_strings(_quick_directory_roots(default_path)),
+            key=f"{key}_quick_root",
+            format_func=_display_path,
+            disabled=disabled,
+        )
+    with quick_cols[1]:
+        if st.button("→", key=f"{key}_open_quick", disabled=disabled, help="打开快速位置"):
+            st.session_state[current_key] = quick_root
+
+    current = _existing_directory(Path(st.session_state[current_key]).expanduser())
+    st.caption(f"当前位置：{_display_path(str(current))}")
+    child_choice = st.selectbox(
+        f"{label}子文件夹",
+        _folder_entry_options(current),
+        key=f"{key}_child_dir",
+        format_func=_display_path,
+        disabled=disabled,
+    )
+    action_cols = st.columns(3)
+    with action_cols[0]:
+        if st.button("进入", key=f"{key}_enter", disabled=disabled, help="进入选中的子文件夹"):
+            st.session_state[current_key] = child_choice
+    with action_cols[1]:
+        if st.button("选中", key=f"{key}_select_current", disabled=disabled, help="选定当前文件夹"):
+            st.session_state[selected_key] = str(current)
+    with action_cols[2]:
+        if st.button("默认", key=f"{key}_reset", disabled=disabled, help="恢复默认文件夹"):
+            st.session_state[selected_key] = str(default_path)
+            st.session_state[current_key] = str(_initial_browse_directory(default_path))
+
+    selected = Path(st.session_state[selected_key]).expanduser()
+    st.caption(f"已选文件夹：{_display_path(str(selected))}")
+    return selected
+
+
+def _initial_browse_directory(path: Path) -> Path:
+    if path.exists() and path.is_dir():
+        return path
+    parent = path.parent
+    return parent if parent.exists() and parent.is_dir() else Path.home()
+
+
+def _existing_directory(path: Path) -> Path:
+    if path.exists() and path.is_dir():
+        return path
+    for parent in path.parents:
+        if parent.exists() and parent.is_dir():
+            return parent
+    return Path.home()
+
+
+def _quick_directory_roots(default_path: Path) -> list[Path]:
+    candidates = [
+        _initial_browse_directory(default_path),
+        Path.cwd(),
+        Path(DEFAULT_OUTPUT_ROOT),
+        Path.home(),
+        Path.home() / "Desktop",
+        Path.home() / "Documents",
+        Path.home() / "Downloads",
+    ]
+    for parent in default_path.parents:
+        candidates.append(parent)
+    for drive in ("C:/", "D:/", "E:/"):
+        drive_path = Path(drive)
+        if drive_path.exists():
+            candidates.append(drive_path)
+    return _unique_paths(candidates)
+
+
+def _folder_entry_options(current: Path) -> list[str]:
+    entries = [current.parent]
+    entries.extend(_child_directories(current))
+    return _directory_option_strings(entries)
+
+
+def _child_directories(current: Path, *, limit: int = 120) -> list[Path]:
+    try:
+        children = [
+            child
+            for child in current.iterdir()
+            if child.is_dir() and not child.name.startswith(".")
+        ]
+    except (OSError, PermissionError):
+        return []
+    return sorted(children, key=lambda item: item.name.lower())[:limit]
+
+
+def _directory_option_strings(paths: list[Path]) -> list[str]:
+    return [str(path.expanduser()) for path in _unique_paths(paths)]
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        expanded = path.expanduser()
+        key = str(expanded)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(expanded)
+    return result
+
+
+def _display_path(value: str) -> str:
+    path = Path(value).expanduser()
+    home = Path.home()
+    try:
+        relative = path.relative_to(home)
+    except ValueError:
+        return str(path)
+    return "~" if str(relative) == "." else f"~/{relative}"
 
 
 def _symbol_input(label: str, default: str = "000001.SZ", *, key: str) -> list[str]:
@@ -93,13 +229,16 @@ def _experiment_output_controls(prefix: str, default_name: str) -> tuple[bool, s
     with c1:
         save_outputs = st.checkbox("保存实验产物", value=False, key=f"{prefix}_save_outputs")
     with c2:
-        output_dir = st.text_input(
-            "输出目录",
-            value=f"runs/{default_name}",
-            key=f"{prefix}_output_dir",
+        output_root = _directory_picker(
+            "输出父目录",
+            DEFAULT_OUTPUT_ROOT,
+            key=f"{prefix}_output_root",
             disabled=not save_outputs,
         )
-    return bool(save_outputs), str(output_dir).strip()
+        output_dir = output_root / default_name
+        if save_outputs:
+            st.caption(f"本次保存到：{_display_path(str(output_dir))}")
+    return bool(save_outputs), str(output_dir)
 
 
 def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[str, float | int]:
@@ -251,18 +390,25 @@ def _show_saved_experiment_path(output_dir: str, name: str) -> None:
 
 def _fetch_panel(data_root: Path, adjust: str, tdx_path: str) -> None:
     st.subheader("TDX K 线落地")
-    symbols = _symbol_input("标的代码", "000001.SZ,600519.SH", key="fetch_symbols")
-    timeframes = st.multiselect("周期", DATA_TIMEFRAMES, default=DATA_TIMEFRAMES, key="fetch_timeframes")
-    start, end = _date_inputs("fetch")
-    prepare_min_coverage_input = st.number_input(
-        "补齐最低覆盖率",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.0,
-        step=0.05,
-        format="%.2f",
-        key="fetch_prepare_min_coverage",
-    )
+    fetch_cols = st.columns([2, 2, 1, 1, 1])
+    with fetch_cols[0]:
+        symbols = _symbol_input("标的代码", "000001.SZ,600519.SH", key="fetch_symbols")
+    with fetch_cols[1]:
+        timeframes = st.multiselect("周期", DATA_TIMEFRAMES, default=DATA_TIMEFRAMES, key="fetch_timeframes")
+    with fetch_cols[2]:
+        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key="fetch_start"))
+    with fetch_cols[3]:
+        end = str(st.date_input("结束日期", date.today(), key="fetch_end"))
+    with fetch_cols[4]:
+        prepare_min_coverage_input = st.number_input(
+            "补齐最低覆盖率",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.0,
+            step=0.05,
+            format="%.2f",
+            key="fetch_prepare_min_coverage",
+        )
     prepare_min_coverage = float(prepare_min_coverage_input) if float(prepare_min_coverage_input) > 0 else None
     if st.button("生成TDX补齐计划"):
         repo = MarketDataRepository(data_root, adjust=adjust)
@@ -344,21 +490,33 @@ def _strategy_controls(prefix: str) -> StrategyConfig:
 
 
 def _load_panel_inputs(data_root: Path, prefix: str) -> tuple[list[str], str, str, str]:
-    timeframe = st.selectbox("周期", INTRADAY_TIMEFRAMES, index=2, key=f"{prefix}_tf")
+    scope_cols = st.columns([1, 2, 1, 1])
+    with scope_cols[0]:
+        timeframe = st.selectbox("周期", INTRADAY_TIMEFRAMES, index=2, key=f"{prefix}_tf")
     available = available_symbols(data_root, timeframe=timeframe)
     default_symbols = ",".join(available[:5]) if available else "000001.SZ"
-    symbols = _symbol_input("标的代码", default_symbols, key=f"{prefix}_symbols")
-    start, end = _date_inputs(prefix)
+    with scope_cols[1]:
+        symbols = _symbol_input("标的代码", default_symbols, key=f"{prefix}_symbols")
+    with scope_cols[2]:
+        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key=f"{prefix}_start"))
+    with scope_cols[3]:
+        end = str(st.date_input("结束日期", date.today(), key=f"{prefix}_end"))
     return symbols, timeframe, start, end
 
 
 def _scan_panel(data_root: Path, adjust: str) -> None:
     st.subheader("标志K + 趋势通道 + 突破扫描")
-    timeframes = st.multiselect("周期", INTRADAY_TIMEFRAMES, default=["30m", "60m"], key="scan_timeframes")
+    scan_cols = st.columns([2, 2, 1, 1])
+    with scan_cols[0]:
+        timeframes = st.multiselect("周期", INTRADAY_TIMEFRAMES, default=["30m", "60m"], key="scan_timeframes")
     available = sorted({symbol for timeframe in timeframes for symbol in available_symbols(data_root, timeframe=timeframe)})
     default_symbols = ",".join(available[:5]) if available else "000001.SZ"
-    symbols = _symbol_input("标的代码", default_symbols, key="scan_symbols")
-    start, end = _date_inputs("scan")
+    with scan_cols[1]:
+        symbols = _symbol_input("标的代码", default_symbols, key="scan_symbols")
+    with scan_cols[2]:
+        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key="scan_start"))
+    with scan_cols[3]:
+        end = str(st.date_input("结束日期", date.today(), key="scan_end"))
     config = _strategy_controls("scan")
     if st.button("运行扫描", type="primary"):
         result = scan_timeframes(

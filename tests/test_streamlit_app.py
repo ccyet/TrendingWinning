@@ -97,7 +97,7 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "行业资金上限" for item in app.text_area)
     assert any(item.label == "股票行业映射" for item in app.text_area)
     assert any(checkbox.label == "保存实验产物" for checkbox in app.checkbox)
-    assert any(item.label == "输出目录" for item in app.text_input)
+    assert any(item.label == "输出父目录子文件夹" for item in app.selectbox)
 
 
 def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
@@ -130,8 +130,36 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
     assert any(checkbox.label == "要求旧极端失败测试" for checkbox in app.checkbox)
     assert any(checkbox.label == "要求结构确认" for checkbox in app.checkbox)
     assert any(checkbox.label == "保存实验产物" for checkbox in app.checkbox)
-    assert any(item.label == "输出目录" for item in app.text_input)
+    assert any(item.label == "输出父目录子文件夹" for item in app.selectbox)
     assert any(button.label == "运行单策略回测" for button in app.button)
+
+
+def test_streamlit_path_controls_use_folder_picker_instead_of_text_inputs() -> None:
+    source = (Path(__file__).resolve().parents[1] / "streamlit_app.py").read_text()
+
+    assert 'st.text_input("行情根目录"' not in source
+    assert 'st.text_input("TDX PYPlugins/user"' not in source
+    assert 'st.text_input(\n            "输出目录"' not in source
+    assert "_directory_picker(" in source
+    assert "已选文件夹" in source
+
+
+def test_streamlit_primary_inputs_are_grouped_horizontally() -> None:
+    source = (Path(__file__).resolve().parents[1] / "streamlit_app.py").read_text()
+
+    assert "scope_cols = st.columns([1, 2, 1, 1])" in source
+    assert "fetch_cols = st.columns([2, 2, 1, 1, 1])" in source
+    assert "scan_cols = st.columns([2, 2, 1, 1])" in source
+
+
+def test_readme_usage_guide_html_exists_with_core_sections() -> None:
+    html = (Path(__file__).resolve().parents[1] / "docs" / "usage_guide.html").read_text(encoding="utf-8")
+
+    assert "TrendingWinning 使用指南" in html
+    assert "路径选择" in html
+    assert "单策略回测" in html
+    assert "组合策略回测" in html
+    assert "TDX K线" in html
 
 
 def test_streamlit_mapping_inputs_accept_comma_and_newline_pairs() -> None:

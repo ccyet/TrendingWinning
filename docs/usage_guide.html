@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrendingWinning 使用指南</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #14213d;
+      --muted: #627084;
+      --line: #dfe5ee;
+      --accent: #1769aa;
+      --accent-2: #0f8b6d;
+      --warn: #a95f00;
+      --code-bg: #101828;
+      --code-ink: #e8eef8;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.65;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+    }
+    .wrap {
+      width: min(1120px, calc(100vw - 40px));
+      margin: 0 auto;
+    }
+    .hero {
+      padding: 56px 0 40px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+      gap: 32px;
+      align-items: end;
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+    .lead {
+      margin: 0;
+      max-width: 740px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .hero-card {
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .hero-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+    .hero-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(247, 248, 251, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    nav .wrap {
+      display: flex;
+      gap: 18px;
+      overflow-x: auto;
+      padding: 12px 0;
+      white-space: nowrap;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+    }
+    nav a:hover { color: var(--accent); }
+    main { padding: 28px 0 64px; }
+    section {
+      margin-top: 22px;
+      padding: 28px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    h2 {
+      margin: 0 0 16px;
+      font-size: 24px;
+      line-height: 1.25;
+    }
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 17px;
+    }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 0 20px; padding: 0; }
+    li { margin: 5px 0; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .card b { display: block; margin-bottom: 6px; }
+    .card span { color: var(--muted); font-size: 14px; }
+    .note {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: #eef6fc;
+      color: #244b66;
+      border-radius: 6px;
+    }
+    .warn {
+      border-left-color: var(--warn);
+      background: #fff7e8;
+      color: #674309;
+    }
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #eef2f7;
+      color: #17324d;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      margin: 14px 0 0;
+      padding: 16px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    footer {
+      padding: 28px 0 44px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      section { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <div>
+        <h1>TrendingWinning 使用指南</h1>
+        <p class="lead">TDX-only A 股 K 线趋势策略工作台，覆盖数据落地、审计补齐、策略扫描、单策略回测、组合策略回测、参数遍历和 Docker 部署。</p>
+      </div>
+      <div class="hero-card">
+        <strong>当前设计原则</strong>
+        <p>路径选择使用文件夹选择框；同一任务的周期、代码、日期放在同一行；趋势、通道、区间、反转 detector 彼此解耦。</p>
+      </div>
+    </div>
+  </header>
+
+  <nav>
+    <div class="wrap">
+      <a href="#overview">能力总览</a>
+      <a href="#run">本地运行</a>
+      <a href="#paths">路径选择</a>
+      <a href="#data">TDX K线</a>
+      <a href="#scan">策略扫描</a>
+      <a href="#single">单策略回测</a>
+      <a href="#portfolio">组合策略回测</a>
+      <a href="#outputs">输出产物</a>
+      <a href="#docker">Docker</a>
+      <a href="#windows">Win/TDX 注意</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="overview">
+      <h2>能力总览</h2>
+      <div class="grid">
+        <div class="card"><b>TDX 数据</b><span>日 K <code>1d</code> 和分钟 K <code>5m / 15m / 30m / 60m</code>，不使用 akshare 通道。</span></div>
+        <div class="card"><b>数据管理</b><span>本地 parquet 审计、按需补齐、覆盖率门禁、日 K 锚定分钟交易日。</span></div>
+        <div class="card"><b>过滤规则</b><span>按主板、科创、创业、北交所涨停开盘规则过滤污染交易日。</span></div>
+        <div class="card"><b>独立 detector</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
+        <div class="card"><b>挂单触发</b><span>突破在信号 K 上方/下方挂单，撮合层按下一根 K 是否触发成交。</span></div>
+        <div class="card"><b>回测统计</b><span>逐笔交易、净值曲线、订单拒绝、策略过滤、策略/标的/方向拆分。</span></div>
+      </div>
+    </section>
+
+    <section id="run">
+      <h2>本地运行</h2>
+      <p>首次运行先安装依赖，再启动 Streamlit Web 应用。</p>
+      <pre><code>cd /Users/a1234/Documents/TrendingWinning
+python -m pip install -r requirements.txt
+streamlit run streamlit_app.py --server.port 8520</code></pre>
+      <div class="note">Web 页面包含三个主栏目：<b>TDX K线</b>、<b>策略扫描</b>、<b>回测</b>。侧边栏只放全局数据目录、复权方式和 TDX 插件目录。</div>
+    </section>
+
+    <section id="paths">
+      <h2>路径选择</h2>
+      <p>所有文件夹路径都通过本地文件夹选择器完成，不再要求用户手写目录字符串。</p>
+      <table>
+        <thead><tr><th>位置</th><th>用途</th><th>交互方式</th></tr></thead>
+        <tbody>
+          <tr><td>行情根目录</td><td>本地 K 线仓库，例如 <code>market/daily</code>。</td><td>侧边栏选择快速位置、进入子文件夹、选定当前文件夹。</td></tr>
+          <tr><td>TDX PYPlugins/user</td><td>指定 <code>tqcenter</code> 所在目录。</td><td>默认使用系统环境；需要指定时取消勾选后用文件夹选择器。</td></tr>
+          <tr><td>输出父目录</td><td>保存回测或参数遍历产物。</td><td>选择父目录，系统自动按实验名生成子文件夹。</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn">浏览器出于安全限制不能弹出操作系统原生文件夹对话框；当前实现使用 Streamlit 本地目录浏览器，运行在本机或 Win 侧时可浏览该机器上的目录。</div>
+    </section>
+
+    <section id="data">
+      <h2>TDX K线</h2>
+      <p>先用诊断确认 TDX 通道，再做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
+      <pre><code>python -m trending_winning.cli tdx-doctor \
+  --symbols 000001.SZ,600519.SH \
+  --timeframes 1d,5m,15m,30m,60m \
+  --start "2026-05-25 09:30:00" \
+  --end "2026-05-25 15:00:00"</code></pre>
+      <pre><code>python -m trending_winning.cli plan-data \
+  --symbols 000001.SZ,600519.SH \
+  --timeframes 1d,5m,15m,30m,60m \
+  --start "2026-05-01 09:30:00" \
+  --end "2026-05-25 15:00:00" \
+  --min-coverage-ratio 0.95 \
+  --data-root /path/to/market/daily</code></pre>
+      <pre><code>python -m trending_winning.cli prepare-data \
+  --symbols 000001.SZ,600519.SH \
+  --timeframes 1d,5m,15m,30m,60m \
+  --start "2026-05-01 09:30:00" \
+  --end "2026-05-25 15:00:00" \
+  --min-coverage-ratio 0.95 \
+  --data-root /path/to/market/daily</code></pre>
+      <ul>
+        <li><code>plan-data</code> 只读取本地 parquet 和日 K 交易日锚点，不请求 TDX。</li>
+        <li><code>prepare-data</code> 只请求缺失、质量错误或覆盖率低于门槛的标的周期。</li>
+        <li>分钟周期会自动带上 <code>1d</code> 依赖，日 K 用于覆盖率锚点和涨停开盘过滤。</li>
+        <li>所有入口会校验 <code>start &lt;= end</code>，时间窗口写反会直接失败。</li>
+      </ul>
+    </section>
+
+    <section id="scan">
+      <h2>策略扫描</h2>
+      <p>扫描页用于快速查看标志 K、趋势通道和突破触发。周期、标的、开始日期、结束日期在同一行，减少表单高度。</p>
+      <ul>
+        <li>周期：仅支持分钟级 <code>5m / 15m / 30m / 60m</code>。</li>
+        <li>代码：支持逗号或换行分隔，例如 <code>000001.SZ,600519.SH</code>。</li>
+        <li>结果：展示最新状态、触发数量和最近突破明细。</li>
+      </ul>
+    </section>
+
+    <section id="single">
+      <h2>单策略回测</h2>
+      <p>单策略只绑定一个 detector，不进入组合仓位分配层。适合独立验证趋势、区间、通道或反转模块。</p>
+      <pre><code>python -m trending_winning.cli single-backtest \
+  --symbols 000001.SZ,600519.SH \
+  --timeframe 30m \
+  --higher-timeframe 60m \
+  --higher-timeframe-max-age-minutes 120 \
+  --start 2026-05-01 \
+  --end 2026-05-25 \
+  --detector trend \
+  --risk-reward 2.0 \
+  --max-holding-bars 12 \
+  --max-actual-risk-pct 0.03 \
+  --max-chase-pct 0.02 \
+  --min-coverage-ratio 0.95 \
+  --fee-rate 0.0003 \
+  --slippage-bps 5 \
+  --output-dir runs/single-trend-001</code></pre>
+      <h3>推荐验证顺序</h3>
+      <ol>
+        <li>先关闭高周期门控，只验证 detector 本身。</li>
+        <li>再开启 <code>higher_timeframe</code>，检查方向不一致和上下文过期的过滤日志。</li>
+        <li>最后加入真实风险、追价、手续费和滑点参数。</li>
+      </ol>
+    </section>
+
+    <section id="portfolio">
+      <h2>组合策略回测</h2>
+      <p>组合回测把多个独立 detector 生成的订单统一进入组合层，组合层只负责排序、容量、资金、行业和重叠持仓约束。</p>
+      <pre><code>python -m trending_winning.cli portfolio-backtest \
+  --symbols 000001.SZ,600519.SH \
+  --timeframe 30m \
+  --start 2026-05-01 \
+  --end 2026-05-25 \
+  --detectors trend,range,channel,reversal \
+  --risk-reward 2.0 \
+  --max-open-positions 5 \
+  --capital-per-trade 0.25 \
+  --risk-per-trade 0.01 \
+  --reserve-cash 0.1 \
+  --strategy-priority trend_signal_bar=1,range_signal_bar=2 \
+  --strategy-capital-limit trend_signal_bar=0.6,range_signal_bar=0.4 \
+  --sector-capital-limit 银行=0.5,新能源=0.4 \
+  --symbol-sector-map 000001.SZ=银行,300750.SZ=新能源 \
+  --output-dir runs/case-001 \
+  --benchmark</code></pre>
+      <ul>
+        <li><code>capital_per_trade</code> 是固定名义仓位。</li>
+        <li><code>risk_per_trade</code> 按真实入场风险反推仓位。</li>
+        <li><code>allow_same_symbol_overlap</code> 控制同一股票能否多策略重叠持仓。</li>
+        <li>组合净值按逐 K 盯市，统计真实暴露、持仓数和资金贡献。</li>
+      </ul>
+    </section>
+
+    <section id="outputs">
+      <h2>输出产物</h2>
+      <p>勾选保存后，系统会把结果写到选定输出父目录下的实验子文件夹。</p>
+      <table>
+        <thead><tr><th>文件</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>config.json</code></td><td>完整实验配置，可复现实验。</td></tr>
+          <tr><td><code>stats.json</code></td><td>逐笔统计、净值统计、订单摘要、过滤摘要。</td></tr>
+          <tr><td><code>trades.csv</code></td><td>成交明细，含 <code>order_id / event_id / event_type</code>。</td></tr>
+          <tr><td><code>order_decisions.csv</code></td><td>撮合层接受或拒绝原因。</td></tr>
+          <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、高周期不一致。</td></tr>
+          <tr><td><code>equity_curve.csv</code></td><td>单策略交易净值或组合逐 K 盯市净值。</td></tr>
+          <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率。</td></tr>
+          <tr><td><code>limit_filter_audit.csv</code></td><td>日 K 涨停开盘过滤是否真实执行。</td></tr>
+          <tr><td><code>monthly_returns.csv</code></td><td>自然周期收益和周期最大回撤。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="docker">
+      <h2>Docker</h2>
+      <pre><code>docker build -t trending-winning .
+docker run --rm -p 8520:8501 \
+  -v /Users/a1234/Desktop/trend-backtest/data:/data \
+  -e TDX_TQCENTER_PATH=/path/to/PYPlugins/user \
+  trending-winning</code></pre>
+      <p>容器内页面数据目录可选择 <code>/data/market/daily</code>。</p>
+    </section>
+
+    <section id="windows">
+      <h2>Win/TDX 注意</h2>
+      <ul>
+        <li>真实 TDX 请求依赖本机通达信已启动并登录。</li>
+        <li>需要能定位 <code>PYPlugins/user</code>，其中应能导入 <code>tqcenter</code>。</li>
+        <li>在 Win 侧测试时，Web 文件夹选择器会浏览 Win 侧本机路径，不需要手写 macOS 路径。</li>
+        <li><code>60m</code> 会映射成 TDX 的 <code>1h</code> period。</li>
+        <li>分钟线能否返回取决于客户端本地是否已有对应周期数据。</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">TrendingWinning · TDX-only A 股趋势策略工作台 · 本指南由 README 和当前 Web 交互整理生成。</div>
+  </footer>
+</body>
+</html>

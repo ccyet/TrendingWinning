@@ -2,6 +2,8 @@
 
 TDX-only A 股 K 线趋势策略工作台。
 
+精简版 HTML 使用指南见 `docs/usage_guide.html`，可直接用浏览器打开。
+
 首版能力：
 
 - TDX `tqcenter` K 线：日 K `1d` 和分钟 K `5m / 15m / 30m / 60m`
