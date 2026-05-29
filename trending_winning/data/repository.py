@@ -145,6 +145,9 @@ DATA_AUDIT_SUMMARY_KEYS = [
     "data_missing_rows",
     "data_weighted_coverage_ratio",
     "data_min_coverage_ratio",
+    "data_coverage_p05",
+    "data_coverage_p50",
+    "data_coverage_p95",
     "data_max_missing_gap_minutes",
     "data_zero_volume_amount_rows",
     "data_non_positive_price_rows",
@@ -859,6 +862,9 @@ def summarize_data_audit(audit: pd.DataFrame) -> dict[str, float]:
         "data_missing_rows": missing_total,
         "data_weighted_coverage_ratio": _audit_ratio_or_zero(expected_total - missing_total, expected_total),
         "data_min_coverage_ratio": _audit_min_or_zero(coverage_ratio.loc[expected_mask]),
+        "data_coverage_p05": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.05),
+        "data_coverage_p50": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.50),
+        "data_coverage_p95": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.95),
         "data_max_missing_gap_minutes": _audit_max_or_zero(_audit_numeric_column(audit, "max_missing_gap_minutes")),
         "data_zero_volume_amount_rows": float(_audit_numeric_column(audit, "zero_volume_amount_rows").sum()),
         "data_non_positive_price_rows": float(_audit_numeric_column(audit, "non_positive_price_rows").sum()),
@@ -911,6 +917,12 @@ def _audit_max_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return float(round(float(values.max()), 12))
+
+
+def _audit_quantile_or_zero(values: pd.Series, quantile: float) -> float:
+    if values.empty:
+        return 0.0
+    return float(round(float(values.quantile(quantile)), 12))
 
 
 def _audit_window_for_timeframe(
