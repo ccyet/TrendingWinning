@@ -189,6 +189,7 @@ class SingleStrategyExperimentResult:
     backtest: BacktestResult
     input_bar_count: int
     filtered_limit_open_count: int
+    elapsed_seconds: float
     data_coverage: pd.DataFrame
     strategy_stats: pd.DataFrame
     symbol_stats: pd.DataFrame
@@ -258,6 +259,7 @@ def run_single_strategy_experiment(
     *,
     save: bool = False,
 ) -> SingleStrategyExperimentResult:
+    start_time = perf_counter()
     repo = MarketDataRepository(config.data_root, adjust=config.adjust)
     data = _load_experiment_data(repo, config)
     strategy = _wrap_higher_timeframe_strategies(
@@ -276,6 +278,7 @@ def run_single_strategy_experiment(
         backtest=backtest,
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
+        elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         data_coverage=data.data_audit,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
@@ -791,6 +794,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
     stats = dict(result.backtest.stats)
     stats["filtered_limit_open_count"] = float(result.filtered_limit_open_count)
+    stats["elapsed_seconds"] = float(result.elapsed_seconds)
     (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
     result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)

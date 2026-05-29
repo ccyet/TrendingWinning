@@ -1286,6 +1286,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     result = run_single_strategy_experiment(config, save=True)
 
     assert result.config.detector == "trend"
+    assert result.elapsed_seconds > 0
     assert result.backtest.stats["trade_count"] >= 1
     assert result.backtest.trades["detector_name"].eq("trend").all()
     assert result.backtest.trades["strategy_name"].eq("trend_signal_bar").all()
@@ -1307,6 +1308,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert (output_dir / "exit_reason_stats.csv").exists()
     assert (output_dir / "monthly_returns.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
+    saved_stats = json.loads((output_dir / "stats.json").read_text())
     assert saved_config["detector"] == "trend"
     assert saved_config["max_actual_risk_pct"] == 0.08
     assert saved_config["max_chase_pct"] == 0.08
@@ -1315,6 +1317,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_config["reversal_old_extreme_tolerance_pct"] == 0.03
     assert saved_config["reversal_require_old_extreme_test"] is False
     assert saved_config["reversal_require_structure_confirmation"] is False
+    assert saved_stats["elapsed_seconds"] == pytest.approx(result.elapsed_seconds)
 
 
 def test_single_strategy_experiment_builds_strategy_without_default_suite(tmp_path: Path, monkeypatch) -> None:
