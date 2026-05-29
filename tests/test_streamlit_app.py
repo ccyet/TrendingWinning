@@ -162,6 +162,17 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "TDX K线" in html
 
 
+def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    guide = (root / "docs" / "usage_guide.html").read_text(encoding="utf-8")
+
+    assert r"C:\new_tdx64\PYPlugins\user" in readme
+    assert r"C:\\new_tdx64\\PYPlugins\\user" in guide
+    assert r"C:\new_tdx\T0002\PYPlugins\user" not in readme
+    assert r"C:\\new_tdx\\T0002\\PYPlugins\\user" not in guide
+
+
 def test_streamlit_mapping_inputs_accept_comma_and_newline_pairs() -> None:
     assert _parse_int_mapping("trend_signal_bar=1\nrange_signal_bar=2") == {
         "trend_signal_bar": 1,

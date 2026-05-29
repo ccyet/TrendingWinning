@@ -38,7 +38,7 @@ def test_build_parallels_tdx_command_runs_cli_inside_windows_repo() -> None:
             "--end",
             "2026-05-25 15:00:00",
             "--tdx-path",
-            r"C:\new_tdx\T0002\PYPlugins\user",
+            r"C:\new_tdx64\PYPlugins\user",
         ],
     )
 
@@ -46,7 +46,7 @@ def test_build_parallels_tdx_command_runs_cli_inside_windows_repo() -> None:
     assert command[6] == "/c"
     assert "cd /d C:\\Mac\\Home\\Documents\\TrendingWinning" in command[7]
     assert "python.exe -m trending_winning.cli tdx-doctor --runtime local" in command[7]
-    assert r"C:\new_tdx\T0002\PYPlugins\user" in command[7]
+    assert r"C:\new_tdx64\PYPlugins\user" in command[7]
 
 
 def test_run_parallels_tdx_command_uses_prlctl_and_returns_stdout(monkeypatch) -> None:

@@ -48,7 +48,7 @@ Parallels 默认配置：
 - VM：`Windows 11`，可用 `--parallels-vm` 或 `TDX_PARALLELS_VM` 覆盖
 - Windows Python：`C:\Users\Public\venvs\trending-winning\Scripts\python.exe`，可用 `--windows-python` 或 `TDX_PARALLELS_PYTHON` 覆盖
 - Windows 仓库路径：默认把 Mac 当前仓库映射为 `C:\Mac\Home\...`，可用 `--windows-repo` 或 `TDX_PARALLELS_REPO` 覆盖
-- TDX 插件目录：用 Windows 路径传给 `--tdx-path`，例如 `C:\new_tdx\T0002\PYPlugins\user`
+- TDX 插件目录：用 Windows 路径传给 `--tdx-path`，本机 Parallels 实测目录为 `C:\new_tdx64\PYPlugins\user`
 
 Web 回测页里的“单策略回测”和“组合策略回测”与 CLI 复用同一套实验运行器。
 单策略只绑定一个 detector，不进入组合仓位分配层；组合策略才启用策略优先级、资金上限、行业上限和持仓互斥。
@@ -68,7 +68,7 @@ python -m trending_winning.cli tdx-doctor \
   --start "2026-05-25 09:30:00" \
   --end "2026-05-25 15:00:00" \
   --runtime parallels \
-  --tdx-path "C:\\new_tdx\\T0002\\PYPlugins\\user"
+  --tdx-path "C:\\new_tdx64\\PYPlugins\\user"
 
 python -m trending_winning.cli fetch \
   --symbols 000001.SZ,600519.SH \

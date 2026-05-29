@@ -93,7 +93,7 @@ def test_cli_tdx_doctor_routes_to_parallels_runtime(monkeypatch, capsys) -> None
             "--windows-repo",
             r"C:\Mac\Home\Documents\TrendingWinning",
             "--tdx-path",
-            r"C:\new_tdx\T0002\PYPlugins\user",
+            r"C:\new_tdx64\PYPlugins\user",
         ],
     )
 
@@ -105,7 +105,7 @@ def test_cli_tdx_doctor_routes_to_parallels_runtime(monkeypatch, capsys) -> None
     assert captured["config"].vm_name == "Windows 11"
     assert forwarded[:3] == ["tdx-doctor", "--runtime", "local"]
     assert "--parallels-vm" not in forwarded
-    assert r"C:\new_tdx\T0002\PYPlugins\user" in forwarded
+    assert r"C:\new_tdx64\PYPlugins\user" in forwarded
 
 
 def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, capsys) -> None:
