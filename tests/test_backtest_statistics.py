@@ -255,6 +255,7 @@ def test_compute_period_return_statistics_reports_stability_summary() -> None:
             "return": [0.10, -0.05, 0.0, 0.20],
             "max_drawdown": [-0.02, -0.08, 0.0, -0.01],
             "observation_count": [2, 3, 1, 4],
+            "end_net_value": [1.1, 1.045, 1.045, 1.254],
         }
     )
 
@@ -271,6 +272,10 @@ def test_compute_period_return_statistics_reports_stability_summary() -> None:
     assert stats["monthly_avg_drawdown"] == pytest.approx(-0.0275)
     assert stats["monthly_worst_drawdown"] == pytest.approx(-0.08)
     assert stats["monthly_avg_observation_count"] == pytest.approx(2.5)
+    assert stats["monthly_max_consecutive_gains"] == 1.0
+    assert stats["monthly_max_consecutive_losses"] == 1.0
+    assert stats["monthly_max_recovery_periods"] == 2.0
+    assert stats["monthly_underwater_ratio"] == pytest.approx(0.5)
 
 
 def test_compute_period_return_statistics_handles_empty_period_table() -> None:
@@ -288,6 +293,10 @@ def test_compute_period_return_statistics_handles_empty_period_table() -> None:
         "monthly_avg_drawdown": 0.0,
         "monthly_worst_drawdown": 0.0,
         "monthly_avg_observation_count": 0.0,
+        "monthly_max_consecutive_gains": 0.0,
+        "monthly_max_consecutive_losses": 0.0,
+        "monthly_max_recovery_periods": 0.0,
+        "monthly_underwater_ratio": 0.0,
     }
 
 

@@ -95,6 +95,10 @@ PERIOD_STAT_KEYS = [
     "avg_drawdown",
     "worst_drawdown",
     "avg_observation_count",
+    "max_consecutive_gains",
+    "max_consecutive_losses",
+    "max_recovery_periods",
+    "underwater_ratio",
 ]
 
 _PERIOD_RETURN_COLUMNS = pd.Index(
@@ -464,6 +468,8 @@ def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: st
     returns = _numeric_column(period_returns, "return")
     drawdown = _numeric_column(period_returns, "max_drawdown")
     observation_count = _numeric_column(period_returns, "observation_count")
+    period_net_value = _period_net_value_series(period_returns, returns)
+    period_underwater = period_net_value < period_net_value.cummax()
     period_count = float(len(returns))
     positive_count = float((returns > 0).sum())
     negative_count = float((returns < 0).sum())
@@ -479,6 +485,10 @@ def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: st
         f"{prefix}_avg_drawdown": _mean_or_zero(drawdown),
         f"{prefix}_worst_drawdown": _min_or_zero(drawdown),
         f"{prefix}_avg_observation_count": _mean_or_zero(observation_count),
+        f"{prefix}_max_consecutive_gains": float(_max_streak(returns, positive=True)),
+        f"{prefix}_max_consecutive_losses": float(_max_streak(returns, positive=False)),
+        f"{prefix}_max_recovery_periods": float(_max_drawdown_duration(period_net_value)),
+        f"{prefix}_underwater_ratio": _round_float(float(period_underwater.mean())) if not period_underwater.empty else 0.0,
     }
 
 
@@ -736,6 +746,15 @@ def _min_or_zero(values: pd.Series) -> float:
 
 def _empty_period_return_statistics(prefix: str) -> dict[str, float]:
     return {f"{prefix}_{key}": 0.0 for key in PERIOD_STAT_KEYS}
+
+
+def _period_net_value_series(period_returns: pd.DataFrame, returns: pd.Series) -> pd.Series:
+    """优先使用真实期末净值；没有期末净值时用周期收益复原一条相对净值。"""
+    if "end_net_value" in period_returns.columns:
+        return _numeric_column(period_returns, "end_net_value")
+    if returns.empty:
+        return pd.Series(dtype=float)
+    return (1.0 + returns).cumprod().reset_index(drop=True)
 
 
 def _weighted_mean_or_zero(values: pd.Series, weights: pd.Series) -> float:

@@ -181,6 +181,10 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "分钟 no_data" in guide
     assert "monthly_worst_return" in readme
     assert "monthly_worst_return" in guide
+    assert "monthly_max_consecutive_losses" in readme
+    assert "monthly_max_consecutive_losses" in guide
+    assert "monthly_max_recovery_periods" in readme
+    assert "monthly_max_recovery_periods" in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
     assert "pareto_rank" in readme
