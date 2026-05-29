@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 import sys
@@ -24,6 +25,118 @@ DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
+
+
+@dataclass(frozen=True)
+class BacktestScopeInputs:
+    """回测样本范围和模式选择。"""
+
+    symbols: list[str]
+    timeframe: str
+    start: str
+    end: str
+    mode: str
+
+
+@dataclass(frozen=True)
+class BacktestRiskInputs:
+    """回测基础风控、成本和撮合冲突规则。"""
+
+    take_profit: float
+    stop_loss: float
+    max_holding: int
+    fee_rate: float
+    slippage_bps: float
+    initial_equity: float
+    intrabar_exit_policy: str
+
+
+@dataclass(frozen=True)
+class BacktestDataQualityInputs:
+    """回测数据质量门禁。"""
+
+    strict_data_quality: bool
+    min_coverage_ratio: float | None
+
+
+@dataclass(frozen=True)
+class HigherTimeframeInputs:
+    """高周期方向门控设置。"""
+
+    higher_timeframe: str
+    higher_timeframe_max_age_minutes: int | None
+
+
+@dataclass(frozen=True)
+class BacktestOutputInputs:
+    """保存实验产物和运行按钮状态。"""
+
+    save_outputs: bool
+    output_dir: str
+    run_clicked: bool
+
+
+@dataclass(frozen=True)
+class SingleStrategyInputs:
+    """单策略 detector 参数。"""
+
+    detector: str
+    experiment_name: str
+    risk_reward: float
+    trend_lookback: int
+    trend_min_score: float
+    trend_h2_min_pullback_legs: int
+    range_lookback: int
+    channel_lookback: int
+    channel_method: str
+    channel_sigma: float
+    max_actual_risk_pct: float | None
+    max_chase_pct: float | None
+    reversal_lookback: int
+    reversal_old_extreme_tolerance_pct: float
+    reversal_require_old_extreme_test: bool
+    reversal_require_structure_confirmation: bool
+    advanced_detector: dict[str, float | int]
+
+
+@dataclass(frozen=True)
+class PortfolioAllocationInputs:
+    """组合层资金、容量和暴露约束。"""
+
+    detectors: tuple[str, ...]
+    experiment_name: str
+    risk_reward: float
+    max_open_positions: int
+    risk_per_trade: float | None
+    short_margin_rate: float
+    capital_per_trade: float | None
+    max_capital_per_trade: float
+    reserve_cash: float
+    allow_same_symbol_overlap: bool
+    strategy_priority_text: str
+    strategy_capital_limit_text: str
+    sector_capital_limit_text: str
+    symbol_sector_map_text: str
+    max_actual_risk_pct: float | None
+    max_chase_pct: float | None
+
+
+@dataclass(frozen=True)
+class PortfolioDetectorInputs:
+    """组合回测中各 detector 的识别参数。"""
+
+    trend_lookback: int
+    channel_lookback: int
+    trend_min_score: float
+    channel_sigma: float
+    range_lookback: int
+    reversal_lookback: int
+    trend_h2_min_pullback_legs: int
+    channel_method: str
+    reversal_old_extreme_tolerance_pct: float
+    reversal_require_old_extreme_test: bool
+    reversal_require_structure_confirmation: bool
+    advanced_detector: dict[str, float | int]
 
 
 def main() -> None:
@@ -605,92 +718,166 @@ def _scan_panel(data_root: Path, adjust: str) -> None:
 
 def _backtest_panel(data_root: Path, adjust: str) -> None:
     st.subheader("突破策略回测")
-    symbols, timeframe, start, end = _load_panel_inputs(data_root, "bt")
-    mode = st.radio("回测模式", ["旧突破回测", "单策略回测", "组合策略回测"], horizontal=True)
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        take_profit = st.number_input("止盈", min_value=0.001, value=0.06, step=0.005, format="%.3f")
-    with c2:
-        stop_loss = st.number_input("止损", min_value=0.001, value=0.03, step=0.005, format="%.3f")
-    with c3:
-        max_holding = st.number_input("最大持有K数", min_value=1, value=12)
-    cost1, cost2, cost3 = st.columns(3)
-    with cost1:
-        fee_rate = st.number_input("手续费率", min_value=0.0, value=0.0, step=0.0001, format="%.4f", key="bt_fee_rate")
-    with cost2:
-        slippage_bps = st.number_input("滑点bps", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="bt_slippage_bps")
-    with cost3:
-        initial_equity = st.number_input("初始资金", min_value=0.0001, value=1.0, step=0.1, format="%.4f", key="bt_initial_equity")
-    q1, q2 = st.columns(2)
-    with q1:
-        strict_data_quality = st.checkbox("严格数据质量门禁", value=True, key="bt_strict_quality")
-    with q2:
-        min_coverage_ratio_input = st.number_input(
-            "最低覆盖率门禁",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.0,
-            step=0.05,
-            format="%.2f",
-            key="bt_min_coverage_ratio",
-        )
-    min_coverage_ratio = float(min_coverage_ratio_input) if float(min_coverage_ratio_input) > 0 else None
-    intrabar_exit_policy = st.selectbox(
-        "同K止盈止损冲突",
-        ["conservative", "optimistic"],
-        format_func=lambda value: "保守：止损优先" if value == "conservative" else "乐观：止盈优先",
-        key="bt_intrabar_policy",
-    )
-    mtf1, mtf2 = st.columns(2)
-    higher_timeframe_options = ["", *[item for item in INTRADAY_TIMEFRAMES if item != timeframe]]
-    with mtf1:
-        higher_timeframe = st.selectbox(
-            "高周期方向门控",
-            higher_timeframe_options,
-            format_func=lambda value: "关闭" if value == "" else value,
-            key="bt_higher_timeframe",
-        )
-    with mtf2:
-        higher_timeframe_max_age = st.number_input(
-            "高周期最大过期分钟",
-            min_value=0,
-            value=0,
-            step=15,
-            key="bt_higher_timeframe_max_age",
-        )
-    higher_timeframe_max_age_minutes = int(higher_timeframe_max_age) if int(higher_timeframe_max_age) > 0 else None
-    if mode == "旧突破回测":
-        strategy_config = _strategy_controls("bt")
-        if st.button("运行回测", type="primary"):
-            bundle = _load_backtest_bundle(
-                data_root,
-                adjust,
-                symbols=symbols,
-                timeframe=timeframe,
-                start=start,
-                end=end,
-                strict_data_quality=bool(strict_data_quality),
-                min_coverage_ratio=min_coverage_ratio,
-            )
-            scanned = scan_bars(bundle.bars, strategy_config)
-            result = run_backtest(
-                scanned,
-                BacktestConfig(
-                    take_profit_pct=float(take_profit),
-                    stop_loss_pct=float(stop_loss),
-                    max_holding_bars=int(max_holding),
-                    fee_rate=float(fee_rate),
-                    slippage_bps=float(slippage_bps),
-                    initial_equity=float(initial_equity),
-                    intrabar_exit_policy=str(intrabar_exit_policy),
-                ),
-            )
-            _render_backtest_result(result, bundle)
+    scope = _backtest_scope_module(data_root)
+    risk = _backtest_risk_module()
+    quality = _backtest_data_quality_module()
+    higher = _backtest_higher_timeframe_module(scope.timeframe)
+
+    if scope.mode == "旧突破回测":
+        _legacy_backtest_module(data_root, adjust, scope, risk, quality)
         return
 
-    if mode == "单策略回测":
+    if scope.mode == "单策略回测":
+        single = _single_strategy_module(scope)
+        output = _backtest_output_module("single", single.experiment_name, "运行单策略回测")
+        if output.run_clicked:
+            _execute_single_strategy_experiment(data_root, adjust, scope, risk, quality, higher, single, output)
+        return
+
+    allocation = _portfolio_allocation_module(scope)
+    detector = _portfolio_detector_module()
+    output = _backtest_output_module("pf", allocation.experiment_name, "运行组合回测", title="7. 保存与运行")
+    if output.run_clicked:
+        _execute_portfolio_strategy_experiment(data_root, adjust, scope, risk, quality, higher, allocation, detector, output)
+
+
+def _backtest_module_container(title: str, caption: str = ""):
+    """回测页统一模块容器，避免控件在一个长表单里堆叠。"""
+    container = st.container(border=True)
+    with container:
+        st.markdown(f"#### {title}")
+        if caption:
+            st.caption(caption)
+    return container
+
+
+def _backtest_scope_module(data_root: Path) -> BacktestScopeInputs:
+    with _backtest_module_container("1. 样本范围", "先确定本次回测的数据窗口和回测模式。"):
+        symbols, timeframe, start, end = _load_panel_inputs(data_root, "bt")
+        mode = st.radio("回测模式", ["旧突破回测", "单策略回测", "组合策略回测"], horizontal=True)
+    return BacktestScopeInputs(symbols=symbols, timeframe=timeframe, start=start, end=end, mode=str(mode))
+
+
+def _backtest_risk_module() -> BacktestRiskInputs:
+    with _backtest_module_container("2. 基础风控与成本", "止盈止损、持有周期、手续费和滑点是所有回测共用的撮合参数。"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            take_profit = st.number_input("止盈", min_value=0.001, value=0.06, step=0.005, format="%.3f")
+        with c2:
+            stop_loss = st.number_input("止损", min_value=0.001, value=0.03, step=0.005, format="%.3f")
+        with c3:
+            max_holding = st.number_input("最大持有K数", min_value=1, value=12)
+        cost1, cost2, cost3 = st.columns(3)
+        with cost1:
+            fee_rate = st.number_input("手续费率", min_value=0.0, value=0.0, step=0.0001, format="%.4f", key="bt_fee_rate")
+        with cost2:
+            slippage_bps = st.number_input("滑点bps", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="bt_slippage_bps")
+        with cost3:
+            initial_equity = st.number_input("初始资金", min_value=0.0001, value=1.0, step=0.1, format="%.4f", key="bt_initial_equity")
+        intrabar_exit_policy = st.selectbox(
+            "同K止盈止损冲突",
+            ["conservative", "optimistic"],
+            format_func=lambda value: "保守：止损优先" if value == "conservative" else "乐观：止盈优先",
+            key="bt_intrabar_policy",
+        )
+    return BacktestRiskInputs(
+        take_profit=float(take_profit),
+        stop_loss=float(stop_loss),
+        max_holding=int(max_holding),
+        fee_rate=float(fee_rate),
+        slippage_bps=float(slippage_bps),
+        initial_equity=float(initial_equity),
+        intrabar_exit_policy=str(intrabar_exit_policy),
+    )
+
+
+def _backtest_data_quality_module() -> BacktestDataQualityInputs:
+    with _backtest_module_container("3. 数据门禁", "先过滤低质量本地 K 线，再进入 detector 和撮合。"):
+        q1, q2 = st.columns(2)
+        with q1:
+            strict_data_quality = st.checkbox("严格数据质量门禁", value=True, key="bt_strict_quality")
+        with q2:
+            min_coverage_ratio_input = st.number_input(
+                "最低覆盖率门禁",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.0,
+                step=0.05,
+                format="%.2f",
+                key="bt_min_coverage_ratio",
+            )
+    min_coverage_ratio = float(min_coverage_ratio_input) if float(min_coverage_ratio_input) > 0 else None
+    return BacktestDataQualityInputs(
+        strict_data_quality=bool(strict_data_quality),
+        min_coverage_ratio=min_coverage_ratio,
+    )
+
+
+def _backtest_higher_timeframe_module(timeframe: str) -> HigherTimeframeInputs:
+    with _backtest_module_container("4. 高周期门控", "高周期只过滤低周期订单，不改趋势、区间、通道或反转 detector 输出。"):
+        mtf1, mtf2 = st.columns(2)
+        higher_timeframe_options = ["", *[item for item in INTRADAY_TIMEFRAMES if item != timeframe]]
+        with mtf1:
+            higher_timeframe = st.selectbox(
+                "高周期方向门控",
+                higher_timeframe_options,
+                format_func=lambda value: "关闭" if value == "" else value,
+                key="bt_higher_timeframe",
+            )
+        with mtf2:
+            higher_timeframe_max_age = st.number_input(
+                "高周期最大过期分钟",
+                min_value=0,
+                value=0,
+                step=15,
+                key="bt_higher_timeframe_max_age",
+            )
+    max_age = int(higher_timeframe_max_age) if int(higher_timeframe_max_age) > 0 else None
+    return HigherTimeframeInputs(higher_timeframe=str(higher_timeframe), higher_timeframe_max_age_minutes=max_age)
+
+
+def _legacy_backtest_module(
+    data_root: Path,
+    adjust: str,
+    scope: BacktestScopeInputs,
+    risk: BacktestRiskInputs,
+    quality: BacktestDataQualityInputs,
+) -> None:
+    with _backtest_module_container("5. 旧突破参数", "兼容早期标志K + 通道突破回测，后续主线优先使用单策略或组合策略。"):
+        strategy_config = _strategy_controls("bt")
+    output = _backtest_output_module("legacy", _experiment_name("legacy-breakout", scope.timeframe, scope.start, scope.end), "运行回测", enable_save=False)
+    if not output.run_clicked:
+        return
+    bundle = _load_backtest_bundle(
+        data_root,
+        adjust,
+        symbols=scope.symbols,
+        timeframe=scope.timeframe,
+        start=scope.start,
+        end=scope.end,
+        strict_data_quality=quality.strict_data_quality,
+        min_coverage_ratio=quality.min_coverage_ratio,
+    )
+    scanned = scan_bars(bundle.bars, strategy_config)
+    result = run_backtest(
+        scanned,
+        BacktestConfig(
+            take_profit_pct=risk.take_profit,
+            stop_loss_pct=risk.stop_loss,
+            max_holding_bars=risk.max_holding,
+            fee_rate=risk.fee_rate,
+            slippage_bps=risk.slippage_bps,
+            initial_equity=risk.initial_equity,
+            intrabar_exit_policy=risk.intrabar_exit_policy,
+        ),
+    )
+    _render_backtest_result(result, bundle)
+
+
+def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
+    with _backtest_module_container("5. 单策略参数", "只绑定一个 detector，用于验证单一模式识别模块。"):
         detector = st.selectbox("单策略 detector", ["trend", "range", "channel", "reversal"], index=0, key="single_detector")
-        experiment_name = _experiment_name(f"single-{detector}", timeframe, start, end)
+        experiment_name = _experiment_name(f"single-{detector}", scope.timeframe, scope.start, scope.end)
         s1, s2, s3 = st.columns(3)
         with s1:
             risk_reward = st.number_input("单策略盈亏比", min_value=0.1, value=2.0, step=0.1, key="single_rr")
@@ -751,225 +938,321 @@ def _backtest_panel(data_root: Path, adjust: str) -> None:
                 value=True,
                 key="single_reversal_require_structure_confirmation",
             )
-        save_outputs, output_dir = _experiment_output_controls("single", experiment_name)
-        if st.button("运行单策略回测", type="primary"):
-            experiment = run_single_strategy_experiment(
-                SingleStrategyExperimentConfig(
-                    name=experiment_name,
-                    data_root=str(data_root),
-                    symbols=tuple(symbols),
-                    timeframe=timeframe,
-                    higher_timeframe=str(higher_timeframe),
-                    higher_timeframe_max_age_minutes=higher_timeframe_max_age_minutes,
-                    start=start,
-                    end=end,
-                    detector=str(detector),
-                    adjust=adjust,
-                    risk_reward=float(risk_reward),
-                    max_holding_bars=int(max_holding),
-                    max_actual_risk_pct=float(max_actual_risk_pct) if float(max_actual_risk_pct) > 0 else None,
-                    max_chase_pct=float(max_chase_pct) if float(max_chase_pct) > 0 else None,
-                    fee_rate=float(fee_rate),
-                    slippage_bps=float(slippage_bps),
-                    initial_equity=float(initial_equity),
-                    intrabar_exit_policy=str(intrabar_exit_policy),
-                    strict_data_quality=bool(strict_data_quality),
-                    min_coverage_ratio=min_coverage_ratio,
-                    output_dir=output_dir if save_outputs else "",
-                    trend_lookback=int(trend_lookback),
-                    trend_min_score=float(trend_min_score),
-                    trend_strong_close_pos=float(advanced_detector["trend_strong_close_pos"]),
-                    trend_min_body_ratio=float(advanced_detector["trend_min_body_ratio"]),
-                    trend_pullback_lookback=int(advanced_detector["trend_pullback_lookback"]),
-                    trend_h2_min_pullback_legs=int(trend_h2_min_pullback_legs),
-                    range_lookback=int(range_lookback),
-                    range_middle_low=float(advanced_detector["range_middle_low"]),
-                    range_middle_high=float(advanced_detector["range_middle_high"]),
-                    range_false_break_buffer=float(advanced_detector["range_false_break_buffer"]),
-                    range_strong_close_pos=float(advanced_detector["range_strong_close_pos"]),
-                    range_min_score=float(advanced_detector["range_min_score"]),
-                    channel_method=str(channel_method),
-                    channel_lookback=int(channel_lookback),
-                    channel_sigma_multiple=float(channel_sigma),
-                    channel_break_buffer=float(advanced_detector["channel_break_buffer"]),
-                    channel_swing_left_bars=int(advanced_detector["channel_swing_left_bars"]),
-                    channel_swing_right_bars=int(advanced_detector["channel_swing_right_bars"]),
-                    reversal_lookback=int(reversal_lookback),
-                    reversal_strong_close_pos=float(advanced_detector["reversal_strong_close_pos"]),
-                    reversal_min_body_ratio=float(advanced_detector["reversal_min_body_ratio"]),
-                    reversal_old_extreme_tolerance_pct=float(reversal_old_extreme_tolerance_pct),
-                    reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
-                    reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
-                ),
-                save=save_outputs,
-            )
-            _render_backtest_result(
-                experiment.backtest,
-                filtered_limit_open_count=experiment.filtered_limit_open_count,
-                data_coverage=experiment.data_coverage,
-            )
-            _render_experiment_breakdowns(experiment)
-            if save_outputs:
-                _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
-        return
-
-    detectors = st.multiselect("组合 detector", ["trend", "range", "channel", "reversal"], default=["trend", "range", "channel"])
-    experiment_name = _experiment_name("portfolio", timeframe, start, end)
-    p1, p2, p3, p4 = st.columns(4)
-    with p1:
-        risk_reward = st.number_input("组合盈亏比", min_value=0.1, value=2.0, step=0.1, key="pf_rr")
-    with p2:
-        max_open_positions = st.number_input("最大组合持仓", min_value=1, value=5, key="pf_max_open")
-    with p3:
-        risk_per_trade = st.number_input("单笔风险预算", min_value=0.0, value=0.0, step=0.0025, format="%.4f", key="pf_risk")
-    with p4:
-        short_margin_rate = st.number_input("空头保证金倍数", min_value=0.1, value=1.0, step=0.1, key="pf_short_margin")
-    alloc1, alloc2, alloc3, alloc4 = st.columns(4)
-    with alloc1:
-        capital_per_trade = st.number_input("固定单笔仓位", min_value=0.0, value=0.0, step=0.05, format="%.3f", key="pf_capital")
-    with alloc2:
-        max_capital_per_trade = st.number_input("最大单笔仓位", min_value=0.001, max_value=1.0, value=1.0, step=0.05, format="%.3f", key="pf_max_capital")
-    with alloc3:
-        reserve_cash = st.number_input("预留现金", min_value=0.0, max_value=0.99, value=0.0, step=0.05, format="%.3f", key="pf_reserve_cash")
-    with alloc4:
-        allow_same_symbol_overlap = st.checkbox("允许同票重叠", value=False, key="pf_allow_overlap")
-    map1, map2 = st.columns(2)
-    with map1:
-        strategy_priority_text = st.text_area("策略优先级", value="", placeholder="trend_signal_bar=1,range_signal_bar=2", key="pf_strategy_priority")
-        strategy_capital_limit_text = st.text_area("策略资金上限", value="", placeholder="trend_signal_bar=0.6", key="pf_strategy_limit")
-    with map2:
-        sector_capital_limit_text = st.text_area("行业资金上限", value="", placeholder="银行=0.5,新能源=0.4", key="pf_sector_limit")
-        symbol_sector_map_text = st.text_area("股票行业映射", value="", placeholder="000001.SZ=银行,300750.SZ=新能源", key="pf_symbol_sector")
-    pf_r1, pf_r2 = st.columns(2)
-    with pf_r1:
-        max_actual_risk_pct = st.number_input(
-            "组合最大实际风险",
-            min_value=0.0,
-            value=0.0,
-            step=0.005,
-            format="%.3f",
-            key="pf_max_actual_risk_pct",
-        )
-    with pf_r2:
-        max_chase_pct = st.number_input(
-            "组合最大追价距离",
-            min_value=0.0,
-            value=0.0,
-            step=0.005,
-            format="%.3f",
-            key="pf_max_chase_pct",
-        )
-    detector_c1, detector_c2, detector_c3 = st.columns(3)
-    with detector_c1:
-        trend_lookback = st.number_input("组合趋势回看", min_value=3, value=20, key="pf_trend_lookback")
-        channel_lookback = st.number_input("组合通道回看", min_value=3, value=40, key="pf_channel_lookback")
-    with detector_c2:
-        trend_min_score = st.number_input("组合趋势最低评分", min_value=0.0, value=1.0, step=0.1, key="pf_trend_score")
-        channel_sigma = st.number_input("组合通道带宽倍数", min_value=0.1, value=2.0, step=0.1, key="pf_channel_sigma")
-    with detector_c3:
-        range_lookback = st.number_input("组合区间回看", min_value=3, value=20, key="pf_range_lookback")
-        reversal_lookback = st.number_input("组合反转回看", min_value=3, value=20, key="pf_reversal_lookback")
-    trend_h2_min_pullback_legs = st.number_input("组合H2/L2最少回撤腿数", min_value=1, value=2, key="pf_h2_legs")
-    channel_method = st.selectbox(
-        "组合通道算法",
-        ["regression", "swing"],
-        format_func=lambda value: "回归通道" if value == "regression" else "摆动点通道",
-        key="pf_channel_method",
+    return SingleStrategyInputs(
+        detector=str(detector),
+        experiment_name=experiment_name,
+        risk_reward=float(risk_reward),
+        trend_lookback=int(trend_lookback),
+        trend_min_score=float(trend_min_score),
+        trend_h2_min_pullback_legs=int(trend_h2_min_pullback_legs),
+        range_lookback=int(range_lookback),
+        channel_lookback=int(channel_lookback),
+        channel_method=str(channel_method),
+        channel_sigma=float(channel_sigma),
+        max_actual_risk_pct=float(max_actual_risk_pct) if float(max_actual_risk_pct) > 0 else None,
+        max_chase_pct=float(max_chase_pct) if float(max_chase_pct) > 0 else None,
+        reversal_lookback=int(reversal_lookback),
+        reversal_old_extreme_tolerance_pct=float(reversal_old_extreme_tolerance_pct),
+        reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
+        reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
+        advanced_detector=advanced_detector,
     )
-    advanced_detector = _detector_parameter_controls("pf", "组合")
-    pr1, pr2, pr3 = st.columns(3)
-    with pr1:
-        reversal_old_extreme_tolerance_pct = st.number_input(
-            "组合反转旧极端容忍度",
-            min_value=0.0,
-            value=0.01,
-            step=0.005,
-            format="%.3f",
-            key="pf_reversal_old_extreme_tolerance_pct",
+
+
+def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocationInputs:
+    with _backtest_module_container("5. 组合仓位与资金", "组合层只处理多个单策略订单之间的资金、容量和暴露约束。"):
+        detectors = st.multiselect("组合 detector", ["trend", "range", "channel", "reversal"], default=["trend", "range", "channel"])
+        experiment_name = _experiment_name("portfolio", scope.timeframe, scope.start, scope.end)
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            risk_reward = st.number_input("组合盈亏比", min_value=0.1, value=2.0, step=0.1, key="pf_rr")
+        with p2:
+            max_open_positions = st.number_input("最大组合持仓", min_value=1, value=5, key="pf_max_open")
+        with p3:
+            risk_per_trade = st.number_input("单笔风险预算", min_value=0.0, value=0.0, step=0.0025, format="%.4f", key="pf_risk")
+        with p4:
+            short_margin_rate = st.number_input("空头保证金倍数", min_value=0.1, value=1.0, step=0.1, key="pf_short_margin")
+        alloc1, alloc2, alloc3, alloc4 = st.columns(4)
+        with alloc1:
+            capital_per_trade = st.number_input("固定单笔仓位", min_value=0.0, value=0.0, step=0.05, format="%.3f", key="pf_capital")
+        with alloc2:
+            max_capital_per_trade = st.number_input("最大单笔仓位", min_value=0.001, max_value=1.0, value=1.0, step=0.05, format="%.3f", key="pf_max_capital")
+        with alloc3:
+            reserve_cash = st.number_input("预留现金", min_value=0.0, max_value=0.99, value=0.0, step=0.05, format="%.3f", key="pf_reserve_cash")
+        with alloc4:
+            allow_same_symbol_overlap = st.checkbox("允许同票重叠", value=False, key="pf_allow_overlap")
+        map1, map2 = st.columns(2)
+        with map1:
+            strategy_priority_text = st.text_area("策略优先级", value="", placeholder="trend_signal_bar=1,range_signal_bar=2", key="pf_strategy_priority")
+            strategy_capital_limit_text = st.text_area("策略资金上限", value="", placeholder="trend_signal_bar=0.6", key="pf_strategy_limit")
+        with map2:
+            sector_capital_limit_text = st.text_area("行业资金上限", value="", placeholder="银行=0.5,新能源=0.4", key="pf_sector_limit")
+            symbol_sector_map_text = st.text_area("股票行业映射", value="", placeholder="000001.SZ=银行,300750.SZ=新能源", key="pf_symbol_sector")
+        pf_r1, pf_r2 = st.columns(2)
+        with pf_r1:
+            max_actual_risk_pct = st.number_input(
+                "组合最大实际风险",
+                min_value=0.0,
+                value=0.0,
+                step=0.005,
+                format="%.3f",
+                key="pf_max_actual_risk_pct",
+            )
+        with pf_r2:
+            max_chase_pct = st.number_input(
+                "组合最大追价距离",
+                min_value=0.0,
+                value=0.0,
+                step=0.005,
+                format="%.3f",
+                key="pf_max_chase_pct",
+            )
+    return PortfolioAllocationInputs(
+        detectors=tuple(str(item) for item in detectors),
+        experiment_name=experiment_name,
+        risk_reward=float(risk_reward),
+        max_open_positions=int(max_open_positions),
+        risk_per_trade=float(risk_per_trade) if float(risk_per_trade) > 0 else None,
+        short_margin_rate=float(short_margin_rate),
+        capital_per_trade=float(capital_per_trade) if float(capital_per_trade) > 0 else None,
+        max_capital_per_trade=float(max_capital_per_trade),
+        reserve_cash=float(reserve_cash),
+        allow_same_symbol_overlap=bool(allow_same_symbol_overlap),
+        strategy_priority_text=str(strategy_priority_text),
+        strategy_capital_limit_text=str(strategy_capital_limit_text),
+        sector_capital_limit_text=str(sector_capital_limit_text),
+        symbol_sector_map_text=str(symbol_sector_map_text),
+        max_actual_risk_pct=float(max_actual_risk_pct) if float(max_actual_risk_pct) > 0 else None,
+        max_chase_pct=float(max_chase_pct) if float(max_chase_pct) > 0 else None,
+    )
+
+
+def _portfolio_detector_module() -> PortfolioDetectorInputs:
+    with _backtest_module_container("6. 组合 detector 参数", "这里仍只配置各 detector 的识别阈值，不配置仓位。"):
+        detector_c1, detector_c2, detector_c3 = st.columns(3)
+        with detector_c1:
+            trend_lookback = st.number_input("组合趋势回看", min_value=3, value=20, key="pf_trend_lookback")
+            channel_lookback = st.number_input("组合通道回看", min_value=3, value=40, key="pf_channel_lookback")
+        with detector_c2:
+            trend_min_score = st.number_input("组合趋势最低评分", min_value=0.0, value=1.0, step=0.1, key="pf_trend_score")
+            channel_sigma = st.number_input("组合通道带宽倍数", min_value=0.1, value=2.0, step=0.1, key="pf_channel_sigma")
+        with detector_c3:
+            range_lookback = st.number_input("组合区间回看", min_value=3, value=20, key="pf_range_lookback")
+            reversal_lookback = st.number_input("组合反转回看", min_value=3, value=20, key="pf_reversal_lookback")
+        trend_h2_min_pullback_legs = st.number_input("组合H2/L2最少回撤腿数", min_value=1, value=2, key="pf_h2_legs")
+        channel_method = st.selectbox(
+            "组合通道算法",
+            ["regression", "swing"],
+            format_func=lambda value: "回归通道" if value == "regression" else "摆动点通道",
+            key="pf_channel_method",
         )
-    with pr2:
-        reversal_require_old_extreme_test = st.checkbox(
-            "组合要求旧极端失败测试",
-            value=True,
-            key="pf_reversal_require_old_extreme_test",
-        )
-    with pr3:
-        reversal_require_structure_confirmation = st.checkbox(
-            "组合要求结构确认",
-            value=True,
-            key="pf_reversal_require_structure_confirmation",
-        )
-    save_outputs, output_dir = _experiment_output_controls("pf", experiment_name)
-    if st.button("运行组合回测", type="primary"):
-        experiment = run_portfolio_experiment(
-            PortfolioExperimentConfig(
-                name=experiment_name,
-                data_root=str(data_root),
-                symbols=tuple(symbols),
-                timeframe=timeframe,
-                higher_timeframe=str(higher_timeframe),
-                higher_timeframe_max_age_minutes=higher_timeframe_max_age_minutes,
-                start=start,
-                end=end,
-                adjust=adjust,
-                detectors=tuple(detectors),
-                risk_reward=float(risk_reward),
-                max_holding_bars=int(max_holding),
-                max_actual_risk_pct=float(max_actual_risk_pct) if float(max_actual_risk_pct) > 0 else None,
-                max_chase_pct=float(max_chase_pct) if float(max_chase_pct) > 0 else None,
-                max_open_positions=int(max_open_positions),
-                capital_per_trade=float(capital_per_trade) if float(capital_per_trade) > 0 else None,
-                risk_per_trade=float(risk_per_trade) if float(risk_per_trade) > 0 else None,
-                max_capital_per_trade=float(max_capital_per_trade),
-                short_margin_rate=float(short_margin_rate),
-                reserve_cash=float(reserve_cash),
-                allow_same_symbol_overlap=bool(allow_same_symbol_overlap),
-                strategy_priority=_parse_int_mapping(str(strategy_priority_text)),
-                strategy_capital_limit=_parse_float_mapping(str(strategy_capital_limit_text)),
-                sector_capital_limit=_parse_float_mapping(str(sector_capital_limit_text)),
-                symbol_sector_map=_parse_text_mapping(str(symbol_sector_map_text)),
-                fee_rate=float(fee_rate),
-                slippage_bps=float(slippage_bps),
-                initial_equity=float(initial_equity),
-                intrabar_exit_policy=str(intrabar_exit_policy),
-                strict_data_quality=bool(strict_data_quality),
-                min_coverage_ratio=min_coverage_ratio,
-                output_dir=output_dir if save_outputs else "",
-                trend_lookback=int(trend_lookback),
-                trend_min_score=float(trend_min_score),
-                trend_strong_close_pos=float(advanced_detector["trend_strong_close_pos"]),
-                trend_min_body_ratio=float(advanced_detector["trend_min_body_ratio"]),
-                trend_pullback_lookback=int(advanced_detector["trend_pullback_lookback"]),
-                trend_h2_min_pullback_legs=int(trend_h2_min_pullback_legs),
-                range_lookback=int(range_lookback),
-                range_middle_low=float(advanced_detector["range_middle_low"]),
-                range_middle_high=float(advanced_detector["range_middle_high"]),
-                range_false_break_buffer=float(advanced_detector["range_false_break_buffer"]),
-                range_strong_close_pos=float(advanced_detector["range_strong_close_pos"]),
-                range_min_score=float(advanced_detector["range_min_score"]),
-                channel_method=str(channel_method),
-                channel_lookback=int(channel_lookback),
-                channel_sigma_multiple=float(channel_sigma),
-                channel_break_buffer=float(advanced_detector["channel_break_buffer"]),
-                channel_swing_left_bars=int(advanced_detector["channel_swing_left_bars"]),
-                channel_swing_right_bars=int(advanced_detector["channel_swing_right_bars"]),
-                reversal_lookback=int(reversal_lookback),
-                reversal_strong_close_pos=float(advanced_detector["reversal_strong_close_pos"]),
-                reversal_min_body_ratio=float(advanced_detector["reversal_min_body_ratio"]),
-                reversal_old_extreme_tolerance_pct=float(reversal_old_extreme_tolerance_pct),
-                reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
-                reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
-            ),
-            save=save_outputs,
-        )
-        _render_backtest_result(
-            experiment.backtest,
-            filtered_limit_open_count=experiment.filtered_limit_open_count,
-            data_coverage=experiment.data_coverage,
-        )
-        _render_experiment_breakdowns(experiment)
-        if save_outputs:
-            _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
+        advanced_detector = _detector_parameter_controls("pf", "组合")
+        pr1, pr2, pr3 = st.columns(3)
+        with pr1:
+            reversal_old_extreme_tolerance_pct = st.number_input(
+                "组合反转旧极端容忍度",
+                min_value=0.0,
+                value=0.01,
+                step=0.005,
+                format="%.3f",
+                key="pf_reversal_old_extreme_tolerance_pct",
+            )
+        with pr2:
+            reversal_require_old_extreme_test = st.checkbox(
+                "组合要求旧极端失败测试",
+                value=True,
+                key="pf_reversal_require_old_extreme_test",
+            )
+        with pr3:
+            reversal_require_structure_confirmation = st.checkbox(
+                "组合要求结构确认",
+                value=True,
+                key="pf_reversal_require_structure_confirmation",
+            )
+    return PortfolioDetectorInputs(
+        trend_lookback=int(trend_lookback),
+        channel_lookback=int(channel_lookback),
+        trend_min_score=float(trend_min_score),
+        channel_sigma=float(channel_sigma),
+        range_lookback=int(range_lookback),
+        reversal_lookback=int(reversal_lookback),
+        trend_h2_min_pullback_legs=int(trend_h2_min_pullback_legs),
+        channel_method=str(channel_method),
+        reversal_old_extreme_tolerance_pct=float(reversal_old_extreme_tolerance_pct),
+        reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
+        reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
+        advanced_detector=advanced_detector,
+    )
+
+
+def _backtest_output_module(
+    prefix: str,
+    experiment_name: str,
+    button_label: str,
+    *,
+    enable_save: bool = True,
+    title: str = "6. 保存与运行",
+) -> BacktestOutputInputs:
+    with _backtest_module_container(title, "输出目录和运行按钮单独放置，避免和参数区混在一起。"):
+        if enable_save:
+            save_outputs, output_dir = _experiment_output_controls(prefix, experiment_name)
+        else:
+            save_outputs, output_dir = False, ""
+        run_clicked = st.button(button_label, type="primary")
+    return BacktestOutputInputs(save_outputs=bool(save_outputs), output_dir=str(output_dir), run_clicked=bool(run_clicked))
+
+
+def _execute_single_strategy_experiment(
+    data_root: Path,
+    adjust: str,
+    scope: BacktestScopeInputs,
+    risk: BacktestRiskInputs,
+    quality: BacktestDataQualityInputs,
+    higher: HigherTimeframeInputs,
+    single: SingleStrategyInputs,
+    output: BacktestOutputInputs,
+) -> None:
+    experiment = run_single_strategy_experiment(
+        SingleStrategyExperimentConfig(
+            name=single.experiment_name,
+            data_root=str(data_root),
+            symbols=tuple(scope.symbols),
+            timeframe=scope.timeframe,
+            higher_timeframe=higher.higher_timeframe,
+            higher_timeframe_max_age_minutes=higher.higher_timeframe_max_age_minutes,
+            start=scope.start,
+            end=scope.end,
+            detector=single.detector,
+            adjust=adjust,
+            risk_reward=single.risk_reward,
+            max_holding_bars=risk.max_holding,
+            max_actual_risk_pct=single.max_actual_risk_pct,
+            max_chase_pct=single.max_chase_pct,
+            fee_rate=risk.fee_rate,
+            slippage_bps=risk.slippage_bps,
+            initial_equity=risk.initial_equity,
+            intrabar_exit_policy=risk.intrabar_exit_policy,
+            strict_data_quality=quality.strict_data_quality,
+            min_coverage_ratio=quality.min_coverage_ratio,
+            output_dir=output.output_dir if output.save_outputs else "",
+            trend_lookback=single.trend_lookback,
+            trend_min_score=single.trend_min_score,
+            trend_strong_close_pos=float(single.advanced_detector["trend_strong_close_pos"]),
+            trend_min_body_ratio=float(single.advanced_detector["trend_min_body_ratio"]),
+            trend_pullback_lookback=int(single.advanced_detector["trend_pullback_lookback"]),
+            trend_h2_min_pullback_legs=single.trend_h2_min_pullback_legs,
+            range_lookback=single.range_lookback,
+            range_middle_low=float(single.advanced_detector["range_middle_low"]),
+            range_middle_high=float(single.advanced_detector["range_middle_high"]),
+            range_false_break_buffer=float(single.advanced_detector["range_false_break_buffer"]),
+            range_strong_close_pos=float(single.advanced_detector["range_strong_close_pos"]),
+            range_min_score=float(single.advanced_detector["range_min_score"]),
+            channel_method=single.channel_method,
+            channel_lookback=single.channel_lookback,
+            channel_sigma_multiple=single.channel_sigma,
+            channel_break_buffer=float(single.advanced_detector["channel_break_buffer"]),
+            channel_swing_left_bars=int(single.advanced_detector["channel_swing_left_bars"]),
+            channel_swing_right_bars=int(single.advanced_detector["channel_swing_right_bars"]),
+            reversal_lookback=single.reversal_lookback,
+            reversal_strong_close_pos=float(single.advanced_detector["reversal_strong_close_pos"]),
+            reversal_min_body_ratio=float(single.advanced_detector["reversal_min_body_ratio"]),
+            reversal_old_extreme_tolerance_pct=single.reversal_old_extreme_tolerance_pct,
+            reversal_require_old_extreme_test=single.reversal_require_old_extreme_test,
+            reversal_require_structure_confirmation=single.reversal_require_structure_confirmation,
+        ),
+        save=output.save_outputs,
+    )
+    _render_backtest_result(
+        experiment.backtest,
+        filtered_limit_open_count=experiment.filtered_limit_open_count,
+        data_coverage=experiment.data_coverage,
+    )
+    _render_experiment_breakdowns(experiment)
+    if output.save_outputs:
+        _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
+
+
+def _execute_portfolio_strategy_experiment(
+    data_root: Path,
+    adjust: str,
+    scope: BacktestScopeInputs,
+    risk: BacktestRiskInputs,
+    quality: BacktestDataQualityInputs,
+    higher: HigherTimeframeInputs,
+    allocation: PortfolioAllocationInputs,
+    detector: PortfolioDetectorInputs,
+    output: BacktestOutputInputs,
+) -> None:
+    advanced_detector = detector.advanced_detector
+    experiment = run_portfolio_experiment(
+        PortfolioExperimentConfig(
+            name=allocation.experiment_name,
+            data_root=str(data_root),
+            symbols=tuple(scope.symbols),
+            timeframe=scope.timeframe,
+            higher_timeframe=higher.higher_timeframe,
+            higher_timeframe_max_age_minutes=higher.higher_timeframe_max_age_minutes,
+            start=scope.start,
+            end=scope.end,
+            adjust=adjust,
+            detectors=allocation.detectors,
+            risk_reward=allocation.risk_reward,
+            max_holding_bars=risk.max_holding,
+            max_actual_risk_pct=allocation.max_actual_risk_pct,
+            max_chase_pct=allocation.max_chase_pct,
+            max_open_positions=allocation.max_open_positions,
+            capital_per_trade=allocation.capital_per_trade,
+            risk_per_trade=allocation.risk_per_trade,
+            max_capital_per_trade=allocation.max_capital_per_trade,
+            short_margin_rate=allocation.short_margin_rate,
+            reserve_cash=allocation.reserve_cash,
+            allow_same_symbol_overlap=allocation.allow_same_symbol_overlap,
+            strategy_priority=_parse_int_mapping(allocation.strategy_priority_text),
+            strategy_capital_limit=_parse_float_mapping(allocation.strategy_capital_limit_text),
+            sector_capital_limit=_parse_float_mapping(allocation.sector_capital_limit_text),
+            symbol_sector_map=_parse_text_mapping(allocation.symbol_sector_map_text),
+            fee_rate=risk.fee_rate,
+            slippage_bps=risk.slippage_bps,
+            initial_equity=risk.initial_equity,
+            intrabar_exit_policy=risk.intrabar_exit_policy,
+            strict_data_quality=quality.strict_data_quality,
+            min_coverage_ratio=quality.min_coverage_ratio,
+            output_dir=output.output_dir if output.save_outputs else "",
+            trend_lookback=detector.trend_lookback,
+            trend_min_score=detector.trend_min_score,
+            trend_strong_close_pos=float(advanced_detector["trend_strong_close_pos"]),
+            trend_min_body_ratio=float(advanced_detector["trend_min_body_ratio"]),
+            trend_pullback_lookback=int(advanced_detector["trend_pullback_lookback"]),
+            trend_h2_min_pullback_legs=detector.trend_h2_min_pullback_legs,
+            range_lookback=detector.range_lookback,
+            range_middle_low=float(advanced_detector["range_middle_low"]),
+            range_middle_high=float(advanced_detector["range_middle_high"]),
+            range_false_break_buffer=float(advanced_detector["range_false_break_buffer"]),
+            range_strong_close_pos=float(advanced_detector["range_strong_close_pos"]),
+            range_min_score=float(advanced_detector["range_min_score"]),
+            channel_method=detector.channel_method,
+            channel_lookback=detector.channel_lookback,
+            channel_sigma_multiple=detector.channel_sigma,
+            channel_break_buffer=float(advanced_detector["channel_break_buffer"]),
+            channel_swing_left_bars=int(advanced_detector["channel_swing_left_bars"]),
+            channel_swing_right_bars=int(advanced_detector["channel_swing_right_bars"]),
+            reversal_lookback=detector.reversal_lookback,
+            reversal_strong_close_pos=float(advanced_detector["reversal_strong_close_pos"]),
+            reversal_min_body_ratio=float(advanced_detector["reversal_min_body_ratio"]),
+            reversal_old_extreme_tolerance_pct=detector.reversal_old_extreme_tolerance_pct,
+            reversal_require_old_extreme_test=detector.reversal_require_old_extreme_test,
+            reversal_require_structure_confirmation=detector.reversal_require_structure_confirmation,
+        ),
+        save=output.save_outputs,
+    )
+    _render_backtest_result(
+        experiment.backtest,
+        filtered_limit_open_count=experiment.filtered_limit_open_count,
+        data_coverage=experiment.data_coverage,
+    )
+    _render_experiment_breakdowns(experiment)
+    if output.save_outputs:
+        _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
 
 
 def _render_backtest_result(

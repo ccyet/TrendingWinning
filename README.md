@@ -2,7 +2,7 @@
 
 TDX-only A 股 K 线趋势策略工作台。
 
-精简版 HTML 使用指南见 `docs/usage_guide.html`，可直接用浏览器打开。
+精简版 HTML 使用指南见 `docs/usage_guide.html`；回测界面和 K 线范例见 `docs/backtest_kline_guide.html`，均可直接用浏览器打开。
 
 首版能力：
 

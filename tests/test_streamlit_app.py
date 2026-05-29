@@ -187,10 +187,38 @@ def test_streamlit_primary_inputs_are_grouped_horizontally() -> None:
     assert "scan_cols = st.columns([2, 2, 1, 1])" in source
 
 
+def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None:
+    source = (Path(__file__).resolve().parents[1] / "streamlit_app.py").read_text()
+
+    for helper in [
+        "_backtest_scope_module(",
+        "_backtest_risk_module(",
+        "_backtest_data_quality_module(",
+        "_backtest_higher_timeframe_module(",
+        "_single_strategy_module(",
+        "_portfolio_allocation_module(",
+        "_portfolio_detector_module(",
+        "_backtest_output_module(",
+    ]:
+        assert helper in source
+
+    for title in [
+        "1. 样本范围",
+        "2. 基础风控与成本",
+        "3. 数据门禁",
+        "4. 高周期门控",
+        "5. 单策略参数",
+        "5. 组合仓位与资金",
+        "6. 保存与运行",
+    ]:
+        assert title in source
+
+
 def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     html = (Path(__file__).resolve().parents[1] / "docs" / "usage_guide.html").read_text(encoding="utf-8")
 
     assert "TrendingWinning 使用指南" in html
+    assert "backtest_kline_guide.html" in html
     assert "路径选择" in html
     assert "单策略回测" in html
     assert "组合策略回测" in html
@@ -200,6 +228,29 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "data_inventory.csv" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
+
+
+def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    html = (root / "docs" / "backtest_kline_guide.html").read_text(encoding="utf-8")
+
+    assert "docs/backtest_kline_guide.html" in readme
+    assert "回测界面 K 线使用说明" in html
+    assert "趋势回撤：H2 顺势做多" in html
+    assert "区间失败突破：只做极端" in html
+    assert "反转：第二次信号才切换" in html
+    assert html.count("<svg") >= 3
+    for title in [
+        "1. 样本范围",
+        "2. 基础风控与成本",
+        "3. 数据门禁",
+        "4. 高周期门控",
+        "5. 单策略参数",
+        "5. 组合仓位与资金",
+        "6. 保存与运行",
+    ]:
+        assert title in html
 
 
 def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
