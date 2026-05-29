@@ -294,7 +294,7 @@ python -m trending_winning.cli single-sweep \
 `single-sweep` 只绑定一个 detector，不进入组合仓位分配层；一次加载数据，多组参数复用同一批 K 线，订单参数不变时复用已生成订单。
 除固定的 `--risk-rewards / --max-holding-bars-list` 外，也可以重复传 `--grid 字段=值1,值2` 遍历任意实验配置字段，例如
 `--grid range_min_score=0.7,0.9 --grid fee_rate=0,0.0003`；布尔字段用 `true/false`。
-结果按收益、回撤、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是可直接筛选的参数排名；`pareto_rank=1` 表示按收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数得到的第一层非支配候选集；`case_config_hash` 是完整实验配置的 SHA-256 指纹，方便跨机器复现和对照。同时保存 `config.json`、`case_configs.jsonl`、`data_inventory.csv`、`data_coverage.csv` 和 `limit_filter_audit.csv`；`case_configs.jsonl` 按 `sweep.csv` 排名顺序逐行保存完整 case 配置。每行会带 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_max_consecutive_losses / monthly_max_recovery_periods`、`data_inventory_cached_count / data_weighted_coverage_ratio / data_missing_rows / data_audit_failed_count / limit_filter_filtered_days`，参数结果不脱离周期稳定性和数据质量语境。
+结果按收益、回撤、月度稳定性、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是可直接筛选的参数排名；`pareto_rank=1` 表示按收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数得到的第一层非支配候选集；`case_config_hash` 是完整实验配置的 SHA-256 指纹，方便跨机器复现和对照。同时保存 `config.json`、`case_configs.jsonl`、`data_inventory.csv`、`data_coverage.csv` 和 `limit_filter_audit.csv`；`case_configs.jsonl` 按 `sweep.csv` 排名顺序逐行保存完整 case 配置。每行会带 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_max_consecutive_losses / monthly_max_recovery_periods`、`data_inventory_cached_count / data_weighted_coverage_ratio / data_missing_rows / data_audit_failed_count / limit_filter_filtered_days`，参数结果不脱离周期稳定性和数据质量语境。
 
 组合层复用同一批 K 线做参数遍历：
 
@@ -334,7 +334,7 @@ python -m trending_winning.cli portfolio-sweep \
 mapping 参数用分号分隔多个方案，用 `+` 分隔同一方案内多个键值，例如
 `--grid strategy_capital_limit=trend_signal_bar=0.4+range_signal_bar=0.3;trend_signal_bar=0.7+range_signal_bar=0.2`，
 也可用于 `symbol_sector_map` 这类映射参数。
-参数笛卡尔积结果会按收益、回撤、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是参数排名；`pareto_rank` 用收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数标记非支配层级；`case_config_hash` 记录完整 case 配置指纹。
+参数笛卡尔积结果会按收益、回撤、月度稳定性、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是参数排名；`pareto_rank` 用收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数标记非支配层级；`case_config_hash` 记录完整 case 配置指纹。
 保存目录同时包含 `config.json`、`case_configs.jsonl`、`data_inventory.csv`、`data_coverage.csv` 和 `limit_filter_audit.csv`；`config.json` 写入基础配置和 `sweep_grid`，`case_configs.jsonl` 写入每个参数组的完整配置，`sweep.csv` 会附带 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_max_consecutive_losses / monthly_max_recovery_periods`、`order_cache_status / candidate_cache_status / generated_order_count / candidate_count / candidate_rejection_count`、`order_count / acceptance_rate / rejected_no_fill_count`、`data_inventory_cached_count / data_weighted_coverage_ratio / data_missing_rows / data_audit_failed_count / limit_filter_filtered_days` 等周期稳定性、性能、订单决策和数据质量摘要，方便解释参数组表现；如果只改变 `higher_timeframe_max_age_minutes`，会重新生成高周期门控后的订单，不复用旧订单。
 
 从遍历结果回放某个 case：

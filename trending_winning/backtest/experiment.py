@@ -1089,6 +1089,10 @@ def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
     sort_spec = [
         ("total_return", False),
         ("max_drawdown", False),
+        ("monthly_worst_return", False),
+        ("monthly_return_std", True),
+        ("monthly_max_consecutive_losses", True),
+        ("monthly_max_recovery_periods", True),
         ("trade_count", False),
         ("case_name", True),
     ]

@@ -1237,6 +1237,26 @@ def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
     assert ranked.columns[0] == "sweep_rank"
 
 
+def test_sweep_table_ranking_uses_monthly_stability_tie_breaks() -> None:
+    table = pd.DataFrame(
+        {
+            "case_name": ["volatile", "stable", "slow-recovery"],
+            "total_return": [0.1, 0.1, 0.1],
+            "max_drawdown": [-0.05, -0.05, -0.05],
+            "monthly_worst_return": [-0.08, -0.02, -0.02],
+            "monthly_return_std": [0.12, 0.03, 0.03],
+            "monthly_max_consecutive_losses": [2, 1, 1],
+            "monthly_max_recovery_periods": [3, 1, 4],
+            "trade_count": [10, 10, 10],
+        }
+    )
+
+    ranked = experiment_module._rank_sweep_table(table)
+
+    assert ranked["case_name"].tolist() == ["stable", "slow-recovery", "volatile"]
+    assert ranked["sweep_rank"].tolist() == [1, 2, 3]
+
+
 def test_sweep_table_ranking_reports_pareto_fronts() -> None:
     table = pd.DataFrame(
         {
