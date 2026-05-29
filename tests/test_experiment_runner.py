@@ -657,6 +657,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert load_calls == 1
     assert len(result.table) == 4
     assert {
+        "sweep_rank",
         "case_name",
         "risk_reward",
         "max_holding_bars",
@@ -671,6 +672,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
     }.issubset(result.table.columns)
+    assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert result.table.columns[0] == "sweep_rank"
     assert result.table["total_return"].tolist() == sorted(result.table["total_return"].tolist(), reverse=True)
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert (output_dir / "sweep.csv").exists()
@@ -680,6 +683,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     assert {
+        "sweep_rank",
         "order_count",
         "accepted_order_count",
         "rejected_order_count",
@@ -693,6 +697,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
     }.issubset(saved_sweep.columns)
+    assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
 
 
 def test_portfolio_parameter_sweep_rejects_data_scope_grid_fields(tmp_path: Path, monkeypatch) -> None:
@@ -1106,6 +1111,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert generate_calls == 1
     assert len(result.table) == 4
     assert {
+        "sweep_rank",
         "case_name",
         "fee_rate",
         "slippage_bps",
@@ -1119,6 +1125,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
     }.issubset(result.table.columns)
+    assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert result.table.columns[0] == "sweep_rank"
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
@@ -1127,6 +1135,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     assert {
+        "sweep_rank",
         "fee_rate",
         "slippage_bps",
         "order_cache_status",
@@ -1134,6 +1143,24 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
     }.issubset(saved_sweep.columns)
+    assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
+
+
+def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
+    table = pd.DataFrame(
+        {
+            "case_name": ["case-b", "case-a", "case-c"],
+            "total_return": [0.1, 0.1, 0.2],
+            "max_drawdown": [-0.02, -0.02, -0.10],
+            "trade_count": [3, 3, 1],
+        }
+    )
+
+    ranked = experiment_module._rank_sweep_table(table)
+
+    assert ranked["sweep_rank"].tolist() == [1, 2, 3]
+    assert ranked["case_name"].tolist() == ["case-c", "case-a", "case-b"]
+    assert ranked.columns[0] == "sweep_rank"
 
 
 def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_params_change(

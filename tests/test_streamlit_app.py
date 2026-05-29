@@ -173,6 +173,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准" in guide
     assert "分钟 no_data" in readme
     assert "分钟 no_data" in guide
+    assert "sweep_rank" in readme
+    assert "sweep_rank" in guide
     assert r"C:\new_tdx\T0002\PYPlugins\user" not in readme
     assert r"C:\\new_tdx\\T0002\\PYPlugins\\user" not in guide
 

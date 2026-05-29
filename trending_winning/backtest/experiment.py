@@ -448,11 +448,7 @@ def run_portfolio_parameter_sweep(
         row.update(summarize_strategy_filter_decisions(filter_decisions_by_config.get(order_key, pd.DataFrame())))
         rows.append(row)
 
-    table = pd.DataFrame(rows)
-    if not table.empty:
-        table = table.sort_values(["total_return", "max_drawdown", "trade_count"], ascending=[False, False, False]).reset_index(
-            drop=True
-        )
+    table = _rank_sweep_table(pd.DataFrame(rows))
     result = PortfolioSweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -527,11 +523,7 @@ def run_single_strategy_parameter_sweep(
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
 
-    table = pd.DataFrame(rows)
-    if not table.empty:
-        table = table.sort_values(["total_return", "max_drawdown", "trade_count"], ascending=[False, False, False]).reset_index(
-            drop=True
-        )
+    table = _rank_sweep_table(pd.DataFrame(rows))
     result = SingleStrategySweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -971,6 +963,27 @@ def _sweep_parameter_record(
             value = getattr(base, key)
             record[key] = ",".join(value) if isinstance(value, tuple) else value
     return record
+
+
+def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
+    """给参数遍历表生成稳定排名；收益优先，回撤和成交数辅助，最后用 case_name 打破并列。"""
+    if "sweep_rank" in table.columns:
+        table = table.drop(columns=["sweep_rank"])
+    sort_spec = [
+        ("total_return", False),
+        ("max_drawdown", False),
+        ("trade_count", False),
+        ("case_name", True),
+    ]
+    sort_columns = [column for column, _ in sort_spec if column in table.columns]
+    ascending = [direction for column, direction in sort_spec if column in table.columns]
+    ranked = (
+        table.sort_values(sort_columns, ascending=ascending, kind="mergesort").reset_index(drop=True)
+        if sort_columns
+        else table.reset_index(drop=True)
+    )
+    ranked.insert(0, "sweep_rank", range(1, len(ranked) + 1))
+    return ranked
 
 
 def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:
