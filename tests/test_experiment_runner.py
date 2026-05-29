@@ -102,6 +102,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "limit_filter_audit.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
     assert (output_dir / "detector_stats.csv").exists()
+    assert (output_dir / "setup_stats.csv").exists()
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()
@@ -154,6 +155,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert {"status", "reason", "decision_count"}.issubset(result.strategy_filter_stats.columns)
     assert "strategy_name" in result.strategy_stats.columns
     assert "detector_name" in result.detector_stats.columns
+    assert {"detector_name", "event_type", "side"}.issubset(result.setup_stats.columns)
     assert "stock_code" in result.symbol_stats.columns
     assert "side" in result.side_stats.columns
     assert "exit_reason" in result.exit_reason_stats.columns
@@ -1920,6 +1922,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
     assert (output_dir / "detector_stats.csv").exists()
+    assert (output_dir / "setup_stats.csv").exists()
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()

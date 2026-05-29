@@ -295,6 +295,7 @@ class PortfolioExperimentResult:
     monthly_returns: pd.DataFrame
     elapsed_seconds: float
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -318,6 +319,7 @@ class SingleStrategyExperimentResult:
     exit_reason_stats: pd.DataFrame
     monthly_returns: pd.DataFrame
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -416,6 +418,7 @@ def run_single_strategy_experiment(
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
+        setup_stats=_grouped_trade_statistics(backtest.trades, by=("detector_name", "event_type", "side")),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
@@ -475,6 +478,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
+        setup_stats=_grouped_trade_statistics(backtest.trades, by=("detector_name", "event_type", "side")),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
@@ -1078,6 +1082,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
+    result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
     result.symbol_stats.to_csv(output_dir / "symbol_stats.csv", index=False)
     result.side_stats.to_csv(output_dir / "side_stats.csv", index=False)
     result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
@@ -1114,6 +1119,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
+    result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
     result.symbol_stats.to_csv(output_dir / "symbol_stats.csv", index=False)
     result.side_stats.to_csv(output_dir / "side_stats.csv", index=False)
     result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
@@ -1604,9 +1610,11 @@ def _pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(scores, index=table.index).fillna(float("-inf"))
 
 
-def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:
-    if by not in trades.columns:
-        return pd.DataFrame(columns=pd.Index([by, *STAT_KEYS]))
+def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) -> pd.DataFrame:
+    fields = (by,) if isinstance(by, str) else tuple(by)
+    missing = [field for field in fields if field not in trades.columns]
+    if missing:
+        return pd.DataFrame(columns=pd.Index([*fields, *STAT_KEYS]))
     return compute_grouped_trade_statistics(trades, by=by)
 
 

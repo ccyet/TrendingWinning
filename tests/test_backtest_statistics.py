@@ -174,6 +174,26 @@ def test_compute_grouped_trade_statistics_reports_strategy_and_symbol_breakdowns
     assert by_symbol.set_index("stock_code").loc["000002.SZ", "trade_count"] == 2.0
 
 
+def test_compute_grouped_trade_statistics_supports_setup_breakdown_fields() -> None:
+    trades = pd.DataFrame(
+        {
+            "detector_name": ["trend", "trend", "trend", "range"],
+            "event_type": ["bull_h2_setup", "bull_h2_setup", "bull_h1_setup", "failed_breakout"],
+            "side": ["long", "long", "long", "short"],
+            "return_pct": [5.0, -2.0, 1.0, 3.0],
+            "holding_bars": [3, 2, 1, 4],
+        }
+    )
+
+    setup = compute_grouped_trade_statistics(trades, by=("detector_name", "event_type", "side"))
+    by_setup = setup.set_index(["detector_name", "event_type", "side"])
+
+    assert setup.columns[:3].tolist() == ["detector_name", "event_type", "side"]
+    assert by_setup.loc[("trend", "bull_h2_setup", "long"), "trade_count"] == 2.0
+    assert by_setup.loc[("trend", "bull_h2_setup", "long"), "total_return"] == pytest.approx(0.029)
+    assert by_setup.loc[("range", "failed_breakout", "short"), "win_rate"] == 1.0
+
+
 def test_compute_equity_statistics_reports_annualized_return_and_exposure_metrics() -> None:
     equity = pd.DataFrame(
         {

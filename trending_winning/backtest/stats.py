@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import math
 import re
 
@@ -412,19 +413,35 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     }
 
 
-def compute_grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:
-    """按策略或标的拆分逐笔绩效；统计层不反向依赖任何策略实现。"""
-    if by not in trades.columns:
-        raise ValueError(f"trades 缺少分组字段：{by}")
+def compute_grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) -> pd.DataFrame:
+    """按一个或多个字段拆分逐笔绩效；统计层不反向依赖任何策略实现。"""
+    group_fields = _group_stat_fields(by)
+    missing = [field for field in group_fields if field not in trades.columns]
+    if missing:
+        raise ValueError(f"trades 缺少分组字段：{', '.join(missing)}")
     if trades.empty:
-        return pd.DataFrame(columns=pd.Index([by, *STAT_KEYS]))
+        return pd.DataFrame(columns=pd.Index([*group_fields, *STAT_KEYS]))
 
     rows: list[dict[str, float | str]] = []
-    for value, group in trades.groupby(by, sort=True, dropna=False):
-        row: dict[str, float | str] = {by: str(value)}
+    grouped = trades.groupby(list(group_fields), sort=True, dropna=False)
+    for values, group in grouped:
+        value_tuple = values if isinstance(values, tuple) else (values,)
+        row: dict[str, float | str] = {
+            field: str(value)
+            for field, value in zip(group_fields, value_tuple, strict=True)
+        }
         row.update(compute_trade_statistics(group))
         rows.append(row)
-    return pd.DataFrame(rows, columns=pd.Index([by, *STAT_KEYS]))
+    return pd.DataFrame(rows, columns=pd.Index([*group_fields, *STAT_KEYS]))
+
+
+def _group_stat_fields(by: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(by, str):
+        return (by,)
+    fields = tuple(str(field) for field in by)
+    if not fields:
+        raise ValueError("至少需要一个分组字段。")
+    return fields
 
 
 def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd.DataFrame:
