@@ -663,6 +663,8 @@ def main() -> None:
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
+            print(f"case_setup_order_decision_stats.csv saved: {output_dir / 'case_setup_order_decision_stats.csv'}")
+            print(f"case_setup_strategy_filter_stats.csv saved: {output_dir / 'case_setup_strategy_filter_stats.csv'}")
             print(f"summary.json saved: {output_dir / 'summary.json'}")
             print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return
@@ -822,6 +824,8 @@ def main() -> None:
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
+            print(f"case_setup_order_decision_stats.csv saved: {output_dir / 'case_setup_order_decision_stats.csv'}")
+            print(f"case_setup_strategy_filter_stats.csv saved: {output_dir / 'case_setup_strategy_filter_stats.csv'}")
             print(f"summary.json saved: {output_dir / 'summary.json'}")
             print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return

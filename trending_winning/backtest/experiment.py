@@ -164,6 +164,8 @@ PARAMETER_SUMMARY_METRICS = (
 )
 
 SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
+SETUP_ORDER_DECISION_FIELDS = ("detector_name", "event_type", "side")
+SETUP_STRATEGY_FILTER_FIELDS = ("detector_name", "event_type", "side", "filter_name", "context_timeframe")
 SWEEP_CASE_SETUP_COLUMNS = (
     "sweep_rank",
     "pareto_rank",
@@ -367,6 +369,8 @@ class PortfolioSweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -383,6 +387,8 @@ class SingleStrategySweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -540,6 +546,8 @@ def run_portfolio_parameter_sweep(
 
     rows: list[dict[str, object]] = []
     setup_frames: list[pd.DataFrame] = []
+    setup_order_decision_frames: list[pd.DataFrame] = []
+    setup_strategy_filter_frames: list[pd.DataFrame] = []
     data_stats = _data_management_statistics(
         data.data_audit,
         data.limit_filter_audit,
@@ -578,6 +586,7 @@ def run_portfolio_parameter_sweep(
             candidate_cache_status = "miss"
             candidate_set = prepare_portfolio_candidates_from_normalized(data.bars, orders, backtest_config)
             candidates_by_execution[candidate_key] = candidate_set
+        filter_decisions = filter_decisions_by_config.get(order_key, pd.DataFrame())
         backtest = run_portfolio_candidate_backtest_from_normalized(
             data.bars,
             candidate_set,
@@ -620,12 +629,38 @@ def run_portfolio_parameter_sweep(
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
         row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
-        row.update(summarize_strategy_filter_decisions(filter_decisions_by_config.get(order_key, pd.DataFrame())))
+        row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
         setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        setup_order_decision_frames.append(
+            _case_decision_statistics(
+                backtest.order_decisions,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                group_fields=SETUP_ORDER_DECISION_FIELDS,
+            )
+        )
+        setup_strategy_filter_frames.append(
+            _case_decision_statistics(
+                filter_decisions,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                group_fields=SETUP_STRATEGY_FILTER_FIELDS,
+            )
+        )
 
     table = _rank_sweep_table(pd.DataFrame(rows))
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
+    setup_order_decision_stats = _ranked_case_decision_statistics(
+        _concat_case_decision_statistics(setup_order_decision_frames, group_fields=SETUP_ORDER_DECISION_FIELDS),
+        table,
+        group_fields=SETUP_ORDER_DECISION_FIELDS,
+    )
+    setup_strategy_filter_stats = _ranked_case_decision_statistics(
+        _concat_case_decision_statistics(setup_strategy_filter_frames, group_fields=SETUP_STRATEGY_FILTER_FIELDS),
+        table,
+        group_fields=SETUP_STRATEGY_FILTER_FIELDS,
+    )
     result = PortfolioSweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -637,6 +672,8 @@ def run_portfolio_parameter_sweep(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         setup_stats=setup_stats,
+        setup_order_decision_stats=setup_order_decision_stats,
+        setup_strategy_filter_stats=setup_strategy_filter_stats,
     )
     if save:
         save_portfolio_sweep(result)
@@ -658,6 +695,8 @@ def run_single_strategy_parameter_sweep(
 
     rows: list[dict[str, object]] = []
     setup_frames: list[pd.DataFrame] = []
+    setup_order_decision_frames: list[pd.DataFrame] = []
+    setup_strategy_filter_frames: list[pd.DataFrame] = []
     data_stats = _data_management_statistics(
         data.data_audit,
         data.limit_filter_audit,
@@ -710,9 +749,35 @@ def run_single_strategy_parameter_sweep(
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
         setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        setup_order_decision_frames.append(
+            _case_decision_statistics(
+                backtest.order_decisions,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                group_fields=SETUP_ORDER_DECISION_FIELDS,
+            )
+        )
+        setup_strategy_filter_frames.append(
+            _case_decision_statistics(
+                filter_decisions,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                group_fields=SETUP_STRATEGY_FILTER_FIELDS,
+            )
+        )
 
     table = _rank_sweep_table(pd.DataFrame(rows))
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
+    setup_order_decision_stats = _ranked_case_decision_statistics(
+        _concat_case_decision_statistics(setup_order_decision_frames, group_fields=SETUP_ORDER_DECISION_FIELDS),
+        table,
+        group_fields=SETUP_ORDER_DECISION_FIELDS,
+    )
+    setup_strategy_filter_stats = _ranked_case_decision_statistics(
+        _concat_case_decision_statistics(setup_strategy_filter_frames, group_fields=SETUP_STRATEGY_FILTER_FIELDS),
+        table,
+        group_fields=SETUP_STRATEGY_FILTER_FIELDS,
+    )
     result = SingleStrategySweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -724,6 +789,8 @@ def run_single_strategy_parameter_sweep(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         setup_stats=setup_stats,
+        setup_order_decision_stats=setup_order_decision_stats,
+        setup_strategy_filter_stats=setup_strategy_filter_stats,
     )
     if save:
         save_single_strategy_sweep(result)
@@ -1197,6 +1264,8 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
+    result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
+    result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1215,6 +1284,8 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
+    result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
+    result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1316,8 +1387,33 @@ def _case_setup_statistics(trades: pd.DataFrame, *, case_name: str, case_config_
     return stats
 
 
+def _case_decision_statistics(
+    decisions: pd.DataFrame,
+    *,
+    case_name: str,
+    case_config_hash: str,
+    group_fields: tuple[str, ...],
+) -> pd.DataFrame:
+    """按 case 汇总 setup 决策分布；用于解释参数组的拒绝结构。"""
+    stats = compute_decision_reason_statistics(decisions, group_fields=group_fields)
+    columns = _case_decision_columns(group_fields)
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    stats.insert(0, "case_config_hash", case_config_hash)
+    stats.insert(0, "case_name", case_name)
+    return stats.reindex(columns=columns)
+
+
 def _concat_case_setup_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
     columns = pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS])
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
+
+
+def _concat_case_decision_statistics(frames: Sequence[pd.DataFrame], *, group_fields: tuple[str, ...]) -> pd.DataFrame:
+    columns = _case_decision_columns(group_fields)
     non_empty = [frame for frame in frames if not frame.empty]
     if not non_empty:
         return pd.DataFrame(columns=columns)
@@ -1338,6 +1434,38 @@ def _ranked_case_setup_statistics(case_setup: pd.DataFrame, table: pd.DataFrame)
         .sort_values(["sweep_rank", "case_name", *SETUP_STAT_FIELDS], kind="mergesort")
         .reset_index(drop=True)
     )
+
+
+def _ranked_case_decision_statistics(
+    case_decisions: pd.DataFrame,
+    table: pd.DataFrame,
+    *,
+    group_fields: tuple[str, ...],
+) -> pd.DataFrame:
+    columns = _ranked_case_decision_columns(group_fields)
+    if case_decisions.empty:
+        return pd.DataFrame(columns=columns)
+    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
+    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
+    merged = case_decisions.merge(ranks, on="case_config_hash", how="left")
+    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    sort_columns = ["sweep_rank", "case_name", *group_fields, "status", "reason"]
+    return (
+        merged.reindex(columns=columns)
+        .sort_values(sort_columns, kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _case_decision_columns(group_fields: tuple[str, ...]) -> pd.Index:
+    stats_columns = compute_decision_reason_statistics(pd.DataFrame(), group_fields=group_fields).columns
+    return pd.Index(["case_name", "case_config_hash", *stats_columns])
+
+
+def _ranked_case_decision_columns(group_fields: tuple[str, ...]) -> pd.Index:
+    return pd.Index(["sweep_rank", "pareto_rank", "is_pareto_efficient", *_case_decision_columns(group_fields)])
 
 
 def _numeric_group_metric(group: pd.DataFrame, column: str, method: str) -> float:
