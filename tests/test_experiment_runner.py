@@ -1388,6 +1388,30 @@ def test_sweep_table_ranking_reports_pareto_fronts() -> None:
     assert bool(by_case.loc["case-c", "is_pareto_efficient"]) is False
 
 
+def test_sweep_pareto_fronts_use_vectorized_batch_dominance(monkeypatch) -> None:
+    dominance_calls = 0
+    original_dominance_matrix = experiment_module._pareto_dominance_matrix
+
+    def spy_dominance_matrix(values):
+        nonlocal dominance_calls
+        dominance_calls += 1
+        return original_dominance_matrix(values)
+
+    monkeypatch.setattr(experiment_module, "_pareto_dominance_matrix", spy_dominance_matrix)
+    table = pd.DataFrame(
+        {
+            "case_name": ["case-a", "case-b", "case-c", "case-d"],
+            "total_return": [0.10, 0.12, 0.08, 0.06],
+            "max_drawdown": [-0.05, -0.10, -0.06, -0.12],
+            "ulcer_index": [0.03, 0.08, 0.04, 0.09],
+            "trade_count": [10, 12, 8, 4],
+        }
+    )
+
+    assert experiment_module._pareto_front_ranks(table) == [1, 1, 2, 3]
+    assert dominance_calls == 1
+
+
 def test_sweep_table_pareto_fronts_include_monthly_stability() -> None:
     table = pd.DataFrame(
         {

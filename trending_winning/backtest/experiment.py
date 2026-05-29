@@ -1451,17 +1451,32 @@ def _pareto_front_ranks(table: pd.DataFrame) -> list[int]:
         return [1] * len(table)
 
     values = scores.to_numpy(dtype=float)
-    remaining = list(range(len(values)))
+    dominates = _pareto_dominance_matrix(values)
+    remaining = np.ones(len(values), dtype=bool)
     ranks = [0] * len(values)
     current_rank = 1
-    while remaining:
-        front = _non_dominated_indices(values, remaining)
-        for index in front:
-            ranks[index] = current_rank
-        front_set = set(front)
-        remaining = [index for index in remaining if index not in front_set]
+    while remaining.any():
+        active_dominance = dominates[np.ix_(remaining, remaining)]
+        active_indices = np.flatnonzero(remaining)
+        front_indices = active_indices[~active_dominance.any(axis=0)]
+        if len(front_indices) == 0:
+            front_indices = active_indices
+        for index in front_indices:
+            ranks[int(index)] = current_rank
+        remaining[front_indices] = False
         current_rank += 1
     return ranks
+
+
+def _pareto_dominance_matrix(values: np.ndarray) -> np.ndarray:
+    """一次性计算支配关系矩阵；行支配列为 True，对角线永远为 False。"""
+    if values.size == 0:
+        return np.zeros((len(values), len(values)), dtype=bool)
+    greater_or_equal = values[:, None, :] >= values[None, :, :]
+    strictly_greater = values[:, None, :] > values[None, :, :]
+    dominates = greater_or_equal.all(axis=2) & strictly_greater.any(axis=2)
+    np.fill_diagonal(dominates, False)
+    return dominates
 
 
 def _pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
@@ -1474,23 +1489,6 @@ def _pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
     if not scores:
         return pd.DataFrame(index=table.index)
     return pd.DataFrame(scores, index=table.index).fillna(float("-inf"))
-
-
-def _non_dominated_indices(values: np.ndarray, remaining: list[int]) -> list[int]:
-    front: list[int] = []
-    for index in remaining:
-        candidate = values[index]
-        dominated = False
-        for challenger_index in remaining:
-            if challenger_index == index:
-                continue
-            challenger = values[challenger_index]
-            if (challenger >= candidate).all() and (challenger > candidate).any():
-                dominated = True
-                break
-        if not dominated:
-            front.append(index)
-    return front
 
 
 def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:
