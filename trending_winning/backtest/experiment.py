@@ -163,6 +163,17 @@ PARAMETER_SUMMARY_METRICS = (
     ("bars_per_second", "avg_bars_per_second", "mean"),
 )
 
+SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
+SWEEP_CASE_SETUP_COLUMNS = (
+    "sweep_rank",
+    "pareto_rank",
+    "is_pareto_efficient",
+    "case_name",
+    "case_config_hash",
+    *SETUP_STAT_FIELDS,
+    *STAT_KEYS,
+)
+
 
 @dataclass(frozen=True)
 class PortfolioExperimentConfig:
@@ -351,6 +362,7 @@ class PortfolioSweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -366,6 +378,7 @@ class SingleStrategySweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -506,6 +519,7 @@ def run_portfolio_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    setup_frames: list[pd.DataFrame] = []
     data_stats = _data_management_statistics(
         data.data_audit,
         data.limit_filter_audit,
@@ -565,9 +579,11 @@ def run_portfolio_parameter_sweep(
             ),
         )
         case_elapsed = max(perf_counter() - case_start, 1e-12)
+        case_name = f"{config.name}-{case_index:03d}"
+        case_hash = _case_config_hash(variant)
         row: dict[str, object] = {
-            "case_name": f"{config.name}-{case_index:03d}",
-            "case_config_hash": _case_config_hash(variant),
+            "case_name": case_name,
+            "case_config_hash": case_hash,
             "bar_count": int(len(data.bars)),
             "trade_count": int(len(backtest.trades)),
             "equity_points": int(len(backtest.equity_curve)),
@@ -586,8 +602,10 @@ def run_portfolio_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
         row.update(summarize_strategy_filter_decisions(filter_decisions_by_config.get(order_key, pd.DataFrame())))
         rows.append(row)
+        setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
 
     table = _rank_sweep_table(pd.DataFrame(rows))
+    setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
     result = PortfolioSweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -598,6 +616,7 @@ def run_portfolio_parameter_sweep(
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
+        setup_stats=setup_stats,
     )
     if save:
         save_portfolio_sweep(result)
@@ -618,6 +637,7 @@ def run_single_strategy_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    setup_frames: list[pd.DataFrame] = []
     data_stats = _data_management_statistics(
         data.data_audit,
         data.limit_filter_audit,
@@ -649,9 +669,11 @@ def run_single_strategy_parameter_sweep(
             filter_decisions,
         )
         case_elapsed = max(perf_counter() - case_start, 1e-12)
+        case_name = f"{config.name}-{case_index:03d}"
+        case_hash = _case_config_hash(variant)
         row: dict[str, object] = {
-            "case_name": f"{config.name}-{case_index:03d}",
-            "case_config_hash": _case_config_hash(variant),
+            "case_name": case_name,
+            "case_config_hash": case_hash,
             "bar_count": int(len(data.bars)),
             "trade_count": int(len(backtest.trades)),
             "equity_points": int(len(backtest.equity_curve)),
@@ -667,8 +689,10 @@ def run_single_strategy_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=True))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
+        setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
 
     table = _rank_sweep_table(pd.DataFrame(rows))
+    setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
     result = SingleStrategySweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -679,6 +703,7 @@ def run_single_strategy_parameter_sweep(
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
+        setup_stats=setup_stats,
     )
     if save:
         save_single_strategy_sweep(result)
@@ -1147,6 +1172,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
+    result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1164,6 +1190,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
+    result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1253,6 +1280,40 @@ def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepR
         return pd.DataFrame(columns=columns)
     summary = pd.DataFrame(rows, columns=columns)
     return summary.sort_values(["parameter", "best_sweep_rank", "value"], kind="mergesort").reset_index(drop=True)
+
+
+def _case_setup_statistics(trades: pd.DataFrame, *, case_name: str, case_config_hash: str) -> pd.DataFrame:
+    """按 case 汇总 setup 表现；只依赖成交表，供参数遍历下钻使用。"""
+    stats = _grouped_trade_statistics(trades, by=SETUP_STAT_FIELDS)
+    if stats.empty:
+        return pd.DataFrame(columns=pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS]))
+    stats.insert(0, "case_config_hash", case_config_hash)
+    stats.insert(0, "case_name", case_name)
+    return stats
+
+
+def _concat_case_setup_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    columns = pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS])
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
+
+
+def _ranked_case_setup_statistics(case_setup: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
+    if case_setup.empty:
+        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_SETUP_COLUMNS))
+    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
+    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
+    merged = case_setup.merge(ranks, on="case_config_hash", how="left")
+    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    return (
+        merged.reindex(columns=pd.Index(SWEEP_CASE_SETUP_COLUMNS))
+        .sort_values(["sweep_rank", "case_name", *SETUP_STAT_FIELDS], kind="mergesort")
+        .reset_index(drop=True)
+    )
 
 
 def _numeric_group_metric(group: pd.DataFrame, column: str, method: str) -> float:
