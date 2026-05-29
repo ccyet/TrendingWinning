@@ -215,7 +215,7 @@
       <h2>能力总览</h2>
       <div class="grid">
         <div class="card"><b>TDX 数据</b><span>日 K <code>1d</code> 和分钟 K <code>5m / 15m / 30m / 60m</code>，不使用 akshare 通道；高分钟周期可由 TDX <code>5m</code> 聚合。</span></div>
-        <div class="card"><b>数据管理</b><span>本地缓存库存、parquet 审计、按需补齐、覆盖率门禁、日 K 锚定分钟交易日。</span></div>
+        <div class="card"><b>数据管理</b><span>本地缓存库存、parquet 审计、按需补齐、覆盖率门禁、缺口首尾定位、日 K 锚定分钟交易日。</span></div>
         <div class="card"><b>过滤规则</b><span>按主板、科创、创业、北交所涨停开盘规则过滤污染交易日。</span></div>
         <div class="card"><b>独立 detector</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
         <div class="card"><b>挂单触发</b><span>突破在信号 K 上方/下方挂单，撮合层按下一根 K 是否触发成交。</span></div>
@@ -368,7 +368,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>detector_stats.csv</code></td><td>按 <code>detector_name</code> 汇总趋势、区间、通道、反转等识别模块的成交绩效。</td></tr>
           <tr><td><code>setup_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总 setup 级别绩效，用于比较 H1/H2、失败突破、通道突破和反转信号。</td></tr>
           <tr><td><code>data_inventory.csv</code></td><td>本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含存在状态、行数、起止时间、文件大小、修改时间和路径。</td></tr>
-          <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率。</td></tr>
+          <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率，包含 <code>expected_rows</code>、<code>missing_rows</code>、<code>coverage_ratio</code>、<code>max_missing_gap_minutes</code>、<code>first_missing_at</code> 和 <code>last_missing_at</code>，用于定位需要补齐的 K 线区间。</td></tr>
           <tr><td><code>limit_filter_audit.csv</code></td><td>日 K 涨停开盘过滤是否真实执行。</td></tr>
           <tr><td><code>monthly_returns.csv</code></td><td>自然周期收益、周期最大回撤和净值样本数，是 <code>stats.json</code> 周期稳定性字段的明细来源。</td></tr>
           <tr><td><code>summary.json</code></td><td>参数遍历总览，包含 <code>grid_case_count</code>、<code>case_count</code>、<code>grid_value_counts</code>、<code>pareto_case_count</code>、<code>best_case_name</code>、<code>best_case_config_hash</code>、<code>order_cache_hit_rate</code>、<code>candidate_cache_hit_rate</code>、<code>data_coverage_below_min_count</code>、<code>limit_filter_filtered_days</code>、<code>case_setup_order_decision_count</code> 和 <code>case_setup_strategy_filter_decision_count</code>；其中 <code>grid_case_count</code> 是原始组合数，<code>case_count</code> 是重复 grid 值展开前去重后的实际运行数。</td></tr>

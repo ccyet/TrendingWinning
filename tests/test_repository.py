@@ -789,6 +789,12 @@ def test_prepare_tdx_backtest_data_reports_before_and_after_coverage_delta(tmp_p
     assert row["after_coverage_ratio"] == pytest.approx(1.0)
     assert row["before_max_missing_gap_minutes"] == 210
     assert row["after_max_missing_gap_minutes"] == 0
+    assert row["before_first_missing_at"] == pd.Timestamp("2026-05-25 10:30:00")
+    assert row["before_last_missing_at"] == pd.Timestamp("2026-05-25 15:00:00")
+    assert pd.isna(row["after_first_missing_at"])
+    assert pd.isna(row["after_last_missing_at"])
+    assert pd.isna(row["first_missing_at"])
+    assert pd.isna(row["last_missing_at"])
 
 
 def test_prepare_tdx_backtest_data_fetches_daily_before_auditing_intraday_coverage(tmp_path: Path) -> None:
@@ -930,6 +936,8 @@ def test_plan_tdx_backtest_data_uses_daily_sessions_to_find_whole_day_intraday_g
     assert row["expected_rows"] == 16
     assert row["missing_rows"] == 8
     assert row["coverage_ratio"] == pytest.approx(0.5)
+    assert row["first_missing_at"] == pd.Timestamp("2026-05-26 10:00:00")
+    assert row["last_missing_at"] == pd.Timestamp("2026-05-26 15:00:00")
 
 
 def test_repository_audit_bars_uses_daily_sessions_to_find_whole_day_intraday_gaps(tmp_path: Path) -> None:
@@ -1426,6 +1434,8 @@ def test_audit_local_data_reports_intraday_session_coverage_gaps(tmp_path: Path)
     assert row["missing_rows"] == 1
     assert row["coverage_ratio"] == pytest.approx(0.875)
     assert row["max_missing_gap_minutes"] == 30
+    assert row["first_missing_at"] == pd.Timestamp("2026-05-25 11:30:00")
+    assert row["last_missing_at"] == pd.Timestamp("2026-05-25 11:30:00")
 
 
 def test_load_backtest_data_fails_when_min_coverage_ratio_is_not_met(tmp_path: Path) -> None:
