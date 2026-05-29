@@ -26,7 +26,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 组合回测：按真实入场时间和真实成交风险做策略优先级、持仓互斥、风险预算、行业/策略资金上限、空头保证金和逐 K 净值重估
 - 实际风险过滤：信号 K 挂单策略透传 `max_actual_risk_pct` 和 `max_chase_pct`，由撮合层按真实成交价统一判定并记录拒绝原因
 - Detector 参数透传：趋势强收盘/实体/回撤窗口、区间中部/失败突破/区间评分、通道突破缓冲/摆动锚点、反转强收盘/实体阈值都可配置
-- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、暴露度、持仓数和策略/标的/方向/退出原因拆分
+- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、现金占比、净暴露、总暴露、持仓数和策略/标的/方向/退出原因拆分
 - 事件类型拆分：订单和成交透传 `event_type`，可单独评估 H1/H2、失败突破、通道突破、二次反转等 setup 表现
 - 真实撮合边界：跳空穿越按开盘成交；同 K 同时触发止盈止损时默认保守止损优先，可显式改为乐观止盈优先
 - 流动性门禁：分钟 K 的 `volume` 或 `amount` 为 0 时会从回测数据包剔除；裸策略/撮合入口仍不允许用这类 K 入场、止盈止损或统计路径波动
@@ -204,7 +204,7 @@ python -m trending_winning.cli single-backtest \
 `strategy_filter_decisions.csv` 记录策略层过滤结果，例如 detector 输出观察/中部不交易方向、信号 K 无流动性、高周期方向不一致、无可用高周期上下文或上下文过期；基础策略过滤和高周期门控过滤会叠加保留，它早于撮合层，不和 `order_decisions.csv` 混用。
 `limit_filter_audit.csv` 记录日 K 一字涨停过滤是否真实执行；严格模式下日线缺失会直接失败，只有显式关闭严格数据门禁时才会继续输出 `daily_missing` 审计。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 按策略、状态和原因聚合决策分布；`decision_rate` 表示占全部决策的比例，`group_decision_rate` 表示在当前策略或过滤器组内的比例。订单聚合表还会汇总实际风险、追价和实际盈亏比，用于定位哪类参数在撮合层失效。
-组合回测的 `strategy_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。
+组合回测的 `strategy_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
 `data_inventory.csv` 保存本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含是否存在、行数、起止时间、文件大小、修改时间和路径；`stats.json` 同步写入 `data_inventory_row_count / data_inventory_cached_count / data_inventory_missing_file_count` 等摘要。
 `stats.json` 同步写入 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejected_no_fill_count / rejected_no_liquidity_count / rejected_no_bars_count / rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_already_open_count`
 以及已接受订单的平均/最大 `capital_fraction / risk_fraction / margin_fraction`，若启用策略层过滤，还会写入 `strategy_signal_count / strategy_filter_acceptance_rate / strategy_rejected_signal_bar_no_liquidity_count / strategy_rejected_higher_timeframe_mismatch_count` 等摘要。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / limit_filter_failed_count / limit_filter_filtered_days`。
@@ -263,7 +263,7 @@ python -m trending_winning.cli portfolio-backtest \
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、
 `annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_drawdown`、`ulcer_index`、`time_under_water_ratio`、`avg_gross_exposure`、`max_gross_exposure`、
-`exposure_bar_ratio`、`avg_open_positions`、`max_open_positions`、`avg_r_multiple`、`r_profit_factor`、`system_quality_number`、`avg_mae_pct`、`avg_mfe_pct`、
+`exposure_bar_ratio`、`avg_open_positions`、`max_open_positions`、`avg_cash_ratio`、`min_cash_ratio`、`max_cash_ratio`、`avg_net_exposure`、`min_net_exposure`、`max_net_exposure`、`avg_r_multiple`、`r_profit_factor`、`system_quality_number`、`avg_mae_pct`、`avg_mfe_pct`、
 `return_p05`、`return_p25`、`return_p50`、`return_p75`、`return_p95`、`cvar_95`、`capital_exposure_bars`、`margin_exposure_bars`、
 以及 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejection_rate /
 rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_max_open_positions_count / rejected_no_capital_count / rejected_actual_risk_too_high_count / rejected_chase_too_far_count / rejected_target_not_favorable_count /

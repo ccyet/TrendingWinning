@@ -204,6 +204,28 @@ def test_compute_equity_statistics_reports_annualized_return_and_exposure_metric
     assert stats["max_open_positions"] == pytest.approx(2.0)
 
 
+def test_compute_equity_statistics_reports_cash_and_net_exposure_ratios() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28"]),
+            "net_value": [1.0, 1.1, 1.2, 1.05],
+            "cash": [1.0, 0.3, 1.55, 0.5],
+            "position_value": [0.0, 0.8, -0.35, 0.55],
+        }
+    )
+
+    stats = compute_equity_statistics(equity, periods_per_year=4)
+
+    cash_ratio = equity["cash"] / equity["net_value"]
+    net_exposure = equity["position_value"] / equity["net_value"]
+    assert stats["avg_cash_ratio"] == pytest.approx(cash_ratio.mean())
+    assert stats["min_cash_ratio"] == pytest.approx(cash_ratio.min())
+    assert stats["max_cash_ratio"] == pytest.approx(cash_ratio.max())
+    assert stats["avg_net_exposure"] == pytest.approx(net_exposure.mean())
+    assert stats["min_net_exposure"] == pytest.approx(net_exposure.min())
+    assert stats["max_net_exposure"] == pytest.approx(net_exposure.max())
+
+
 def test_compute_equity_statistics_keeps_single_point_curve_numeric() -> None:
     stats = compute_equity_statistics(pd.DataFrame({"date": [pd.Timestamp("2026-05-25")], "net_value": [1.0]}))
 
@@ -212,6 +234,8 @@ def test_compute_equity_statistics_keeps_single_point_curve_numeric() -> None:
     assert stats["annualized_return"] == 0.0
     assert stats["annualized_volatility"] == 0.0
     assert stats["avg_gross_exposure"] == 0.0
+    assert stats["avg_cash_ratio"] == 0.0
+    assert stats["avg_net_exposure"] == 0.0
 
 
 def test_compute_period_returns_reports_monthly_equity_returns() -> None:
