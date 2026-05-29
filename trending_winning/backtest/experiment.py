@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 from time import perf_counter
 
+import numpy as np
 import pandas as pd
 
 from trending_winning.backtest.engine import BacktestConfig, BacktestResult, run_order_backtest, run_single_strategy_backtest
@@ -47,6 +48,13 @@ DATA_SCOPE_SWEEP_FIELDS = {
     "strict_data_quality",
     "min_coverage_ratio",
 }
+
+SWEEP_PARETO_OBJECTIVES = (
+    ("total_return", "max"),
+    ("max_drawdown", "max"),
+    ("ulcer_index", "min"),
+    ("trade_count", "max"),
+)
 
 
 @dataclass(frozen=True)
@@ -969,6 +977,9 @@ def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
     """给参数遍历表生成稳定排名；收益优先，回撤和成交数辅助，最后用 case_name 打破并列。"""
     if "sweep_rank" in table.columns:
         table = table.drop(columns=["sweep_rank"])
+    for column in ("pareto_rank", "is_pareto_efficient"):
+        if column in table.columns:
+            table = table.drop(columns=[column])
     sort_spec = [
         ("total_return", False),
         ("max_drawdown", False),
@@ -983,7 +994,61 @@ def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
         else table.reset_index(drop=True)
     )
     ranked.insert(0, "sweep_rank", range(1, len(ranked) + 1))
+    pareto_rank = _pareto_front_ranks(ranked)
+    ranked.insert(1, "pareto_rank", pareto_rank)
+    ranked.insert(2, "is_pareto_efficient", [rank == 1 for rank in pareto_rank])
     return ranked
+
+
+def _pareto_front_ranks(table: pd.DataFrame) -> list[int]:
+    """按收益、回撤、Ulcer 和交易样本数给参数组分层；第一层是互不支配的候选集。"""
+    if table.empty:
+        return []
+    scores = _pareto_score_table(table)
+    if scores.empty:
+        return [1] * len(table)
+
+    values = scores.to_numpy(dtype=float)
+    remaining = list(range(len(values)))
+    ranks = [0] * len(values)
+    current_rank = 1
+    while remaining:
+        front = _non_dominated_indices(values, remaining)
+        for index in front:
+            ranks[index] = current_rank
+        front_set = set(front)
+        remaining = [index for index in remaining if index not in front_set]
+        current_rank += 1
+    return ranks
+
+
+def _pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
+    scores: dict[str, pd.Series] = {}
+    for column, direction in SWEEP_PARETO_OBJECTIVES:
+        if column not in table.columns:
+            continue
+        values = pd.to_numeric(table[column], errors="coerce")
+        scores[column] = -values if direction == "min" else values
+    if not scores:
+        return pd.DataFrame(index=table.index)
+    return pd.DataFrame(scores, index=table.index).fillna(float("-inf"))
+
+
+def _non_dominated_indices(values: np.ndarray, remaining: list[int]) -> list[int]:
+    front: list[int] = []
+    for index in remaining:
+        candidate = values[index]
+        dominated = False
+        for challenger_index in remaining:
+            if challenger_index == index:
+                continue
+            challenger = values[challenger_index]
+            if (challenger >= candidate).all() and (challenger > candidate).any():
+                dominated = True
+                break
+        if not dominated:
+            front.append(index)
+    return front
 
 
 def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:

@@ -175,6 +175,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "分钟 no_data" in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
+    assert "pareto_rank" in readme
+    assert "pareto_rank" in guide
     assert r"C:\new_tdx\T0002\PYPlugins\user" not in readme
     assert r"C:\\new_tdx\\T0002\\PYPlugins\\user" not in guide
 

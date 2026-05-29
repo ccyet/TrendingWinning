@@ -658,6 +658,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert len(result.table) == 4
     assert {
         "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
         "case_name",
         "risk_reward",
         "max_holding_bars",
@@ -674,6 +676,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     }.issubset(result.table.columns)
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table.columns[0] == "sweep_rank"
+    assert result.table.columns[1] == "pareto_rank"
+    assert result.table.columns[2] == "is_pareto_efficient"
     assert result.table["total_return"].tolist() == sorted(result.table["total_return"].tolist(), reverse=True)
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert (output_dir / "sweep.csv").exists()
@@ -684,6 +688,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     assert {
         "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
         "order_count",
         "accepted_order_count",
         "rejected_order_count",
@@ -1112,6 +1118,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert len(result.table) == 4
     assert {
         "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
         "case_name",
         "fee_rate",
         "slippage_bps",
@@ -1127,6 +1135,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     }.issubset(result.table.columns)
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table.columns[0] == "sweep_rank"
+    assert result.table.columns[1] == "pareto_rank"
+    assert result.table.columns[2] == "is_pareto_efficient"
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
@@ -1136,6 +1146,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     assert {
         "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
         "fee_rate",
         "slippage_bps",
         "order_cache_status",
@@ -1161,6 +1173,29 @@ def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
     assert ranked["sweep_rank"].tolist() == [1, 2, 3]
     assert ranked["case_name"].tolist() == ["case-c", "case-a", "case-b"]
     assert ranked.columns[0] == "sweep_rank"
+
+
+def test_sweep_table_ranking_reports_pareto_fronts() -> None:
+    table = pd.DataFrame(
+        {
+            "case_name": ["case-a", "case-b", "case-c", "case-d"],
+            "total_return": [0.10, 0.12, 0.08, 0.06],
+            "max_drawdown": [-0.05, -0.10, -0.06, -0.12],
+            "ulcer_index": [0.03, 0.08, 0.04, 0.09],
+            "trade_count": [10, 12, 8, 4],
+        }
+    )
+
+    ranked = experiment_module._rank_sweep_table(table)
+
+    by_case = ranked.set_index("case_name")
+    assert ranked["case_name"].tolist() == ["case-b", "case-a", "case-c", "case-d"]
+    assert by_case.loc["case-a", "pareto_rank"] == 1
+    assert by_case.loc["case-b", "pareto_rank"] == 1
+    assert by_case.loc["case-c", "pareto_rank"] == 2
+    assert by_case.loc["case-d", "pareto_rank"] == 3
+    assert bool(by_case.loc["case-a", "is_pareto_efficient"]) is True
+    assert bool(by_case.loc["case-c", "is_pareto_efficient"]) is False
 
 
 def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_params_change(
