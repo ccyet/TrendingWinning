@@ -478,9 +478,7 @@ def _build_portfolio_equity_curve_from_normalized(
         .sort_index()
         .ffill()
     )
-    entries_by_date: dict[pd.Timestamp, list[dict[str, object]]] = {}
-    for row in trades.sort_values(["entry_date", "portfolio_priority", "stock_code"]).to_dict("records"):
-        entries_by_date.setdefault(pd.Timestamp(row["entry_date"]), []).append(row)
+    entries_by_date = _portfolio_entries_by_date(trades)
     cash = float(initial_equity)
     positions: list[dict[str, object]] = []
     records: list[dict[str, object]] = []
@@ -512,6 +510,35 @@ def _build_portfolio_equity_curve_from_normalized(
             }
         )
     return pd.DataFrame(records)
+
+
+def _portfolio_entries_by_date(trades: pd.DataFrame) -> dict[pd.Timestamp, list[dict[str, object]]]:
+    """按入场时间组织净值重估所需字段，避免把整张成交表转成 records。"""
+    sorted_trades = trades.sort_values(["entry_date", "portfolio_priority", "stock_code"], kind="mergesort")
+    entries: dict[pd.Timestamp, list[dict[str, object]]] = {}
+    for entry_date, stock_code, side, entry_price, exit_date, raw_return_pct, capital_fraction in zip(
+        pd.to_datetime(sorted_trades["entry_date"], errors="coerce"),
+        sorted_trades["stock_code"].astype(str),
+        sorted_trades["side"].fillna("long").astype(str),
+        pd.to_numeric(sorted_trades["entry_price"], errors="coerce").fillna(0.0),
+        pd.to_datetime(sorted_trades["exit_date"], errors="coerce"),
+        pd.to_numeric(sorted_trades["raw_return_pct"], errors="coerce").fillna(0.0),
+        pd.to_numeric(sorted_trades["capital_fraction"], errors="coerce").fillna(0.0),
+        strict=True,
+    ):
+        if pd.isna(entry_date):
+            continue
+        entries.setdefault(pd.Timestamp(entry_date), []).append(
+            {
+                "stock_code": stock_code,
+                "side": side,
+                "entry_price": float(entry_price),
+                "exit_date": pd.Timestamp(exit_date),
+                "raw_return_pct": float(raw_return_pct),
+                "capital_fraction": float(capital_fraction),
+            }
+        )
+    return entries
 
 
 def _new_position(trade: Mapping[str, object], allocation: float) -> dict[str, object]:

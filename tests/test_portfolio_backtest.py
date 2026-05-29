@@ -8,6 +8,7 @@ import pytest
 from trending_winning.backtest.engine import BacktestConfig
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,
+    _build_portfolio_equity_curve_from_normalized,
     _candidate_trades_by_entry_time,
     run_portfolio_backtest,
     run_portfolio_order_backtest,
@@ -240,6 +241,12 @@ def test_portfolio_backtest_marks_equity_to_market_on_each_bar() -> None:
     assert result.equity_curve.loc[1, "gross_exposure"] == 1.0
     assert result.equity_curve.loc[1, "open_positions"] == 2
     assert result.equity_curve.iloc[-1]["net_value"] == 1.0 + result.trades["return_pct"].sum() / 100.0
+
+
+def test_portfolio_equity_curve_builds_entry_queue_without_record_conversion() -> None:
+    source = getsource(_build_portfolio_equity_curve_from_normalized)
+
+    assert ".to_dict(" not in source
 
 
 def test_portfolio_statistics_use_time_marked_equity_drawdown() -> None:
