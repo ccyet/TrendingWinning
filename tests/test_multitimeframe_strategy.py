@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from inspect import getsource
+
 import pandas as pd
 
 from trending_winning.strategies.base import ORDER_COLUMNS
 from trending_winning.strategies.diagnostics import STRATEGY_FILTER_DECISION_COLUMNS
-from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
+from trending_winning.strategies.multitimeframe import (
+    HigherTimeframeAlignmentStrategy,
+    TimeframeAlignmentConfig,
+    _filter_decision_frame,
+)
 
 
 class FixedOrderStrategy:
@@ -199,3 +205,15 @@ def test_higher_timeframe_alignment_preserves_base_strategy_filter_decisions() -
     assert decisions.loc[("signal_bar_adapter", "base-rejected"), "reason"] == "signal_bar_no_liquidity"
     assert ("higher_timeframe_alignment", "accepted") in decisions.index
     assert decisions.loc[("higher_timeframe_alignment", "accepted"), "status"] == "accepted"
+
+
+def test_higher_timeframe_filter_decisions_use_vectorized_columns_not_record_loop() -> None:
+    source = getsource(_filter_decision_frame)
+
+    assert ".to_dict(" not in source
+
+
+def test_higher_timeframe_strategy_adds_metadata_without_record_loop() -> None:
+    source = getsource(HigherTimeframeAlignmentStrategy.generate_orders)
+
+    assert ".to_dict(" not in source

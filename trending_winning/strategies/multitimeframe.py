@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from trending_winning.data.schema import normalize_symbol
@@ -75,11 +76,13 @@ class HigherTimeframeAlignmentStrategy:
             return empty_orders()
 
         accepted["strategy_name"] = self.name
-        accepted_records = accepted.to_dict("records")
-        accepted["metadata"] = [
-            _metadata_with_context(record.get("metadata"), record, self.base_strategy.name, self.config.context_timeframe)
-            for record in accepted_records
-        ]
+        accepted["metadata"] = _metadata_with_context_columns(
+            accepted["metadata"],
+            accepted["_context_date"],
+            accepted["_context_state"],
+            self.base_strategy.name,
+            self.config.context_timeframe,
+        )
         return accepted[ORDER_COLUMNS].reset_index(drop=True)
 
     def _alignment_mask(self, frame: pd.DataFrame) -> pd.Series:
@@ -155,29 +158,37 @@ def _filter_decision_frame(
     long_states: Sequence[str],
     short_states: Sequence[str],
 ) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
-    for row, accepted in zip(aligned.to_dict("records"), accepted_mask.to_numpy(dtype=bool), strict=True):
-        rows.append(
-            {
-                "order_id": row.get("order_id", ""),
-                "event_id": row.get("event_id", ""),
-                "strategy_name": strategy_name,
-                "base_strategy_name": base_strategy_name,
-                "detector_name": row.get("detector_name", ""),
-                "stock_code": row.get("stock_code", ""),
-                "timeframe": row.get("timeframe", ""),
-                "signal_date": row.get("signal_date", pd.NaT),
-                "signal_bar_index": int(row.get("signal_bar_index", -1)),
-                "side": row.get("side", ""),
-                "status": "accepted" if bool(accepted) else "rejected",
-                "reason": "" if bool(accepted) else _filter_reject_reason(row, long_states, short_states),
-                "filter_name": "higher_timeframe_alignment",
-                "context_timeframe": context_timeframe,
-                "context_date": row.get("_context_date", pd.NaT),
-                "context_state": row.get("_context_state", pd.NA),
-            }
-        )
-    return pd.DataFrame(rows, columns=pd.Index(STRATEGY_FILTER_DECISION_COLUMNS))
+    accepted = accepted_mask.reindex(aligned.index, fill_value=False).to_numpy(dtype=bool)
+    reason = _filter_reject_reason_series(
+        aligned,
+        accepted,
+        long_states=long_states,
+        short_states=short_states,
+    )
+    return pd.DataFrame(
+        {
+            "order_id": aligned["order_id"].fillna("").astype(str).to_numpy(),
+            "event_id": aligned["event_id"].fillna("").astype(str).to_numpy(),
+            "strategy_name": strategy_name,
+            "base_strategy_name": base_strategy_name,
+            "detector_name": aligned["detector_name"].fillna("").astype(str).to_numpy(),
+            "stock_code": aligned["stock_code"].fillna("").astype(str).to_numpy(),
+            "timeframe": aligned["timeframe"].fillna("").astype(str).to_numpy(),
+            "signal_date": aligned["signal_date"].to_numpy(),
+            "signal_bar_index": pd.to_numeric(aligned["signal_bar_index"], errors="coerce")
+            .fillna(-1)
+            .astype(int)
+            .to_numpy(),
+            "side": aligned["side"].fillna("").astype(str).to_numpy(),
+            "status": np.where(accepted, "accepted", "rejected"),
+            "reason": reason,
+            "filter_name": "higher_timeframe_alignment",
+            "context_timeframe": context_timeframe,
+            "context_date": aligned["_context_date"].to_numpy(),
+            "context_state": aligned["_context_state"].to_numpy(),
+        },
+        columns=pd.Index(STRATEGY_FILTER_DECISION_COLUMNS),
+    )
 
 
 def _merge_filter_decision_frames(*frames: pd.DataFrame) -> pd.DataFrame:
@@ -188,33 +199,47 @@ def _merge_filter_decision_frames(*frames: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(non_empty, ignore_index=True)[STRATEGY_FILTER_DECISION_COLUMNS]
 
 
-def _filter_reject_reason(row: Mapping[str, object], long_states: Sequence[str], short_states: Sequence[str]) -> str:
-    if bool(row.get("_invalid_order_key", False)):
-        return "invalid_order_key"
-    if pd.isna(row.get("_context_date")) or pd.isna(row.get("_context_state")):
-        return "higher_timeframe_no_context"
-    state = str(row.get("_context_state", "")).strip().lower()
-    side = str(row.get("side", "")).strip().lower()
+def _filter_reject_reason_series(
+    aligned: pd.DataFrame,
+    accepted: np.ndarray,
+    *,
+    long_states: Sequence[str],
+    short_states: Sequence[str],
+) -> np.ndarray:
+    invalid_order = aligned["_invalid_order_key"].fillna(False).to_numpy(dtype=bool)
+    no_context = (
+        pd.to_datetime(aligned["_context_date"], errors="coerce").isna()
+        | aligned["_context_state"].isna()
+        | aligned["_context_state"].astype(str).str.strip().eq("")
+    ).to_numpy(dtype=bool)
+    state = aligned["_context_state"].fillna("").astype(str).str.strip().str.lower()
+    side = aligned["side"].fillna("").astype(str).str.strip().str.lower()
     normalized_long_states = {str(item).strip().lower() for item in long_states}
     normalized_short_states = {str(item).strip().lower() for item in short_states}
-    if side not in {"long", "short"}:
-        return "higher_timeframe_mismatch"
-    if side == "long" and state not in normalized_long_states:
-        return "higher_timeframe_mismatch"
-    if side == "short" and state not in normalized_short_states:
-        return "higher_timeframe_mismatch"
-    return "higher_timeframe_stale"
+    mismatch = side.ne("long") & side.ne("short")
+    mismatch = mismatch | (side.eq("long") & ~state.isin(normalized_long_states))
+    mismatch = mismatch | (side.eq("short") & ~state.isin(normalized_short_states))
+    return np.select(
+        [accepted, invalid_order, no_context, mismatch.to_numpy(dtype=bool)],
+        ["", "invalid_order_key", "higher_timeframe_no_context", "higher_timeframe_mismatch"],
+        default="higher_timeframe_stale",
+    )
 
 
-def _metadata_with_context(
-    metadata: object,
-    row: Mapping[str, object],
+def _metadata_with_context_columns(
+    metadata: pd.Series,
+    context_date: pd.Series,
+    context_state: pd.Series,
     base_strategy_name: str,
     context_timeframe: str,
-) -> dict[str, object]:
-    result = dict(metadata) if isinstance(metadata, dict) else {}
-    result["base_strategy_name"] = base_strategy_name
-    result["higher_timeframe"] = context_timeframe
-    result["higher_context_date"] = pd.Timestamp(row["_context_date"])
-    result["higher_state"] = str(row["_context_state"])
-    return result
+) -> list[dict[str, object]]:
+    return [
+        {
+            **(dict(item) if isinstance(item, dict) else {}),
+            "base_strategy_name": base_strategy_name,
+            "higher_timeframe": context_timeframe,
+            "higher_context_date": pd.Timestamp(date),
+            "higher_state": str(state),
+        }
+        for item, date, state in zip(metadata, context_date, context_state, strict=True)
+    ]
