@@ -186,11 +186,16 @@ def test_compute_equity_statistics_reports_annualized_return_and_exposure_metric
     stats = compute_equity_statistics(equity, periods_per_year=4)
     period_returns = equity["net_value"].pct_change().dropna()
     expected_volatility = period_returns.std(ddof=0) * (4**0.5)
+    drawdown = equity["net_value"] / equity["net_value"].cummax() - 1.0
+    expected_ulcer_index = (drawdown.pow(2).mean()) ** 0.5
 
     assert stats["total_return"] == pytest.approx(0.04)
     assert stats["annualized_return"] == pytest.approx(0.04)
     assert stats["annualized_volatility"] == pytest.approx(expected_volatility)
     assert stats["calmar_ratio"] == pytest.approx(0.04 / abs(stats["max_drawdown"]))
+    assert stats["avg_drawdown"] == pytest.approx(drawdown.mean())
+    assert stats["ulcer_index"] == pytest.approx(expected_ulcer_index)
+    assert stats["time_under_water_ratio"] == pytest.approx(2 / 5)
     assert stats["avg_gross_exposure"] == pytest.approx(0.35)
     assert stats["max_gross_exposure"] == pytest.approx(1.0)
     assert stats["exposure_bar_ratio"] == pytest.approx(0.6)

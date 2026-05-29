@@ -25,7 +25,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 组合回测：按真实入场时间和真实成交风险做策略优先级、持仓互斥、风险预算、行业/策略资金上限、空头保证金和逐 K 净值重估
 - 实际风险过滤：信号 K 挂单策略透传 `max_actual_risk_pct` 和 `max_chase_pct`，由撮合层按真实成交价统一判定并记录拒绝原因
 - Detector 参数透传：趋势强收盘/实体/回撤窗口、区间中部/失败突破/区间评分、通道突破缓冲/摆动锚点、反转强收盘/实体阈值都可配置
-- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、年化收益、年化波动、Calmar、暴露度、持仓数和策略/标的/方向/退出原因拆分
+- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、暴露度、持仓数和策略/标的/方向/退出原因拆分
 - 事件类型拆分：订单和成交透传 `event_type`，可单独评估 H1/H2、失败突破、通道突破、二次反转等 setup 表现
 - 真实撮合边界：跳空穿越按开盘成交；同 K 同时触发止盈止损时默认保守止损优先，可显式改为乐观止盈优先
 - 流动性门禁：分钟 K 的 `volume` 或 `amount` 为 0 时会从回测数据包剔除；裸策略/撮合入口仍不允许用这类 K 入场、止盈止损或统计路径波动
@@ -187,7 +187,7 @@ python -m trending_winning.cli single-backtest \
 保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
-单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio`。
+单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio`。
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个 detector 事件和哪类 setup。
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
@@ -250,7 +250,7 @@ python -m trending_winning.cli portfolio-backtest \
 手续费率、滑点 bps 和初始资金会写入 `config.json`，并直接传给单策略、组合策略和参数遍历撮合层。
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、
-`annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_gross_exposure`、`max_gross_exposure`、
+`annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_drawdown`、`ulcer_index`、`time_under_water_ratio`、`avg_gross_exposure`、`max_gross_exposure`、
 `exposure_bar_ratio`、`avg_open_positions`、`max_open_positions`、`avg_r_multiple`、`r_profit_factor`、`system_quality_number`、`avg_mae_pct`、`avg_mfe_pct`、
 `return_p05`、`return_p25`、`return_p50`、`return_p75`、`return_p95`、`cvar_95`、`capital_exposure_bars`、`margin_exposure_bars`、
 以及 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejection_rate /

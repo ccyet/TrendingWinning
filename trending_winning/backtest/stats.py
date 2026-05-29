@@ -73,6 +73,9 @@ EQUITY_STAT_KEYS = [
     "annualized_sharpe",
     "annualized_sortino",
     "calmar_ratio",
+    "avg_drawdown",
+    "ulcer_index",
+    "time_under_water_ratio",
     "avg_gross_exposure",
     "max_gross_exposure",
     "exposure_bar_ratio",
@@ -344,6 +347,9 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     downside_std = _std_or_zero(losses)
     total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
     max_drawdown = _round_float(drawdown.min())
+    avg_drawdown = _mean_or_zero(drawdown)
+    ulcer_index = _round_float(math.sqrt(float(drawdown.pow(2).mean()))) if not drawdown.empty else 0.0
+    time_under_water_ratio = _round_float(float(drawdown.lt(0).mean())) if not drawdown.empty else 0.0
     annual_periods = float(periods_per_year or _infer_periods_per_year(data))
     annualized_return = _annualized_return(net_value, annual_periods, len(returns))
     annualized_volatility = _round_float(std * math.sqrt(annual_periods))
@@ -363,6 +369,9 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         "annualized_sharpe": annualized_sharpe,
         "annualized_sortino": annualized_sortino,
         "calmar_ratio": _ratio_or_zero(annualized_return, abs(max_drawdown)),
+        "avg_drawdown": avg_drawdown,
+        "ulcer_index": ulcer_index,
+        "time_under_water_ratio": time_under_water_ratio,
         "avg_gross_exposure": _mean_or_zero(gross_exposure),
         "max_gross_exposure": _round_float(gross_exposure.max()) if not gross_exposure.empty else 0.0,
         "exposure_bar_ratio": _round_float((gross_exposure > 0).mean()) if not gross_exposure.empty else 0.0,
