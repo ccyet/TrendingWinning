@@ -703,6 +703,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "pareto.csv").exists()
+    assert (output_dir / "parameter_summary.csv").exists()
     assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
@@ -712,6 +713,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
+    saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
@@ -743,6 +745,22 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
         saved_sweep["pareto_rank"].eq(1), "case_config_hash"
     ].tolist()
+    assert {
+        "parameter",
+        "value",
+        "case_count",
+        "pareto_case_count",
+        "best_sweep_rank",
+        "best_case_name",
+        "best_case_config_hash",
+        "avg_total_return",
+        "avg_max_drawdown",
+        "avg_monthly_worst_return",
+        "avg_monthly_return_std",
+    }.issubset(saved_parameter_summary.columns)
+    assert set(saved_parameter_summary["parameter"]) == {"risk_reward", "max_holding_bars"}
+    assert saved_parameter_summary["case_count"].sum() == 8
+    assert saved_parameter_summary["best_sweep_rank"].min() == 1
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert [item["case_name"] for item in saved_cases] == saved_sweep["case_name"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000002.SZ", "30m"), "status"] == "cached"
@@ -1211,6 +1229,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "pareto.csv").exists()
+    assert (output_dir / "parameter_summary.csv").exists()
     assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
@@ -1220,6 +1239,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
+    saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
@@ -1245,6 +1265,22 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
         saved_sweep["pareto_rank"].eq(1), "case_config_hash"
     ].tolist()
+    assert {
+        "parameter",
+        "value",
+        "case_count",
+        "pareto_case_count",
+        "best_sweep_rank",
+        "best_case_name",
+        "best_case_config_hash",
+        "avg_total_return",
+        "avg_max_drawdown",
+        "avg_monthly_worst_return",
+        "avg_monthly_return_std",
+    }.issubset(saved_parameter_summary.columns)
+    assert set(saved_parameter_summary["parameter"]) == {"fee_rate", "slippage_bps"}
+    assert saved_parameter_summary["case_count"].sum() == 8
+    assert saved_parameter_summary["best_sweep_rank"].min() == 1
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     saved_summary = json.loads((output_dir / "summary.json").read_text())

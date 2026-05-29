@@ -106,6 +106,18 @@ SWEEP_SUMMARY_BEST_COLUMNS = (
     "monthly_max_recovery_periods",
 )
 
+PARAMETER_SUMMARY_METRICS = (
+    ("total_return", "avg_total_return", "mean"),
+    ("total_return", "median_total_return", "median"),
+    ("max_drawdown", "avg_max_drawdown", "mean"),
+    ("monthly_worst_return", "avg_monthly_worst_return", "mean"),
+    ("monthly_return_std", "avg_monthly_return_std", "mean"),
+    ("monthly_max_consecutive_losses", "avg_monthly_max_consecutive_losses", "mean"),
+    ("monthly_max_recovery_periods", "avg_monthly_max_recovery_periods", "mean"),
+    ("trade_count", "avg_trade_count", "mean"),
+    ("bars_per_second", "avg_bars_per_second", "mean"),
+)
+
 
 @dataclass(frozen=True)
 class PortfolioExperimentConfig:
@@ -1075,6 +1087,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
+    _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1091,6 +1104,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
+    _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1139,6 +1153,70 @@ def _pareto_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
         return table.iloc[0:0].copy()
     ranks = pd.to_numeric(table["pareto_rank"], errors="coerce")
     return table.loc[ranks.eq(1)].copy()
+
+
+def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepResult) -> pd.DataFrame:
+    """按参数字段和值聚合 sweep 表，帮助判断哪些参数区间更稳。"""
+    columns = [
+        "parameter",
+        "value",
+        "case_count",
+        "pareto_case_count",
+        "best_sweep_rank",
+        "best_case_name",
+        "best_case_config_hash",
+        *[output for _, output, _ in PARAMETER_SUMMARY_METRICS],
+    ]
+    table = result.table
+    if table.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows: list[dict[str, object]] = []
+    for parameter in result.grid:
+        if parameter not in table.columns:
+            continue
+        labels = table[parameter].map(_parameter_value_label)
+        for value, group in table.groupby(labels, sort=False, dropna=False):
+            best = group.sort_values("sweep_rank", ascending=True, kind="mergesort").iloc[0]
+            row: dict[str, object] = {
+                "parameter": str(parameter),
+                "value": str(value),
+                "case_count": int(len(group)),
+                "pareto_case_count": _truthy_column_count(group, "is_pareto_efficient"),
+                "best_sweep_rank": _json_scalar(best.get("sweep_rank")),
+                "best_case_name": str(best.get("case_name", "")),
+                "best_case_config_hash": str(best.get("case_config_hash", "")),
+            }
+            for source, output, method in PARAMETER_SUMMARY_METRICS:
+                row[output] = _numeric_group_metric(group, source, method)
+            rows.append(row)
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    summary = pd.DataFrame(rows, columns=columns)
+    return summary.sort_values(["parameter", "best_sweep_rank", "value"], kind="mergesort").reset_index(drop=True)
+
+
+def _numeric_group_metric(group: pd.DataFrame, column: str, method: str) -> float:
+    if column not in group.columns:
+        return 0.0
+    values = pd.to_numeric(group[column], errors="coerce").dropna()
+    if values.empty:
+        return 0.0
+    if method == "median":
+        return float(values.median())
+    return float(values.mean())
+
+
+def _parameter_value_label(value: object) -> str:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return ""
+    if isinstance(value, dict | list | tuple):
+        return json.dumps(_json_ready(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if pd.isna(value):
+        return ""
+    return str(value)
 
 
 def _grid_value_counts(grid: Mapping[str, Sequence[object]]) -> dict[str, int]:
