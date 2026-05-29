@@ -1260,6 +1260,28 @@ def test_sweep_table_ranking_reports_pareto_fronts() -> None:
     assert bool(by_case.loc["case-c", "is_pareto_efficient"]) is False
 
 
+def test_sweep_table_pareto_fronts_include_monthly_stability() -> None:
+    table = pd.DataFrame(
+        {
+            "case_name": ["stable", "volatile"],
+            "total_return": [0.10, 0.10],
+            "max_drawdown": [-0.05, -0.05],
+            "ulcer_index": [0.03, 0.03],
+            "trade_count": [10, 10],
+            "monthly_worst_return": [-0.02, -0.08],
+            "monthly_return_std": [0.03, 0.12],
+        }
+    )
+
+    ranked = experiment_module._rank_sweep_table(table)
+    by_case = ranked.set_index("case_name")
+
+    assert by_case.loc["stable", "pareto_rank"] == 1
+    assert by_case.loc["volatile", "pareto_rank"] == 2
+    assert bool(by_case.loc["stable", "is_pareto_efficient"]) is True
+    assert bool(by_case.loc["volatile", "is_pareto_efficient"]) is False
+
+
 def test_sweep_case_config_hash_is_stable_and_changes_with_config() -> None:
     base = PortfolioExperimentConfig(
         name="portfolio-sweep",

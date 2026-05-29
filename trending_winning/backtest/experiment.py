@@ -55,6 +55,8 @@ SWEEP_PARETO_OBJECTIVES = (
     ("total_return", "max"),
     ("max_drawdown", "max"),
     ("ulcer_index", "min"),
+    ("monthly_worst_return", "max"),
+    ("monthly_return_std", "min"),
     ("trade_count", "max"),
 )
 
