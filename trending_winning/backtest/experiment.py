@@ -161,6 +161,11 @@ PARAMETER_SUMMARY_METRICS = (
     ("monthly_max_recovery_periods", "avg_monthly_max_recovery_periods", "mean"),
     ("trade_count", "avg_trade_count", "mean"),
     ("bars_per_second", "avg_bars_per_second", "mean"),
+    ("acceptance_rate", "avg_acceptance_rate", "mean"),
+    ("rejection_rate", "avg_rejection_rate", "mean"),
+    ("rejected_no_fill_count", "avg_rejected_no_fill_count", "mean"),
+    ("strategy_filter_acceptance_rate", "avg_strategy_filter_acceptance_rate", "mean"),
+    ("strategy_filter_rejection_rate", "avg_strategy_filter_rejection_rate", "mean"),
 )
 
 SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")

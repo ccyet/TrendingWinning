@@ -22,6 +22,37 @@ from trending_winning.backtest import portfolio as portfolio_module
 from trending_winning.data.repository import write_local_bars
 from trending_winning.strategies.base import ORDER_COLUMNS
 
+_PARAMETER_DECISION_SUMMARY_COLUMNS = {
+    "avg_acceptance_rate",
+    "avg_rejection_rate",
+    "avg_rejected_no_fill_count",
+    "avg_strategy_filter_acceptance_rate",
+    "avg_strategy_filter_rejection_rate",
+}
+
+_PARAMETER_DECISION_METRIC_PAIRS = (
+    ("avg_acceptance_rate", "acceptance_rate"),
+    ("avg_rejection_rate", "rejection_rate"),
+    ("avg_rejected_no_fill_count", "rejected_no_fill_count"),
+    ("avg_strategy_filter_acceptance_rate", "strategy_filter_acceptance_rate"),
+    ("avg_strategy_filter_rejection_rate", "strategy_filter_rejection_rate"),
+)
+
+
+def _assert_parameter_summary_decision_metrics(
+    saved_parameter_summary: pd.DataFrame,
+    saved_sweep: pd.DataFrame,
+    *,
+    parameter: str,
+) -> None:
+    value = str(saved_sweep.loc[0, parameter])
+    summary = saved_parameter_summary.loc[
+        saved_parameter_summary["parameter"].eq(parameter) & saved_parameter_summary["value"].astype(str).eq(value)
+    ].iloc[0]
+    cases = saved_sweep.loc[saved_sweep[parameter].astype(str).eq(value)]
+    for summary_column, sweep_column in _PARAMETER_DECISION_METRIC_PAIRS:
+        assert summary[summary_column] == pytest.approx(cases[sweep_column].mean())
+
 
 def test_experiment_module_does_not_import_trend_detector_at_module_load() -> None:
     source_before_config = getsource(experiment_module).split("DATA_SCOPE_SWEEP_FIELDS", maxsplit=1)[0]
@@ -783,10 +814,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "avg_max_drawdown",
         "avg_monthly_worst_return",
         "avg_monthly_return_std",
+        *_PARAMETER_DECISION_SUMMARY_COLUMNS,
     }.issubset(saved_parameter_summary.columns)
     assert set(saved_parameter_summary["parameter"]) == {"risk_reward", "max_holding_bars"}
     assert saved_parameter_summary["case_count"].sum() == 8
     assert saved_parameter_summary["best_sweep_rank"].min() == 1
+    _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -1438,10 +1471,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "avg_max_drawdown",
         "avg_monthly_worst_return",
         "avg_monthly_return_std",
+        *_PARAMETER_DECISION_SUMMARY_COLUMNS,
     }.issubset(saved_parameter_summary.columns)
     assert set(saved_parameter_summary["parameter"]) == {"fee_rate", "slippage_bps"}
     assert saved_parameter_summary["case_count"].sum() == 8
     assert saved_parameter_summary["best_sweep_rank"].min() == 1
+    _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     assert {
         "sweep_rank",
         "pareto_rank",
