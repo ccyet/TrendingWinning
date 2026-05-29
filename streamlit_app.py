@@ -413,6 +413,13 @@ def _fetch_panel(data_root: Path, adjust: str, tdx_path: str) -> None:
             key="fetch_prepare_min_coverage",
         )
     prepare_min_coverage = float(prepare_min_coverage_input) if float(prepare_min_coverage_input) > 0 else None
+    if st.button("查看本地缓存库存"):
+        repo = MarketDataRepository(data_root, adjust=adjust)
+        inventory = repo.inventory(
+            timeframes=tuple(timeframes),
+            symbols=tuple(symbols) if symbols else None,
+        )
+        st.dataframe(inventory, use_container_width=True)
     if st.button("生成TDX补齐计划"):
         repo = MarketDataRepository(data_root, adjust=adjust)
         plan = repo.plan_from_tdx(

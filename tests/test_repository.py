@@ -10,6 +10,7 @@ from trending_winning.data.repository import (
     MultiTimeframeBacktestDataBundle,
     MarketDataRepository,
     audit_local_data,
+    inventory_local_data,
     load_daily_bars,
     load_backtest_data,
     load_local_bars,
@@ -164,6 +165,66 @@ def test_write_local_bars_merges_and_deduplicates_by_symbol_date(tmp_path: Path)
     assert second_result.loc[0, "rows"] == 2
     assert loaded["close"].tolist() == [10.7, 11.2]
     assert (tmp_path / "market" / "60m" / "qfq" / "000001.SZ.parquet").exists()
+
+
+def test_inventory_local_data_reports_cached_and_missing_symbols(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.1],
+            "high": [10.3, 10.4],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.3],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11330.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+
+    inventory = inventory_local_data(
+        data_root=data_root,
+        adjust="qfq",
+        timeframes=("30m", "60m"),
+        symbols=("000001.SZ", "000002.SZ"),
+    )
+
+    by_key = inventory.set_index(["stock_code", "timeframe"])
+    cached = by_key.loc[("000001.SZ", "30m")]
+    missing_same_timeframe = by_key.loc[("000002.SZ", "30m")]
+    missing_other_timeframe = by_key.loc[("000001.SZ", "60m")]
+    assert cached["status"] == "cached"
+    assert bool(cached["exists"]) is True
+    assert cached["rows"] == 2
+    assert cached["start"] == pd.Timestamp("2026-05-25 10:00:00")
+    assert cached["end"] == pd.Timestamp("2026-05-25 10:30:00")
+    assert missing_same_timeframe["status"] == "missing_file"
+    assert bool(missing_same_timeframe["exists"]) is False
+    assert missing_other_timeframe["status"] == "missing_file"
+
+
+def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25"]),
+            "stock_code": ["600519.SH"],
+            "open": [100.0],
+            "high": [101.0],
+            "low": [99.0],
+            "close": [100.5],
+            "volume": [1000.0],
+            "amount": [100500.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="1d", adjust="qfq", bars=bars)
+
+    inventory = MarketDataRepository(data_root, adjust="qfq").inventory(timeframes=("1d",))
+
+    assert inventory["stock_code"].tolist() == ["600519.SH"]
+    assert inventory["timeframe"].tolist() == ["1d"]
+    assert inventory["status"].tolist() == ["cached"]
 
 
 def test_normalize_bars_drops_rows_with_missing_or_invalid_symbol() -> None:

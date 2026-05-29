@@ -25,6 +25,7 @@ def test_streamlit_app_exposes_tdx_prepare_controls() -> None:
 
     assert not app.exception
     assert any(item.label == "补齐最低覆盖率" for item in app.number_input)
+    assert any(button.label == "查看本地缓存库存" for button in app.button)
     assert any(button.label == "生成TDX补齐计划" for button in app.button)
     assert any(button.label == "审计并补齐TDX数据" for button in app.button)
 
@@ -160,6 +161,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "单策略回测" in html
     assert "组合策略回测" in html
     assert "TDX K线" in html
+    assert "inventory-data" in html
+    assert "本地缓存库存" in html
 
 
 def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:

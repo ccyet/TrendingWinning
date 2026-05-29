@@ -464,6 +464,46 @@ def test_cli_audit_data_can_include_higher_timeframe(tmp_path: Path, monkeypatch
     assert sum(line.lstrip().startswith("000001.SZ") for line in out.splitlines()) == 2
 
 
+def test_cli_inventory_data_reports_local_cache_state(tmp_path: Path, monkeypatch, capsys) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ"],
+            "open": [10.0],
+            "high": [10.3],
+            "low": [9.8],
+            "close": [10.2],
+            "volume": [1000.0],
+            "amount": [10200.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "inventory-data",
+            "--symbols",
+            "000001.SZ,000002.SZ",
+            "--timeframes",
+            "30m,60m",
+            "--data-root",
+            str(data_root),
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "000001.SZ" in out
+    assert "30m" in out
+    assert "cached" in out
+    assert "000002.SZ" in out
+    assert "missing_file" in out
+
+
 def test_cli_prepare_data_calls_repository_prepare_from_tdx(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     captured: dict[str, object] = {}

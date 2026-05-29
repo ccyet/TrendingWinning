@@ -212,6 +212,12 @@ def main() -> None:
     audit_parser.add_argument("--adjust", default="qfq")
     audit_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
 
+    inventory_parser = subparsers.add_parser("inventory-data", help="list local parquet cache inventory by timeframe")
+    inventory_parser.add_argument("--symbols", default="")
+    inventory_parser.add_argument("--timeframes", default="1d,5m,15m,30m,60m")
+    inventory_parser.add_argument("--adjust", default="qfq")
+    inventory_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+
     scan_parser = subparsers.add_parser("backtest", help="scan local bars and run a breakout backtest")
     scan_parser.add_argument("--symbols", required=True)
     scan_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
@@ -479,6 +485,14 @@ def main() -> None:
         return
 
     repo = MarketDataRepository(Path(args.data_root), adjust=args.adjust)
+    if args.command == "inventory-data":
+        result = repo.inventory(
+            timeframes=tuple(item.strip() for item in args.timeframes.split(",") if item.strip()),
+            symbols=symbols or None,
+        )
+        print(result.to_string(index=False))
+        return
+
     if args.command == "fetch":
         result = repo.update_from_tdx(
             symbols=symbols,

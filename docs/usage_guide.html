@@ -215,7 +215,7 @@
       <h2>能力总览</h2>
       <div class="grid">
         <div class="card"><b>TDX 数据</b><span>日 K <code>1d</code> 和分钟 K <code>5m / 15m / 30m / 60m</code>，不使用 akshare 通道；高分钟周期可由 TDX <code>5m</code> 聚合。</span></div>
-        <div class="card"><b>数据管理</b><span>本地 parquet 审计、按需补齐、覆盖率门禁、日 K 锚定分钟交易日。</span></div>
+        <div class="card"><b>数据管理</b><span>本地缓存库存、parquet 审计、按需补齐、覆盖率门禁、日 K 锚定分钟交易日。</span></div>
         <div class="card"><b>过滤规则</b><span>按主板、科创、创业、北交所涨停开盘规则过滤污染交易日。</span></div>
         <div class="card"><b>独立 detector</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
         <div class="card"><b>挂单触发</b><span>突破在信号 K 上方/下方挂单，撮合层按下一根 K 是否触发成交。</span></div>
@@ -248,8 +248,12 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
 
     <section id="data">
       <h2>TDX K线</h2>
-      <p>先用诊断确认 Windows/Parallels TDX 通道，再做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
+      <p>先查看本地缓存库存，再用诊断确认 Windows/Parallels TDX 通道；随后做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
       <div class="note">Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准，先跑 <code>tdx-doctor --runtime parallels</code>，不要尝试从 Mac 本机通达信直接取数。若日 K 返回 <code>ok</code>、分钟 no_data，说明 Windows 通达信本地没有返回分钟 K 线；先确认 5m 分钟数据缓存，再做高周期请求或 5m 聚合。</div>
+      <pre><code>python -m trending_winning.cli inventory-data \
+  --symbols 000001.SZ,600519.SH \
+  --timeframes 1d,5m,15m,30m,60m \
+  --data-root /path/to/market/daily</code></pre>
       <pre><code>python -m trending_winning.cli tdx-doctor \
   --symbols 000001.SZ,600519.SH \
   --timeframes 1d,5m,15m,30m,60m \
@@ -272,6 +276,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
   --min-coverage-ratio 0.95 \
   --data-root /path/to/market/daily</code></pre>
       <ul>
+        <li><code>inventory-data</code> 只列本地缓存库存；指定代码时缺失周期会显示 <code>missing_file</code>。</li>
         <li><code>plan-data</code> 只读取本地 parquet 和日 K 交易日锚点，不请求 TDX。</li>
         <li><code>prepare-data</code> 在 Mac 侧默认通过 Parallels 进入 Windows 执行真实 TDX 请求。</li>
         <li><code>prepare-data</code> 只请求缺失、质量错误或覆盖率低于门槛的标的周期。</li>

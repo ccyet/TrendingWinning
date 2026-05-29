@@ -10,6 +10,7 @@ import pandas as pd
 from trending_winning.data.filters import filter_limit_open_days, limit_open_dates
 from trending_winning.data.schema import (
     CANONICAL_COLUMNS,
+    SUPPORTED_TIMEFRAMES,
     TIMEFRAME_DIR_NAMES,
     empty_bars,
     empty_download_result,
@@ -28,6 +29,7 @@ __all__ = [
     "MarketDataRepository",
     "audit_local_data",
     "available_symbols",
+    "inventory_local_data",
     "load_backtest_data",
     "load_daily_bars",
     "load_local_bars",
@@ -118,6 +120,21 @@ LIMIT_FILTER_AUDIT_COLUMNS = [
     "message",
 ]
 
+INVENTORY_COLUMNS = [
+    "stock_code",
+    "timeframe",
+    "adjust",
+    "status",
+    "exists",
+    "rows",
+    "start",
+    "end",
+    "file_size_bytes",
+    "modified_at",
+    "path",
+    "message",
+]
+
 DATA_AUDIT_SUMMARY_KEYS = [
     "data_audit_row_count",
     "data_audit_ok_count",
@@ -178,6 +195,19 @@ class MarketDataRepository:
 
     def available_symbols(self, timeframe: str) -> list[str]:
         return available_symbols(self.data_root, timeframe, self.adjust)
+
+    def inventory(
+        self,
+        *,
+        timeframes: tuple[str, ...] | list[str] = SUPPORTED_TIMEFRAMES,
+        symbols: tuple[str, ...] | list[str] | None = None,
+    ) -> pd.DataFrame:
+        return inventory_local_data(
+            data_root=self.data_root,
+            adjust=self.adjust,
+            timeframes=timeframes,
+            symbols=symbols,
+        )
 
     def load_bars(
         self,
@@ -365,6 +395,126 @@ def available_symbols(data_root: str | Path, timeframe: str, adjust: str = "qfq"
     if not root.exists():
         return []
     return sorted(normalize_symbol(path.stem) for path in root.glob("*.parquet"))
+
+
+def inventory_local_data(
+    *,
+    data_root: str | Path,
+    adjust: str = "qfq",
+    timeframes: tuple[str, ...] | list[str] = SUPPORTED_TIMEFRAMES,
+    symbols: tuple[str, ...] | list[str] | None = None,
+) -> pd.DataFrame:
+    """列出本地 parquet 缓存库存；用于回测前确认哪些周期和标的已经落地。"""
+    normalized_timeframes = _unique_timeframes(list(timeframes))
+    if not normalized_timeframes:
+        raise ValueError("timeframes 不能为空。")
+    normalized_symbols = (
+        unique_symbols(tuple(symbols))
+        if symbols is not None
+        else _discover_inventory_symbols(data_root=data_root, adjust=adjust, timeframes=normalized_timeframes)
+    )
+    if not normalized_symbols:
+        return pd.DataFrame(columns=INVENTORY_COLUMNS)
+
+    rows = [
+        _inventory_symbol_file(
+            data_root=data_root,
+            timeframe=timeframe,
+            adjust=adjust,
+            symbol=symbol,
+        )
+        for timeframe in normalized_timeframes
+        for symbol in normalized_symbols
+    ]
+    frame = pd.DataFrame(rows, columns=INVENTORY_COLUMNS)
+    order = {timeframe: index for index, timeframe in enumerate(SUPPORTED_TIMEFRAMES)}
+    frame["_timeframe_order"] = frame["timeframe"].map(order).fillna(len(order)).astype(int)
+    return (
+        frame.sort_values(["_timeframe_order", "stock_code"], kind="mergesort")
+        .drop(columns=["_timeframe_order"])
+        .reset_index(drop=True)
+    )
+
+
+def _discover_inventory_symbols(
+    *,
+    data_root: str | Path,
+    adjust: str,
+    timeframes: list[str],
+) -> list[str]:
+    """未指定代码时按已存在的 parquet 文件反推标的清单。"""
+    seen: set[str] = set()
+    symbols: list[str] = []
+    for timeframe in timeframes:
+        root = resolve_timeframe_root(data_root, timeframe) / adjust
+        if not root.exists():
+            continue
+        for path in sorted(root.glob("*.parquet")):
+            symbol = normalize_symbol(path.stem)
+            if not symbol or symbol in seen:
+                continue
+            seen.add(symbol)
+            symbols.append(symbol)
+    return sorted(symbols)
+
+
+def _inventory_symbol_file(
+    *,
+    data_root: str | Path,
+    timeframe: str,
+    adjust: str,
+    symbol: str,
+) -> dict[str, object]:
+    root = resolve_timeframe_root(data_root, timeframe) / adjust
+    path = root / f"{symbol}.parquet"
+    base = {
+        "stock_code": symbol,
+        "timeframe": ensure_supported_timeframe(timeframe),
+        "adjust": adjust,
+        "exists": path.exists(),
+        "file_size_bytes": int(path.stat().st_size) if path.exists() else 0,
+        "modified_at": pd.Timestamp.fromtimestamp(path.stat().st_mtime) if path.exists() else pd.NaT,
+        "path": str(path),
+    }
+    if not path.exists():
+        return _inventory_record(base, status="missing_file", message="本地 parquet 不存在。")
+    try:
+        raw = pd.read_parquet(path)
+    except Exception as exc:  # noqa: BLE001
+        return _inventory_record(base, status="read_error", message=f"parquet 读取失败：{exc}")
+
+    missing_columns = sorted(set(CANONICAL_COLUMNS).difference(raw.columns))
+    if missing_columns:
+        return _inventory_record(
+            base,
+            status="missing_columns",
+            rows=int(len(raw)),
+            message=f"缺少标准行情字段：{', '.join(missing_columns)}。",
+        )
+    normalized = normalize_bars(raw, symbol)
+    if normalized.empty:
+        return _inventory_record(base, status="no_valid_rows", message="文件存在，但没有可用标准 K 线。")
+    return _inventory_record(
+        base,
+        status="cached",
+        rows=int(len(normalized)),
+        start=normalized["date"].min(),
+        end=normalized["date"].max(),
+        message="本地 parquet 可用于读取；回测前仍建议执行覆盖率审计。",
+    )
+
+
+def _inventory_record(base: dict[str, object], **overrides: object) -> dict[str, object]:
+    record = {
+        **base,
+        "status": "",
+        "rows": 0,
+        "start": pd.NaT,
+        "end": pd.NaT,
+        "message": "",
+    }
+    record.update(overrides)
+    return record
 
 
 def resolve_daily_root(data_root: str | Path) -> Path:
