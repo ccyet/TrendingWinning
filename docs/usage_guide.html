@@ -358,7 +358,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
         <thead><tr><th>文件</th><th>说明</th></tr></thead>
         <tbody>
           <tr><td><code>config.json</code></td><td>完整实验配置，可复现实验。</td></tr>
-          <tr><td><code>stats.json</code></td><td>逐笔统计、净值统计、订单摘要、过滤摘要、缓存库存摘要、数据审计摘要和周期稳定性摘要，例如 <code>avg_cash_ratio</code>、<code>min_cash_ratio</code>、<code>avg_net_exposure</code>、<code>max_net_exposure</code>、<code>data_coverage_below_min_count</code>、<code>data_coverage_p05</code>、<code>data_coverage_p50</code>、<code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_return_std</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code>。</td></tr>
+          <tr><td><code>stats.json</code></td><td>逐笔统计、净值统计、订单摘要、过滤摘要、缓存库存摘要、数据审计摘要和周期稳定性摘要，例如 <code>avg_cash_ratio</code>、<code>min_cash_ratio</code>、<code>avg_net_exposure</code>、<code>max_net_exposure</code>、<code>data_audit_missing_file_count</code>、<code>data_audit_missing_columns_count</code>、<code>data_audit_no_window_data_count</code>、<code>data_audit_read_error_count</code>、<code>limit_filter_daily_missing_count</code>、<code>data_coverage_below_min_count</code>、<code>data_coverage_p05</code>、<code>data_coverage_p50</code>、<code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_return_std</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code>。</td></tr>
           <tr><td><code>trades.csv</code></td><td>成交明细，含 <code>order_id / event_id / event_type</code>。</td></tr>
           <tr><td><code>order_decisions.csv</code></td><td>撮合层接受或拒绝原因。</td></tr>
           <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、高周期不一致。</td></tr>

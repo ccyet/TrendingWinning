@@ -281,14 +281,14 @@ def test_repository_data_loaders_reject_start_after_end(tmp_path: Path) -> None:
 def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
     data_audit = pd.DataFrame(
         {
-            "status": ["ok", "quality_error", "missing_file"],
-            "expected_rows": [8, 8, 0],
-            "missing_rows": [1, 4, 0],
-            "coverage_ratio": [0.875, 0.5, 0.0],
-            "max_missing_gap_minutes": [30, 90, 0],
-            "zero_volume_amount_rows": [2, 0, 0],
-            "non_positive_price_rows": [0, 1, 0],
-            "negative_volume_amount_rows": [0, 1, 0],
+            "status": ["ok", "quality_error", "missing_file", "no_window_data", "missing_columns", "read_error"],
+            "expected_rows": [8, 8, 0, 8, 0, 0],
+            "missing_rows": [1, 4, 0, 8, 0, 0],
+            "coverage_ratio": [0.875, 0.5, 0.0, 0.0, 0.0, 0.0],
+            "max_missing_gap_minutes": [30, 90, 0, 240, 0, 0],
+            "zero_volume_amount_rows": [2, 0, 0, 0, 0, 0],
+            "non_positive_price_rows": [0, 1, 0, 0, 0, 0],
+            "negative_volume_amount_rows": [0, 1, 0, 0, 0, 0],
         }
     )
     filter_audit = pd.DataFrame(
@@ -300,22 +300,25 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
     )
 
     assert summarize_data_audit(data_audit, min_coverage_ratio=0.8) == {
-        "data_audit_row_count": 3.0,
+        "data_audit_row_count": 6.0,
         "data_audit_ok_count": 1.0,
-        "data_audit_failed_count": 2.0,
+        "data_audit_failed_count": 5.0,
         "data_audit_missing_file_count": 1.0,
+        "data_audit_missing_columns_count": 1.0,
+        "data_audit_no_window_data_count": 1.0,
         "data_audit_quality_error_count": 1.0,
+        "data_audit_read_error_count": 1.0,
         "data_min_coverage_threshold": 0.8,
-        "data_coverage_below_min_count": 1.0,
-        "data_coverage_below_min_ratio": 0.5,
-        "data_expected_rows": 16.0,
-        "data_missing_rows": 5.0,
-        "data_weighted_coverage_ratio": pytest.approx(11 / 16),
-        "data_min_coverage_ratio": 0.5,
-        "data_coverage_p05": pytest.approx(0.51875),
-        "data_coverage_p50": pytest.approx(0.6875),
-        "data_coverage_p95": pytest.approx(0.85625),
-        "data_max_missing_gap_minutes": 90.0,
+        "data_coverage_below_min_count": 2.0,
+        "data_coverage_below_min_ratio": pytest.approx(2 / 3),
+        "data_expected_rows": 24.0,
+        "data_missing_rows": 13.0,
+        "data_weighted_coverage_ratio": pytest.approx(11 / 24),
+        "data_min_coverage_ratio": 0.0,
+        "data_coverage_p05": pytest.approx(0.05),
+        "data_coverage_p50": pytest.approx(0.5),
+        "data_coverage_p95": pytest.approx(0.8375),
+        "data_max_missing_gap_minutes": 240.0,
         "data_zero_volume_amount_rows": 2.0,
         "data_non_positive_price_rows": 1.0,
         "data_negative_volume_amount_rows": 1.0,
@@ -325,6 +328,7 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
         "limit_filter_enabled_count": 2.0,
         "limit_filter_ok_count": 1.0,
         "limit_filter_failed_count": 1.0,
+        "limit_filter_daily_missing_count": 1.0,
         "limit_filter_filtered_days": 2.0,
     }
 

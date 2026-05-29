@@ -207,7 +207,7 @@ python -m trending_winning.cli single-backtest \
 组合回测的 `strategy_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
 `data_inventory.csv` 保存本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含是否存在、行数、起止时间、文件大小、修改时间和路径；`stats.json` 同步写入 `data_inventory_row_count / data_inventory_cached_count / data_inventory_missing_file_count` 等摘要。
 `stats.json` 同步写入 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejected_no_fill_count / rejected_no_liquidity_count / rejected_no_bars_count / rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_already_open_count`
-以及已接受订单的平均/最大 `capital_fraction / risk_fraction / margin_fraction`，若启用策略层过滤，还会写入 `strategy_signal_count / strategy_filter_acceptance_rate / strategy_rejected_signal_bar_no_liquidity_count / strategy_rejected_higher_timeframe_mismatch_count` 等摘要。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / limit_filter_failed_count / limit_filter_filtered_days`。
+以及已接受订单的平均/最大 `capital_fraction / risk_fraction / margin_fraction`，若启用策略层过滤，还会写入 `strategy_signal_count / strategy_filter_acceptance_rate / strategy_rejected_signal_bar_no_liquidity_count / strategy_rejected_higher_timeframe_mismatch_count` 等摘要。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / data_audit_missing_file_count / data_audit_missing_columns_count / data_audit_no_window_data_count / data_audit_read_error_count / limit_filter_failed_count / limit_filter_daily_missing_count / limit_filter_filtered_days`。
 多标的单策略回测会按实际入场时间排序成交，避免逐笔统计和净值曲线受股票代码顺序影响。
 
 组合策略回测并保存产物：
@@ -268,7 +268,7 @@ python -m trending_winning.cli portfolio-backtest \
 以及 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejection_rate /
 rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_max_open_positions_count / rejected_no_capital_count / rejected_actual_risk_too_high_count / rejected_chase_too_far_count / rejected_target_not_favorable_count /
 avg_executed_actual_risk_pct / max_executed_actual_risk_pct / avg_executed_actual_chase_pct / max_executed_actual_chase_pct / avg_executed_actual_reward_to_risk`
-等订单摘要、策略过滤摘要和已接受订单的资金、风险、保证金占用统计。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / limit_filter_failed_count / limit_filter_filtered_days`。
+等订单摘要、策略过滤摘要和已接受订单的资金、风险、保证金占用统计。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / data_audit_missing_file_count / data_audit_missing_columns_count / data_audit_no_window_data_count / data_audit_read_error_count / limit_filter_failed_count / limit_filter_daily_missing_count / limit_filter_filtered_days`。
 
 单策略独立参数遍历：
 

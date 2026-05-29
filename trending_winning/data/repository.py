@@ -140,7 +140,10 @@ DATA_AUDIT_SUMMARY_KEYS = [
     "data_audit_ok_count",
     "data_audit_failed_count",
     "data_audit_missing_file_count",
+    "data_audit_missing_columns_count",
+    "data_audit_no_window_data_count",
     "data_audit_quality_error_count",
+    "data_audit_read_error_count",
     "data_min_coverage_threshold",
     "data_coverage_below_min_count",
     "data_coverage_below_min_ratio",
@@ -162,6 +165,7 @@ LIMIT_FILTER_SUMMARY_KEYS = [
     "limit_filter_enabled_count",
     "limit_filter_ok_count",
     "limit_filter_failed_count",
+    "limit_filter_daily_missing_count",
     "limit_filter_filtered_days",
 ]
 
@@ -862,7 +866,10 @@ def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | Non
         "data_audit_ok_count": float(status.eq("ok").sum()),
         "data_audit_failed_count": float(status.ne("ok").sum()),
         "data_audit_missing_file_count": float(status.eq("missing_file").sum()),
+        "data_audit_missing_columns_count": float(status.eq("missing_columns").sum()),
+        "data_audit_no_window_data_count": float(status.eq("no_window_data").sum()),
         "data_audit_quality_error_count": float(status.eq("quality_error").sum()),
+        "data_audit_read_error_count": float(status.eq("read_error").sum()),
         "data_min_coverage_threshold": float(min_coverage_ratio or 0.0),
         "data_coverage_below_min_count": float(below_min.sum()),
         "data_coverage_below_min_ratio": _audit_ratio_or_zero(float(below_min.sum()), float(expected_mask.sum())),
@@ -899,6 +906,7 @@ def summarize_limit_filter_audit(filter_audit: pd.DataFrame) -> dict[str, float]
         "limit_filter_enabled_count": float(enabled.sum()),
         "limit_filter_ok_count": float(status.eq("ok").sum()),
         "limit_filter_failed_count": float(status.ne("ok").sum()),
+        "limit_filter_daily_missing_count": float(status.eq("daily_missing").sum()),
         "limit_filter_filtered_days": float(_audit_numeric_column(filter_audit, "filtered_days").sum()),
     }
 
