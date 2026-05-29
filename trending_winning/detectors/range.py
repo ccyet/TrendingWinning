@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from trending_winning.detectors.base import DetectorEvent, empty_events, events_to_frame
+from trending_winning.detectors.base import DETECTOR_EVENT_COLUMNS, empty_events
 from trending_winning.detectors.features import attach_bar_features, rolling_slope_z
 
 
@@ -41,14 +41,15 @@ class RangeDetector:
         if featured.empty:
             return empty_events()
 
-        events: list[DetectorEvent] = []
+        frames: list[pd.DataFrame] = []
         for symbol, group in featured.groupby("stock_code", sort=False):
             scored = self._score_group(group.reset_index(drop=True))
-            for index, row in enumerate(scored.to_records(index=False)):
-                event = self._event_for_row(str(symbol), timeframe, index, row)
-                if event is not None:
-                    events.append(event)
-        return events_to_frame(events)
+            frame = self._events_for_group(str(symbol), timeframe, scored)
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return empty_events()
+        return pd.concat(frames, ignore_index=True).loc[:, DETECTOR_EVENT_COLUMNS]
 
     def _score_group(self, group: pd.DataFrame) -> pd.DataFrame:
         result = group.copy()
@@ -116,53 +117,106 @@ class RangeDetector:
         result["range_score"] = score.where(path.notna() & net_move.notna(), 0.0)
         return result
 
-    def _event_for_row(self, symbol: str, timeframe: str, index: int, row: object) -> DetectorEvent | None:
+    def _events_for_group(self, symbol: str, timeframe: str, scored: pd.DataFrame) -> pd.DataFrame:
+        """批量输出区间事件；优先级保持失败下破、失败上破、中部观察。"""
         cfg = self.config
-        if pd.isna(row["range_pos"]):
-            return None
-        if bool(row["failed_breakdown"]):
-            event_type = "failed_breakdown"
-            direction = "long"
-            entry_price = float(row["high"] + cfg.tick_size)
-            stop_price = float(row["low"] - cfg.tick_size)
-            signal_price = float(row["high"])
-        elif bool(row["failed_breakout"]):
-            event_type = "failed_breakout"
-            direction = "short"
-            entry_price = float(row["low"] - cfg.tick_size)
-            stop_price = float(row["high"] + cfg.tick_size)
-            signal_price = float(row["low"])
-        elif bool(row["no_trade_middle"]):
-            event_type = "no_trade_middle"
-            direction = "neutral"
-            entry_price = pd.NA
-            stop_price = pd.NA
-            signal_price = float(row["close"])
-        else:
-            return None
-
-        return DetectorEvent(
-            event_id=f"{self.name}:{symbol}:{pd.Timestamp(row['date']).isoformat()}:{event_type}",
-            detector_name=self.name,
-            stock_code=symbol,
-            timeframe=timeframe,
-            date=pd.Timestamp(row["date"]),
-            bar_index=int(index),
-            event_type=event_type,
-            direction=direction,
-            signal_price=signal_price,
-            entry_price=entry_price,
-            stop_price=stop_price,
-            confidence=1.0,
-            metadata={
-                "range_high": float(row["range_high"]),
-                "range_low": float(row["range_low"]),
-                "range_pos": float(row["range_pos"]),
-                "range_score": float(row["range_score"]),
-                "overlap_mean": float(row["overlap_mean"]),
-                "tail_mean": float(row["tail_mean"]),
-                "ema_flatness": float(row["ema_flatness"]),
-                "directional_efficiency": float(row["directional_efficiency"]),
-                "failed_break_count": float(row["failed_break_count"]),
-            },
+        valid = scored["range_pos"].notna()
+        failed_breakdown = valid & scored["failed_breakdown"].fillna(False).astype(bool)
+        failed_breakout = valid & ~failed_breakdown & scored["failed_breakout"].fillna(False).astype(bool)
+        no_trade_middle = (
+            valid
+            & ~failed_breakdown
+            & ~failed_breakout
+            & scored["no_trade_middle"].fillna(False).astype(bool)
         )
+        event_mask = failed_breakdown | failed_breakout | no_trade_middle
+        if not bool(event_mask.any()):
+            return empty_events()
+
+        high = pd.to_numeric(scored["high"], errors="coerce")
+        low = pd.to_numeric(scored["low"], errors="coerce")
+        close = pd.to_numeric(scored["close"], errors="coerce")
+        event_type = pd.Series("", index=scored.index, dtype=object)
+        direction = pd.Series("", index=scored.index, dtype=object)
+        entry_price = pd.Series(np.nan, index=scored.index, dtype=float)
+        stop_price = pd.Series(np.nan, index=scored.index, dtype=float)
+        signal_price = pd.Series(np.nan, index=scored.index, dtype=float)
+
+        event_type.loc[failed_breakdown] = "failed_breakdown"
+        direction.loc[failed_breakdown] = "long"
+        entry_price.loc[failed_breakdown] = high.loc[failed_breakdown] + cfg.tick_size
+        stop_price.loc[failed_breakdown] = low.loc[failed_breakdown] - cfg.tick_size
+        signal_price.loc[failed_breakdown] = high.loc[failed_breakdown]
+
+        event_type.loc[failed_breakout] = "failed_breakout"
+        direction.loc[failed_breakout] = "short"
+        entry_price.loc[failed_breakout] = low.loc[failed_breakout] - cfg.tick_size
+        stop_price.loc[failed_breakout] = high.loc[failed_breakout] + cfg.tick_size
+        signal_price.loc[failed_breakout] = low.loc[failed_breakout]
+
+        event_type.loc[no_trade_middle] = "no_trade_middle"
+        direction.loc[no_trade_middle] = "neutral"
+        signal_price.loc[no_trade_middle] = close.loc[no_trade_middle]
+
+        selected = scored.loc[event_mask].copy()
+        selected_type = event_type.loc[event_mask]
+        dates = pd.to_datetime(selected["date"], errors="coerce")
+        return pd.DataFrame(
+            {
+                "event_id": [
+                    f"{self.name}:{symbol}:{pd.Timestamp(date).isoformat()}:{event}"
+                    for date, event in zip(dates, selected_type, strict=True)
+                ],
+                "detector_name": self.name,
+                "stock_code": symbol,
+                "timeframe": timeframe,
+                "date": dates.to_numpy(),
+                "bar_index": selected.index.astype(int).to_numpy(),
+                "event_type": selected_type.to_numpy(),
+                "direction": direction.loc[event_mask].to_numpy(),
+                "signal_price": signal_price.loc[event_mask].to_numpy(dtype=float),
+                "entry_price": entry_price.loc[event_mask].to_numpy(dtype=float),
+                "stop_price": stop_price.loc[event_mask].to_numpy(dtype=float),
+                "confidence": np.ones(int(event_mask.sum()), dtype=float),
+                "metadata": self._metadata_records(selected),
+            },
+            columns=DETECTOR_EVENT_COLUMNS,
+        )
+
+    @staticmethod
+    def _metadata_records(scored: pd.DataFrame) -> list[dict[str, object]]:
+        return [
+            {
+                "range_high": float(range_high),
+                "range_low": float(range_low),
+                "range_pos": float(range_pos),
+                "range_score": float(range_score),
+                "overlap_mean": float(overlap_mean),
+                "tail_mean": float(tail_mean),
+                "ema_flatness": float(ema_flatness),
+                "directional_efficiency": float(directional_efficiency),
+                "failed_break_count": float(failed_break_count),
+            }
+            for (
+                range_high,
+                range_low,
+                range_pos,
+                range_score,
+                overlap_mean,
+                tail_mean,
+                ema_flatness,
+                directional_efficiency,
+                failed_break_count,
+            ) in zip(
+                pd.to_numeric(scored["range_high"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["range_low"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["range_pos"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["range_score"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["overlap_mean"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["tail_mean"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["ema_flatness"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["directional_efficiency"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["failed_break_count"], errors="coerce").fillna(0.0),
+                strict=True,
+            )
+        ]

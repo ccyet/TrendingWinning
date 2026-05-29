@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from trending_winning.detectors.base import DetectorEvent, empty_events, events_to_frame
+from trending_winning.detectors.base import DETECTOR_EVENT_COLUMNS, empty_events
 from trending_winning.detectors.features import attach_bar_features, rolling_slope_z
 
 
@@ -45,43 +45,14 @@ class TrendDetector:
         if scored_all.empty:
             return empty_events()
 
-        events: list[DetectorEvent] = []
+        frames: list[pd.DataFrame] = []
         for symbol, scored in scored_all.groupby("stock_code", sort=False):
-            scored = scored.reset_index(drop=True)
-            for index, row in enumerate(scored.to_records(index=False)):
-                direction = self._signal_direction(row)
-                if direction == "neutral":
-                    continue
-                entry_price, stop_price, signal_price = self._prices(scored, index, direction)
-                if not np.isfinite(entry_price) or not np.isfinite(stop_price) or entry_price <= 0 or stop_price <= 0:
-                    continue
-                event_type = self._event_type(row, direction)
-                event_id = f"{self.name}:{symbol}:{pd.Timestamp(row['date']).isoformat()}:{event_type}"
-                events.append(
-                    DetectorEvent(
-                        event_id=event_id,
-                        detector_name=self.name,
-                        stock_code=str(symbol),
-                        timeframe=timeframe,
-                        date=pd.Timestamp(row["date"]),
-                        bar_index=int(index),
-                        event_type=event_type,
-                        direction=direction,
-                        signal_price=float(signal_price),
-                        entry_price=float(entry_price),
-                        stop_price=float(stop_price),
-                        confidence=float(min(abs(row["trend_score"]) / max(self.config.min_trend_score, 1e-9), 3.0) / 3.0),
-                        metadata={
-                            "trend_score": float(row["trend_score"]),
-                            "trend_state": str(row["trend_state"]),
-                            "pullback_legs": int(row["pullback_legs"]),
-                            "slope_z": float(row["slope_z"]) if pd.notna(row["slope_z"]) else 0.0,
-                            "close_pos": float(row["close_pos"]),
-                            "body_ratio": float(row["body_ratio"]),
-                        },
-                    )
-                )
-        return events_to_frame(events)
+            frame = self._events_for_group(str(symbol), timeframe, scored.reset_index(drop=True))
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return empty_events()
+        return pd.concat(frames, ignore_index=True).loc[:, DETECTOR_EVENT_COLUMNS]
 
     def _score_group(self, group: pd.DataFrame) -> pd.DataFrame:
         result = group.copy()
@@ -126,41 +97,132 @@ class TrendDetector:
         )
         return result
 
-    def _signal_direction(self, row: object) -> str:
-        cfg = self.config
-        if (
-            float(row["trend_score"]) >= cfg.min_trend_score
-            and str(row["trend_state"]) == "bull"
-            and float(row["close_pos"]) >= cfg.strong_close_pos
-            and float(row["body_ratio"]) >= cfg.min_body_ratio
-            and float(row["close"]) > float(row["open"])
-        ):
-            return "long"
-        if (
-            float(row["trend_score"]) <= -cfg.min_trend_score
-            and str(row["trend_state"]) == "bear"
-            and float(row["close_pos"]) <= 1.0 - cfg.strong_close_pos
-            and float(row["body_ratio"]) >= cfg.min_body_ratio
-            and float(row["close"]) < float(row["open"])
-        ):
-            return "short"
-        return "neutral"
+    def _events_for_group(self, symbol: str, timeframe: str, scored: pd.DataFrame) -> pd.DataFrame:
+        """批量生成趋势事件；滚动计算后只按事件行组装 metadata。"""
+        direction = self._signal_direction_series(scored)
+        entry_price, stop_price, signal_price = self._price_series(scored, direction)
+        price_mask = entry_price.gt(0) & stop_price.gt(0) & np.isfinite(entry_price) & np.isfinite(stop_price)
+        event_mask = direction.ne("neutral") & price_mask
+        if not bool(event_mask.any()):
+            return empty_events()
 
-    def _event_type(self, row: object, direction: str) -> str:
-        legs = int(row["pullback_legs"])
-        if direction == "long":
-            return "bull_h2_setup" if legs >= self.config.h2_min_pullback_legs else "bull_h1_setup"
-        return "bear_l2_setup" if legs >= self.config.h2_min_pullback_legs else "bear_l1_setup"
+        selected = scored.loc[event_mask].copy()
+        selected_direction = direction.loc[event_mask]
+        selected_entry = entry_price.loc[event_mask].astype(float)
+        selected_stop = stop_price.loc[event_mask].astype(float)
+        selected_signal = signal_price.loc[event_mask].astype(float)
+        event_type = self._event_type_series(selected, selected_direction)
+        confidence = self._confidence_series(selected)
+        metadata = self._metadata_records(selected)
+        dates = pd.to_datetime(selected["date"], errors="coerce")
 
-    def _prices(self, group: pd.DataFrame, index: int, direction: str) -> tuple[float, float, float]:
+        return pd.DataFrame(
+            {
+                "event_id": [
+                    f"{self.name}:{symbol}:{pd.Timestamp(date).isoformat()}:{event}"
+                    for date, event in zip(dates, event_type, strict=True)
+                ],
+                "detector_name": self.name,
+                "stock_code": symbol,
+                "timeframe": timeframe,
+                "date": dates.to_numpy(),
+                "bar_index": selected.index.astype(int).to_numpy(),
+                "event_type": event_type.to_numpy(),
+                "direction": selected_direction.to_numpy(),
+                "signal_price": selected_signal.to_numpy(),
+                "entry_price": selected_entry.to_numpy(),
+                "stop_price": selected_stop.to_numpy(),
+                "confidence": confidence.to_numpy(dtype=float),
+                "metadata": metadata,
+            },
+            columns=DETECTOR_EVENT_COLUMNS,
+        )
+
+    def _signal_direction_series(self, scored: pd.DataFrame) -> pd.Series:
         cfg = self.config
-        row = group.loc[index]
-        start = max(0, index - cfg.pullback_lookback + 1)
-        if direction == "long":
-            stop_base = float(group.loc[start:index, "low"].min())
-            return float(row["high"] + cfg.tick_size), stop_base - cfg.tick_size, float(row["high"])
-        stop_base = float(group.loc[start:index, "high"].max())
-        return float(row["low"] - cfg.tick_size), stop_base + cfg.tick_size, float(row["low"])
+        trend_score = pd.to_numeric(scored["trend_score"], errors="coerce")
+        close_pos = pd.to_numeric(scored["close_pos"], errors="coerce")
+        body_ratio = pd.to_numeric(scored["body_ratio"], errors="coerce")
+        close = pd.to_numeric(scored["close"], errors="coerce")
+        open_ = pd.to_numeric(scored["open"], errors="coerce")
+        trend_state = scored["trend_state"].astype(str)
+        long_mask = (
+            trend_score.ge(cfg.min_trend_score)
+            & trend_state.eq("bull")
+            & close_pos.ge(cfg.strong_close_pos)
+            & body_ratio.ge(cfg.min_body_ratio)
+            & close.gt(open_)
+        )
+        short_mask = (
+            trend_score.le(-cfg.min_trend_score)
+            & trend_state.eq("bear")
+            & close_pos.le(1.0 - cfg.strong_close_pos)
+            & body_ratio.ge(cfg.min_body_ratio)
+            & close.lt(open_)
+        )
+        return pd.Series(np.select([long_mask, short_mask], ["long", "short"], default="neutral"), index=scored.index)
+
+    def _event_type_series(self, scored: pd.DataFrame, direction: pd.Series) -> pd.Series:
+        legs = pd.to_numeric(scored["pullback_legs"], errors="coerce").fillna(0).astype(int)
+        h2 = legs.ge(self.config.h2_min_pullback_legs)
+        event_type = np.select(
+            [
+                direction.eq("long") & h2,
+                direction.eq("long") & ~h2,
+                direction.eq("short") & h2,
+                direction.eq("short") & ~h2,
+            ],
+            ["bull_h2_setup", "bull_h1_setup", "bear_l2_setup", "bear_l1_setup"],
+            default="",
+        )
+        return pd.Series(event_type, index=scored.index)
+
+    def _price_series(self, group: pd.DataFrame, direction: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
+        cfg = self.config
+        high = pd.to_numeric(group["high"], errors="coerce")
+        low = pd.to_numeric(group["low"], errors="coerce")
+        rolling_low = low.rolling(cfg.pullback_lookback, min_periods=1).min()
+        rolling_high = high.rolling(cfg.pullback_lookback, min_periods=1).max()
+        long_mask = direction.eq("long")
+        short_mask = direction.eq("short")
+        entry_price = pd.Series(np.nan, index=group.index, dtype=float)
+        stop_price = pd.Series(np.nan, index=group.index, dtype=float)
+        signal_price = pd.Series(np.nan, index=group.index, dtype=float)
+        entry_price.loc[long_mask] = high.loc[long_mask] + cfg.tick_size
+        stop_price.loc[long_mask] = rolling_low.loc[long_mask] - cfg.tick_size
+        signal_price.loc[long_mask] = high.loc[long_mask]
+        entry_price.loc[short_mask] = low.loc[short_mask] - cfg.tick_size
+        stop_price.loc[short_mask] = rolling_high.loc[short_mask] + cfg.tick_size
+        signal_price.loc[short_mask] = low.loc[short_mask]
+        return entry_price, stop_price, signal_price
+
+    def _confidence_series(self, scored: pd.DataFrame) -> pd.Series:
+        denominator = max(self.config.min_trend_score, 1e-9)
+        score = pd.to_numeric(scored["trend_score"], errors="coerce").abs().fillna(0.0)
+        return (score / denominator).clip(upper=3.0) / 3.0
+
+    @staticmethod
+    def _metadata_records(scored: pd.DataFrame) -> list[dict[str, object]]:
+        slope_z = pd.to_numeric(scored["slope_z"], errors="coerce")
+        return [
+            {
+                "trend_score": float(trend_score),
+                "trend_state": str(trend_state),
+                "pullback_legs": int(pullback_legs),
+                "slope_z": float(slope) if pd.notna(slope) else 0.0,
+                "close_pos": float(close_pos),
+                "body_ratio": float(body_ratio),
+            }
+            for trend_score, trend_state, pullback_legs, slope, close_pos, body_ratio in zip(
+                pd.to_numeric(scored["trend_score"], errors="coerce").fillna(0.0),
+                scored["trend_state"],
+                pd.to_numeric(scored["pullback_legs"], errors="coerce").fillna(0).astype(int),
+                slope_z,
+                pd.to_numeric(scored["close_pos"], errors="coerce").fillna(0.0),
+                pd.to_numeric(scored["body_ratio"], errors="coerce").fillna(0.0),
+                strict=True,
+            )
+        ]
 
 
 def _count_pullback_legs(close: pd.Series, *, direction: str, lookback: int) -> pd.Series:

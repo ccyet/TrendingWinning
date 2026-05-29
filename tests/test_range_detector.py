@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from inspect import getsource
+
 import pandas as pd
 
 from trending_winning.detectors.range import RangeDetector, RangeDetectorConfig
@@ -41,3 +43,9 @@ def test_range_detector_does_not_mark_strong_trend_middle_as_range_noise() -> No
     events = RangeDetector(RangeDetectorConfig(lookback=5)).detect(_bars(trend_closes, half_range=1.0), timeframe="30m")
 
     assert "no_trade_middle" not in set(events["event_type"])
+
+
+def test_range_detector_emits_events_without_row_record_scan() -> None:
+    source = getsource(RangeDetector.detect)
+
+    assert ".to_records(" not in source

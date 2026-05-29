@@ -60,6 +60,12 @@ def test_pullback_leg_counter_uses_prefix_scan_not_nested_cursor_loop() -> None:
     assert "for cursor in range" not in source
 
 
+def test_trend_detector_emits_events_without_row_record_scan() -> None:
+    source = getsource(TrendDetector.detect)
+
+    assert ".to_records(" not in source
+
+
 def test_trend_detector_labels_bull_h2_after_two_legged_pullback() -> None:
     bars = _bars([10.0, 10.25, 10.5, 10.75, 11.0, 10.82, 10.98, 10.78, 11.15, 11.45, 11.75])
 
