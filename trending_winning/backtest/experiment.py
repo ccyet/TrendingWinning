@@ -1322,6 +1322,18 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
 
     summary.update(_cache_status_statistics(table, "order_cache_status", prefix="order_cache"))
     summary.update(_cache_status_statistics(table, "candidate_cache_status", prefix="candidate_cache"))
+    summary.update(
+        _case_decision_summary_statistics(
+            result.setup_order_decision_stats,
+            prefix="case_setup_order",
+        )
+    )
+    summary.update(
+        _case_decision_summary_statistics(
+            result.setup_strategy_filter_stats,
+            prefix="case_setup_strategy_filter",
+        )
+    )
     for column in ("generated_order_count", "candidate_count", "candidate_rejection_count"):
         if column in table.columns:
             summary[column] = _numeric_column_sum(table, column)
@@ -1511,6 +1523,36 @@ def _cache_status_statistics(table: pd.DataFrame, column: str, *, prefix: str) -
     keys[f"{prefix}_miss_count"] = misses
     keys[f"{prefix}_hit_rate"] = float(hits / total) if total else 0.0
     return keys
+
+
+def _case_decision_summary_statistics(frame: pd.DataFrame, *, prefix: str) -> dict[str, float]:
+    """把 case 级决策明细压成 summary 字段，供 Web 总览不扫大 CSV。"""
+    keys = {
+        f"{prefix}_decision_row_count": 0.0,
+        f"{prefix}_decision_count": 0.0,
+        f"{prefix}_accepted_count": 0.0,
+        f"{prefix}_rejected_count": 0.0,
+        f"{prefix}_rejection_rate": 0.0,
+    }
+    if frame.empty or "decision_count" not in frame.columns:
+        return keys
+
+    decisions = pd.to_numeric(frame["decision_count"], errors="coerce").fillna(0.0)
+    status = (
+        frame["status"].fillna("").astype(str)
+        if "status" in frame.columns
+        else pd.Series([""] * len(frame), index=frame.index, dtype=str)
+    )
+    total = float(decisions.sum())
+    accepted = float(decisions.loc[status.eq("accepted")].sum())
+    rejected = float(decisions.loc[status.eq("rejected")].sum())
+    return {
+        f"{prefix}_decision_row_count": float(len(frame)),
+        f"{prefix}_decision_count": total,
+        f"{prefix}_accepted_count": accepted,
+        f"{prefix}_rejected_count": rejected,
+        f"{prefix}_rejection_rate": float(rejected / total) if total else 0.0,
+    }
 
 
 def _truthy_column_count(table: pd.DataFrame, column: str) -> int:

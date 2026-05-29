@@ -865,6 +865,26 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_summary["data_coverage_below_min_count"] == 0.0
     assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
     assert saved_summary["limit_filter_filtered_days"] == 0.0
+    assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
+    assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
+        saved_case_setup_order_decisions["decision_count"].sum()
+    )
+    assert saved_summary["case_setup_order_rejected_count"] == pytest.approx(
+        saved_case_setup_order_decisions.loc[
+            saved_case_setup_order_decisions["status"].eq("rejected"),
+            "decision_count",
+        ].sum()
+    )
+    assert saved_summary["case_setup_strategy_filter_decision_row_count"] == len(saved_case_setup_strategy_filters)
+    assert saved_summary["case_setup_strategy_filter_decision_count"] == pytest.approx(
+        saved_case_setup_strategy_filters["decision_count"].sum()
+    )
+    assert saved_summary["case_setup_strategy_filter_rejected_count"] == pytest.approx(
+        saved_case_setup_strategy_filters.loc[
+            saved_case_setup_strategy_filters["status"].eq("rejected"),
+            "decision_count",
+        ].sum()
+    )
     assert saved_cases[0]["config"]["name"] == "sweep"
     assert {"risk_reward", "max_holding_bars"}.issubset(saved_cases[0]["grid_fields"])
 
@@ -1492,6 +1512,26 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_summary["data_coverage_below_min_count"] == 0.0
     assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
     assert saved_summary["limit_filter_filtered_days"] == 0.0
+    assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
+    assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
+        saved_case_setup_order_decisions["decision_count"].sum()
+    )
+    assert saved_summary["case_setup_order_rejected_count"] == pytest.approx(
+        saved_case_setup_order_decisions.loc[
+            saved_case_setup_order_decisions["status"].eq("rejected"),
+            "decision_count",
+        ].sum()
+    )
+    assert saved_summary["case_setup_strategy_filter_decision_row_count"] == len(saved_case_setup_strategy_filters)
+    assert saved_summary["case_setup_strategy_filter_decision_count"] == pytest.approx(
+        saved_case_setup_strategy_filters["decision_count"].sum()
+    )
+    assert saved_summary["case_setup_strategy_filter_rejected_count"] == pytest.approx(
+        saved_case_setup_strategy_filters.loc[
+            saved_case_setup_strategy_filters["status"].eq("rejected"),
+            "decision_count",
+        ].sum()
+    )
     assert saved_cases[0]["config"]["name"] == "single-sweep"
     assert {"fee_rate", "slippage_bps"}.issubset(saved_cases[0]["grid_fields"])
 
