@@ -898,6 +898,79 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
     }
 
 
+def test_cli_replay_case_runs_saved_single_sweep_case(tmp_path: Path, monkeypatch, capsys) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.3, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.2, 10.4],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11440.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    sweep_dir = tmp_path / "single-sweep-run"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "single-sweep",
+            "--symbols",
+            "000001.SZ",
+            "--timeframe",
+            "30m",
+            "--start",
+            "2026-05-25",
+            "--end",
+            "2026-05-25",
+            "--data-root",
+            str(data_root),
+            "--allow-bad-data",
+            "--detector",
+            "trend",
+            "--risk-rewards",
+            "1.5",
+            "--max-holding-bars-list",
+            "3,5",
+            "--output-dir",
+            str(sweep_dir),
+        ],
+    )
+    main()
+    capsys.readouterr()
+    first_case = json.loads((sweep_dir / "case_configs.jsonl").read_text().splitlines()[0])
+    replay_dir = tmp_path / "replayed-case"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "replay-case",
+            "--case-configs",
+            str(sweep_dir / "case_configs.jsonl"),
+            "--case-config-hash",
+            first_case["case_config_hash"],
+            "--output-dir",
+            str(replay_dir),
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    replay_config = json.loads((replay_dir / "config.json").read_text())
+    assert "replayed case" in out
+    assert first_case["case_config_hash"] in out
+    assert (replay_dir / "stats.json").exists()
+    assert replay_config["risk_reward"] == first_case["config"]["risk_reward"]
+    assert replay_config["output_dir"] == str(replay_dir)
+
+
 def test_cli_single_sweep_accepts_generic_grid_fields(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

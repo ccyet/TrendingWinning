@@ -1042,6 +1042,44 @@ def _sweep_case_config_records(result: PortfolioSweepResult | SingleStrategySwee
     return records
 
 
+def load_sweep_case_config(
+    path: str | Path,
+    *,
+    case_config_hash: str = "",
+    case_name: str = "",
+) -> PortfolioExperimentConfig | SingleStrategyExperimentConfig:
+    """从 case_configs.jsonl 读取单个 case 的完整配置，用于精确回放参数遍历结果。"""
+    if not case_config_hash and not case_name:
+        raise ValueError("必须提供 case_config_hash 或 case_name。")
+    records = _read_jsonl(Path(path).expanduser())
+    matches = [
+        record
+        for record in records
+        if (not case_config_hash or str(record.get("case_config_hash", "")) == case_config_hash)
+        and (not case_name or str(record.get("case_name", "")) == case_name)
+    ]
+    if not matches:
+        raise ValueError("未找到匹配的 sweep case 配置。")
+    if len(matches) > 1:
+        raise ValueError("匹配到多个 sweep case 配置，请同时指定 case_config_hash 和 case_name。")
+    config_payload = matches[0].get("config")
+    if not isinstance(config_payload, Mapping):
+        raise ValueError("case 配置缺少 config 对象。")
+    return _experiment_config_from_payload(config_payload)
+
+
+def _experiment_config_from_payload(payload: Mapping[str, object]) -> PortfolioExperimentConfig | SingleStrategyExperimentConfig:
+    data = dict(payload)
+    if "symbols" in data:
+        data["symbols"] = tuple(data["symbols"]) if isinstance(data["symbols"], list) else data["symbols"]
+    if "detectors" in data:
+        data["detectors"] = tuple(data["detectors"]) if isinstance(data["detectors"], list) else data["detectors"]
+        return PortfolioExperimentConfig(**data)
+    if "detector" in data:
+        return SingleStrategyExperimentConfig(**data)
+    raise ValueError("case 配置无法识别为单策略或组合实验配置。")
+
+
 def _pareto_front_ranks(table: pd.DataFrame) -> list[int]:
     """按收益、回撤、Ulcer 和交易样本数给参数组分层；第一层是互不支配的候选集。"""
     if table.empty:
@@ -1144,3 +1182,18 @@ def _write_jsonl(path: Path, records: Sequence[Mapping[str, object]]) -> None:
         for record in records
     ]
     path.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def _read_jsonl(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        raise FileNotFoundError(f"case 配置文件不存在：{path}")
+    records: list[dict[str, object]] = []
+    for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+        text = line.strip()
+        if not text:
+            continue
+        payload = json.loads(text)
+        if not isinstance(payload, dict):
+            raise ValueError(f"case 配置第 {line_number} 行不是 JSON 对象。")
+        records.append(payload)
+    return records

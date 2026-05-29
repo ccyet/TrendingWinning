@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 import sys
 
@@ -12,6 +12,7 @@ from trending_winning.backtest.experiment import (
     PortfolioExperimentConfig,
     SingleStrategyExperimentConfig,
     build_portfolio_benchmark_report,
+    load_sweep_case_config,
     run_portfolio_parameter_sweep,
     run_portfolio_experiment,
     run_single_strategy_parameter_sweep,
@@ -433,7 +434,34 @@ def main() -> None:
     sweep_parser.add_argument("--allow-bad-data", action="store_true")
     sweep_parser.add_argument("--output-dir", default="")
 
+    replay_parser = subparsers.add_parser("replay-case", help="replay one case from a saved case_configs.jsonl")
+    replay_parser.add_argument("--case-configs", required=True)
+    replay_parser.add_argument("--case-config-hash", default="")
+    replay_parser.add_argument("--case-name", default="")
+    replay_parser.add_argument("--output-dir", default="")
+
     args = parser.parse_args()
+
+    if args.command == "replay-case":
+        config = load_sweep_case_config(
+            args.case_configs,
+            case_config_hash=str(args.case_config_hash).strip(),
+            case_name=str(args.case_name).strip(),
+        )
+        if args.output_dir:
+            config = replace(config, output_dir=str(args.output_dir))
+        save = bool(args.output_dir)
+        if isinstance(config, SingleStrategyExperimentConfig):
+            experiment = run_single_strategy_experiment(config, save=save)
+        else:
+            experiment = run_portfolio_experiment(config, save=save)
+        case_key = str(args.case_config_hash or args.case_name).strip()
+        print(f"replayed case: {case_key}")
+        print(experiment.backtest.stats)
+        if args.output_dir:
+            print(f"replay output saved: {Path(args.output_dir).expanduser()}")
+        return
+
     symbols = tuple(item.strip() for item in args.symbols.split(",") if item.strip())
     if args.command in {"tdx-doctor", "fetch", "prepare-data"} and _resolve_tdx_runtime(args.runtime) == "parallels":
         _run_tdx_cli_in_parallels(args)
