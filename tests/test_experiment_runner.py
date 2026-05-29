@@ -702,6 +702,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
+    assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
     assert (output_dir / "data_inventory.csv").exists()
@@ -739,6 +740,20 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert [item["case_name"] for item in saved_cases] == saved_sweep["case_name"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000002.SZ", "30m"), "status"] == "cached"
+    saved_summary = json.loads((output_dir / "summary.json").read_text())
+    assert saved_summary["case_count"] == 4
+    assert saved_summary["pareto_case_count"] >= 1
+    assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
+    assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
+    assert saved_summary["input_bar_count"] == 24
+    assert saved_summary["filtered_limit_open_count"] == 0
+    assert saved_summary["order_cache_miss_count"] == 4
+    assert saved_summary["candidate_cache_miss_count"] == 4
+    assert saved_summary["order_cache_hit_rate"] == 0.0
+    assert saved_summary["candidate_cache_hit_rate"] == 0.0
+    assert saved_summary["data_coverage_below_min_count"] == 0.0
+    assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
+    assert saved_summary["limit_filter_filtered_days"] == 0.0
     assert saved_cases[0]["config"]["name"] == "sweep"
     assert {"risk_reward", "max_holding_bars"}.issubset(saved_cases[0]["grid_fields"])
 
@@ -1186,6 +1201,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
+    assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
     assert (output_dir / "data_inventory.csv").exists()
@@ -1216,6 +1232,20 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
+    saved_summary = json.loads((output_dir / "summary.json").read_text())
+    assert saved_summary["case_count"] == 4
+    assert saved_summary["pareto_case_count"] >= 1
+    assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
+    assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
+    assert saved_summary["input_bar_count"] == 2
+    assert saved_summary["filtered_limit_open_count"] == 0
+    assert saved_summary["order_cache_hit_count"] == 3
+    assert saved_summary["order_cache_miss_count"] == 1
+    assert saved_summary["order_cache_hit_rate"] == 0.75
+    assert saved_summary["generated_order_count"] == 0
+    assert saved_summary["data_coverage_below_min_count"] == 0.0
+    assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
+    assert saved_summary["limit_filter_filtered_days"] == 0.0
     assert saved_cases[0]["config"]["name"] == "single-sweep"
     assert {"fee_rate", "slippage_bps"}.issubset(saved_cases[0]["grid_fields"])
 

@@ -858,10 +858,14 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
 
     out = capsys.readouterr().out
     assert "sweep.csv" in out
+    assert "summary.json" in out
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")
+    saved_summary = json.loads((output_dir / "summary.json").read_text())
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 4
+    assert saved_summary["case_count"] == 4
+    assert saved_summary["best_case_config_hash"] == saved.loc[0, "case_config_hash"]
     assert {"risk_reward", "max_holding_bars", "total_return", "monthly_count", "monthly_worst_return"}.issubset(
         saved.columns
     )
@@ -927,10 +931,14 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "sweep.csv" in out
+    assert "summary.json" in out
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")
+    saved_summary = json.loads((output_dir / "summary.json").read_text())
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 8
+    assert saved_summary["case_count"] == 8
+    assert saved_summary["best_case_config_hash"] == saved.loc[0, "case_config_hash"]
     assert {
         "detector",
         "risk_reward",

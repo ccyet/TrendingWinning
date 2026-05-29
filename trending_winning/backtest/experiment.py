@@ -60,6 +60,52 @@ SWEEP_PARETO_OBJECTIVES = (
     ("trade_count", "max"),
 )
 
+SWEEP_SUMMARY_CONTEXT_COLUMNS = (
+    "data_inventory_row_count",
+    "data_inventory_cached_count",
+    "data_inventory_missing_file_count",
+    "data_inventory_read_error_count",
+    "data_inventory_total_rows",
+    "data_inventory_total_file_size_bytes",
+    "data_audit_row_count",
+    "data_audit_ok_count",
+    "data_audit_failed_count",
+    "data_missing_rows",
+    "data_expected_rows",
+    "data_weighted_coverage_ratio",
+    "data_coverage_p05",
+    "data_coverage_p50",
+    "data_coverage_p95",
+    "data_min_coverage_threshold",
+    "data_coverage_below_min_count",
+    "data_coverage_below_min_ratio",
+    "limit_filter_symbol_count",
+    "limit_filter_trading_days",
+    "limit_filter_filtered_days",
+    "limit_filter_rows_before",
+    "limit_filter_rows_after",
+    "filtered_limit_open_count",
+)
+
+SWEEP_SUMMARY_BEST_COLUMNS = (
+    "sweep_rank",
+    "pareto_rank",
+    "is_pareto_efficient",
+    "total_return",
+    "annualized_return",
+    "max_drawdown",
+    "equity_sharpe",
+    "calmar_ratio",
+    "ulcer_index",
+    "trade_count",
+    "monthly_count",
+    "monthly_win_rate",
+    "monthly_worst_return",
+    "monthly_return_std",
+    "monthly_max_consecutive_losses",
+    "monthly_max_recovery_periods",
+)
+
 
 @dataclass(frozen=True)
 class PortfolioExperimentConfig:
@@ -1026,6 +1072,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     config_payload = _json_ready(asdict(result.config))
     config_payload["sweep_grid"] = _json_ready(result.grid)
     (output_dir / "config.json").write_text(_json_dump(config_payload))
+    (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
@@ -1040,12 +1087,94 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     config_payload = _json_ready(asdict(result.config))
     config_payload["sweep_grid"] = _json_ready(result.grid)
     (output_dir / "config.json").write_text(_json_dump(config_payload))
+    (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     return output_dir
+
+
+def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweepResult) -> dict[str, object]:
+    """把参数遍历压成一份总览 JSON，便于 Web/CLI 快速展示，不再先扫完整 CSV。"""
+    table = result.table
+    summary: dict[str, object] = {
+        "case_count": int(len(table)),
+        "pareto_case_count": _truthy_column_count(table, "is_pareto_efficient"),
+        "elapsed_seconds": float(result.elapsed_seconds),
+        "input_bar_count": int(result.input_bar_count),
+        "filtered_limit_open_count": int(result.filtered_limit_open_count),
+        "best_case_name": "",
+        "best_case_config_hash": "",
+    }
+    if not table.empty:
+        best = table.iloc[0]
+        summary["best_case_name"] = str(best.get("case_name", ""))
+        summary["best_case_config_hash"] = str(best.get("case_config_hash", ""))
+        for column in SWEEP_SUMMARY_BEST_COLUMNS:
+            if column in table.columns:
+                summary[f"best_{column}"] = _json_scalar(best[column])
+        for column in SWEEP_SUMMARY_CONTEXT_COLUMNS:
+            if column in table.columns:
+                summary[column] = _json_scalar(best[column])
+
+    summary.update(_cache_status_statistics(table, "order_cache_status", prefix="order_cache"))
+    summary.update(_cache_status_statistics(table, "candidate_cache_status", prefix="candidate_cache"))
+    for column in ("generated_order_count", "candidate_count", "candidate_rejection_count"):
+        if column in table.columns:
+            summary[column] = _numeric_column_sum(table, column)
+    return summary
+
+
+def _cache_status_statistics(table: pd.DataFrame, column: str, *, prefix: str) -> dict[str, float]:
+    keys = {
+        f"{prefix}_hit_count": 0.0,
+        f"{prefix}_miss_count": 0.0,
+        f"{prefix}_hit_rate": 0.0,
+    }
+    if table.empty or column not in table.columns:
+        return keys
+    status = table[column].fillna("").astype(str)
+    hits = float(status.eq("hit").sum())
+    misses = float(status.eq("miss").sum())
+    total = hits + misses
+    keys[f"{prefix}_hit_count"] = hits
+    keys[f"{prefix}_miss_count"] = misses
+    keys[f"{prefix}_hit_rate"] = float(hits / total) if total else 0.0
+    return keys
+
+
+def _truthy_column_count(table: pd.DataFrame, column: str) -> int:
+    if table.empty or column not in table.columns:
+        return 0
+    values = table[column]
+    if pd.api.types.is_bool_dtype(values):
+        return int(values.fillna(False).sum())
+    normalized = values.fillna(False).astype(str).str.lower()
+    return int(normalized.isin(("true", "1", "yes")).sum())
+
+
+def _numeric_column_sum(table: pd.DataFrame, column: str) -> float:
+    if table.empty or column not in table.columns:
+        return 0.0
+    return float(pd.to_numeric(table[column], errors="coerce").fillna(0.0).sum())
+
+
+def _json_scalar(value: object) -> object:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if value is None:
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, int | float | str | bool):
+        return value
+    if pd.isna(value):
+        return None
+    return value
 
 
 def _sweep_variants(

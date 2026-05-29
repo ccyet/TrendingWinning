@@ -661,6 +661,7 @@ def main() -> None:
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
+            print(f"summary.json saved: {output_dir / 'summary.json'}")
             print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return
 
@@ -817,6 +818,7 @@ def main() -> None:
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
+            print(f"summary.json saved: {output_dir / 'summary.json'}")
             print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return
 
