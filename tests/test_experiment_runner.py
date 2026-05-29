@@ -1550,7 +1550,10 @@ def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_pa
 
     assert generate_calls == 1
     by_case = result.table.sort_values("case_name")
-    assert by_case["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
+    assert len(by_case) == 1
+    assert by_case["order_cache_status"].tolist() == ["miss"]
+    assert "channel_method" not in by_case.columns
+    assert "range_min_score" not in by_case.columns
 
 
 def test_single_strategy_parameter_sweep_does_not_reuse_orders_when_higher_context_changes(

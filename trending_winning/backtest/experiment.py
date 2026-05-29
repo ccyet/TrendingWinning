@@ -60,6 +60,51 @@ SWEEP_PARETO_OBJECTIVES = (
     ("trade_count", "max"),
 )
 
+DETECTOR_PARAMETER_FIELDS = {
+    "trend": frozenset(
+        {
+            "trend_lookback",
+            "trend_min_score",
+            "trend_strong_close_pos",
+            "trend_min_body_ratio",
+            "trend_pullback_lookback",
+            "trend_h2_min_pullback_legs",
+        }
+    ),
+    "range": frozenset(
+        {
+            "range_lookback",
+            "range_middle_low",
+            "range_middle_high",
+            "range_false_break_buffer",
+            "range_strong_close_pos",
+            "range_min_score",
+        }
+    ),
+    "channel": frozenset(
+        {
+            "channel_method",
+            "channel_lookback",
+            "channel_sigma_multiple",
+            "channel_break_buffer",
+            "channel_swing_left_bars",
+            "channel_swing_right_bars",
+        }
+    ),
+    "reversal": frozenset(
+        {
+            "reversal_lookback",
+            "reversal_strong_close_pos",
+            "reversal_min_body_ratio",
+            "reversal_old_extreme_tolerance_pct",
+            "reversal_require_old_extreme_test",
+            "reversal_require_structure_confirmation",
+        }
+    ),
+}
+
+ALL_DETECTOR_PARAMETER_FIELDS = frozenset().union(*DETECTOR_PARAMETER_FIELDS.values())
+
 SWEEP_SUMMARY_CONTEXT_COLUMNS = (
     "data_inventory_row_count",
     "data_inventory_cached_count",
@@ -448,6 +493,7 @@ def run_portfolio_parameter_sweep(
 ) -> PortfolioSweepResult:
     start_time = perf_counter()
     variants = _sweep_variants(config, grid)
+    effective_grid = _effective_sweep_grid(config, grid)
     repo = MarketDataRepository(config.data_root, adjust=config.adjust)
     data = _load_experiment_data(repo, config)
 
@@ -525,7 +571,7 @@ def run_portfolio_parameter_sweep(
             "candidate_count": int(len(candidate_set.candidates)),
             "candidate_rejection_count": int(len(candidate_set.rejections)),
         }
-        row.update(_sweep_parameter_record(config, variant, grid.keys()))
+        row.update(_sweep_parameter_record(config, variant, effective_grid.keys()))
         row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
@@ -559,6 +605,7 @@ def run_single_strategy_parameter_sweep(
     """单策略参数遍历；一次加载数据，按订单参数缓存信号订单。"""
     start_time = perf_counter()
     variants = _sweep_variants(config, grid)
+    effective_grid = _effective_sweep_grid(config, grid)
     repo = MarketDataRepository(config.data_root, adjust=config.adjust)
     data = _load_experiment_data(repo, config)
 
@@ -605,7 +652,7 @@ def run_single_strategy_parameter_sweep(
             "order_cache_status": order_cache_status,
             "generated_order_count": int(len(orders)),
         }
-        row.update(_sweep_parameter_record(config, variant, grid.keys()))
+        row.update(_sweep_parameter_record(config, variant, effective_grid.keys()))
         row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
@@ -1286,17 +1333,41 @@ def _sweep_variants(
     data_scope_fields = set(grid).intersection(DATA_SCOPE_SWEEP_FIELDS)
     if data_scope_fields:
         raise ValueError(f"不能在同一次 sweep 中改变数据范围字段：{', '.join(sorted(data_scope_fields))}")
-    keys = list(grid)
-    raw_value_lists = [list(grid[key]) for key in keys]
-    value_lists = [_deduplicate_sweep_grid_values(values) for values in raw_value_lists]
-    empty_keys = [key for key, values in zip(keys, value_lists, strict=False) if not values]
+    raw_keys = list(grid)
+    raw_value_lists = [list(grid[key]) for key in raw_keys]
+    empty_keys = [key for key, values in zip(raw_keys, raw_value_lists, strict=False) if not values]
     if empty_keys:
         raise ValueError(f"grid 字段不能为空：{', '.join(empty_keys)}")
+    effective_grid = _effective_sweep_grid(config, grid)
+    if not effective_grid:
+        return [config]
+    keys = list(effective_grid)
+    raw_value_lists = [list(effective_grid[key]) for key in keys]
+    value_lists = [_deduplicate_sweep_grid_values(values) for values in raw_value_lists]
     variants = [
         replace(config, **dict(zip(keys, values, strict=False)))
         for values in product(*value_lists)
     ]
     return _deduplicate_sweep_variants(variants)
+
+
+def _effective_sweep_grid(
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    grid: Mapping[str, Sequence[object]],
+) -> dict[str, list[object]]:
+    """过滤单策略无效 detector 参数，避免未启用模块进入 sweep 热路径。"""
+    normalized = {str(key): list(values) for key, values in grid.items()}
+    if isinstance(config, PortfolioExperimentConfig) or "detector" in normalized:
+        return normalized
+
+    active_fields = set(DETECTOR_PARAMETER_FIELDS.get(config.detector, frozenset()))
+    if str(config.higher_timeframe).strip():
+        active_fields.update(DETECTOR_PARAMETER_FIELDS["trend"])
+    return {
+        key: values
+        for key, values in normalized.items()
+        if key not in ALL_DETECTOR_PARAMETER_FIELDS or key in active_fields
+    }
 
 
 def _deduplicate_sweep_grid_values(values: Sequence[object]) -> list[object]:
