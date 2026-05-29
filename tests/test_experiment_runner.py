@@ -1478,6 +1478,89 @@ def test_sweep_case_config_hash_is_stable_and_changes_with_config() -> None:
     assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(changed)
 
 
+def test_single_strategy_case_config_hash_ignores_disabled_detector_parameters() -> None:
+    base = SingleStrategyExperimentConfig(
+        name="single-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        range_min_score=0.6,
+    )
+    disabled_changed = SingleStrategyExperimentConfig(
+        name="single-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        range_min_score=0.9,
+        channel_lookback=9,
+    )
+    active_changed = SingleStrategyExperimentConfig(
+        name="single-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        trend_min_score=1.2,
+    )
+    range_base = SingleStrategyExperimentConfig(
+        name="single-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="range",
+        range_min_score=0.6,
+    )
+    range_changed = SingleStrategyExperimentConfig(
+        name="single-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="range",
+        range_min_score=0.9,
+    )
+    range_with_context = SingleStrategyExperimentConfig(
+        name="single-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        higher_timeframe="60m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="range",
+        trend_lookback=20,
+    )
+    range_context_changed = SingleStrategyExperimentConfig(
+        name="single-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        higher_timeframe="60m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="range",
+        trend_lookback=30,
+    )
+
+    assert experiment_module._case_config_hash(base) == experiment_module._case_config_hash(disabled_changed)
+    assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(active_changed)
+    assert experiment_module._case_config_hash(range_base) != experiment_module._case_config_hash(range_changed)
+    assert experiment_module._case_config_hash(range_with_context) != experiment_module._case_config_hash(
+        range_context_changed
+    )
+
+
 def test_load_sweep_case_config_rejects_tampered_config_hash(tmp_path: Path) -> None:
     config = SingleStrategyExperimentConfig(
         name="single-sweep",

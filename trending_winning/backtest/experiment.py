@@ -1456,8 +1456,20 @@ def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
 
 def _case_config_hash(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> str:
     """给完整实验配置生成稳定指纹，用于 sweep 行跨机器复现和对照。"""
-    payload = json.dumps(_json_ready(asdict(config)), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(_case_config_hash_payload(config), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _case_config_hash_payload(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> dict[str, object]:
+    payload = _json_ready(asdict(config))
+    if isinstance(config, PortfolioExperimentConfig):
+        return payload
+    active_fields = set(DETECTOR_PARAMETER_FIELDS.get(config.detector, frozenset()))
+    if str(config.higher_timeframe).strip():
+        active_fields.update(DETECTOR_PARAMETER_FIELDS["trend"])
+    for key in ALL_DETECTOR_PARAMETER_FIELDS.difference(active_fields):
+        payload.pop(key, None)
+    return payload
 
 
 def _sweep_case_config_records(result: PortfolioSweepResult | SingleStrategySweepResult) -> list[dict[str, object]]:
