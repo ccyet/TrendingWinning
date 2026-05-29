@@ -1357,12 +1357,12 @@ def _effective_sweep_grid(
 ) -> dict[str, list[object]]:
     """过滤单策略无效 detector 参数，避免未启用模块进入 sweep 热路径。"""
     normalized = {str(key): list(values) for key, values in grid.items()}
-    if isinstance(config, PortfolioExperimentConfig) or "detector" in normalized:
+    if isinstance(config, PortfolioExperimentConfig) and "detectors" in normalized:
+        return normalized
+    if isinstance(config, SingleStrategyExperimentConfig) and "detector" in normalized:
         return normalized
 
-    active_fields = set(DETECTOR_PARAMETER_FIELDS.get(config.detector, frozenset()))
-    if str(config.higher_timeframe).strip():
-        active_fields.update(DETECTOR_PARAMETER_FIELDS["trend"])
+    active_fields = _active_detector_parameter_fields(config)
     return {
         key: values
         for key, values in normalized.items()
@@ -1462,14 +1462,20 @@ def _case_config_hash(config: PortfolioExperimentConfig | SingleStrategyExperime
 
 def _case_config_hash_payload(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> dict[str, object]:
     payload = _json_ready(asdict(config))
-    if isinstance(config, PortfolioExperimentConfig):
-        return payload
-    active_fields = set(DETECTOR_PARAMETER_FIELDS.get(config.detector, frozenset()))
-    if str(config.higher_timeframe).strip():
-        active_fields.update(DETECTOR_PARAMETER_FIELDS["trend"])
+    active_fields = _active_detector_parameter_fields(config)
     for key in ALL_DETECTOR_PARAMETER_FIELDS.difference(active_fields):
         payload.pop(key, None)
     return payload
+
+
+def _active_detector_parameter_fields(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> set[str]:
+    detector_names = config.detectors if isinstance(config, PortfolioExperimentConfig) else (config.detector,)
+    active_fields: set[str] = set()
+    for detector_name in detector_names:
+        active_fields.update(DETECTOR_PARAMETER_FIELDS.get(detector_name, frozenset()))
+    if str(config.higher_timeframe).strip():
+        active_fields.update(DETECTOR_PARAMETER_FIELDS["trend"])
+    return active_fields
 
 
 def _sweep_case_config_records(result: PortfolioSweepResult | SingleStrategySweepResult) -> list[dict[str, object]]:

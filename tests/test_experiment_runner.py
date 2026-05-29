@@ -854,6 +854,57 @@ def test_portfolio_parameter_sweep_reuses_orders_when_only_portfolio_params_chan
     assert by_case["generated_order_count"].tolist() == [0, 0, 0, 0, 0, 0]
 
 
+def test_portfolio_parameter_sweep_ignores_disabled_detector_params(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.3, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.2, 10.4],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11440.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    generate_calls = 0
+
+    class CountingStrategy:
+        name = "trend_signal_bar"
+
+        def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+            nonlocal generate_calls
+            generate_calls += 1
+            return pd.DataFrame(columns=ORDER_COLUMNS)
+
+    monkeypatch.setattr(experiment_module, "create_default_strategy_suite", lambda cfg: [CountingStrategy()])
+    config = PortfolioExperimentConfig(
+        name="portfolio-disabled-detector-grid",
+        data_root=str(data_root),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        strict_data_quality=False,
+    )
+
+    result = run_portfolio_parameter_sweep(
+        config,
+        grid={"channel_method": ["regression", "swing"], "range_min_score": [0.6, 0.9]},
+    )
+
+    assert generate_calls == 1
+    assert len(result.table) == 1
+    assert result.table["order_cache_status"].tolist() == ["miss"]
+    assert "channel_method" not in result.table.columns
+    assert "range_min_score" not in result.table.columns
+
+
 def test_portfolio_parameter_sweep_reuses_candidate_trades_when_only_portfolio_params_change(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1550,6 +1601,89 @@ def test_single_strategy_case_config_hash_ignores_disabled_detector_parameters()
         start="2026-05-25",
         end="2026-05-25",
         detector="range",
+        trend_lookback=30,
+    )
+
+    assert experiment_module._case_config_hash(base) == experiment_module._case_config_hash(disabled_changed)
+    assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(active_changed)
+    assert experiment_module._case_config_hash(range_base) != experiment_module._case_config_hash(range_changed)
+    assert experiment_module._case_config_hash(range_with_context) != experiment_module._case_config_hash(
+        range_context_changed
+    )
+
+
+def test_portfolio_case_config_hash_ignores_disabled_detector_parameters() -> None:
+    base = PortfolioExperimentConfig(
+        name="portfolio-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        range_min_score=0.6,
+    )
+    disabled_changed = PortfolioExperimentConfig(
+        name="portfolio-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        range_min_score=0.9,
+        channel_lookback=9,
+    )
+    active_changed = PortfolioExperimentConfig(
+        name="portfolio-trend",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        trend_min_score=1.2,
+    )
+    range_base = PortfolioExperimentConfig(
+        name="portfolio-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("range",),
+        range_min_score=0.6,
+    )
+    range_changed = PortfolioExperimentConfig(
+        name="portfolio-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("range",),
+        range_min_score=0.9,
+    )
+    range_with_context = PortfolioExperimentConfig(
+        name="portfolio-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        higher_timeframe="60m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("range",),
+        trend_lookback=20,
+    )
+    range_context_changed = PortfolioExperimentConfig(
+        name="portfolio-range",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        higher_timeframe="60m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("range",),
         trend_lookback=30,
     )
 
