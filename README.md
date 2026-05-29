@@ -193,7 +193,7 @@ python -m trending_winning.cli single-backtest \
   --output-dir runs/single-trend-001
 ```
 
-保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
+保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，避免参数对比时再手工汇总月度收益和连续亏损风险。
@@ -203,7 +203,7 @@ python -m trending_winning.cli single-backtest \
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
 `strategy_filter_decisions.csv` 记录策略层过滤结果，例如 detector 输出观察/中部不交易方向、信号 K 无流动性、高周期方向不一致、无可用高周期上下文或上下文过期；基础策略过滤和高周期门控过滤会叠加保留，它早于撮合层，不和 `order_decisions.csv` 混用。
 `limit_filter_audit.csv` 记录日 K 一字涨停过滤是否真实执行；严格模式下日线缺失会直接失败，只有显式关闭严格数据门禁时才会继续输出 `daily_missing` 审计。
-`order_decision_stats.csv` 和 `strategy_filter_stats.csv` 按策略、状态和原因聚合决策分布；`decision_rate` 表示占全部决策的比例，`group_decision_rate` 表示在当前策略或过滤器组内的比例。订单聚合表还会汇总实际风险、追价和实际盈亏比，用于定位哪类参数在撮合层失效。
+`order_decision_stats.csv` 和 `strategy_filter_stats.csv` 按策略、状态和原因聚合决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 按 `detector_name / event_type / side` 进一步拆解 setup 的撮合失败、风控拒绝和策略门控拒绝。`decision_rate` 表示占全部决策的比例，`group_decision_rate` 表示在当前策略、setup 或过滤器组内的比例。订单聚合表还会汇总实际风险、追价和实际盈亏比，用于定位哪类参数在撮合层失效。
 `detector_stats.csv` 按 `detector_name` 独立汇总趋势、区间、通道、反转的成交绩效；`setup_stats.csv` 按 `detector_name / event_type / side` 汇总标志 K、失败突破、通道突破、H1/H2/L1/L2 等 setup 的多空表现。组合回测的 `strategy_stats.csv / detector_stats.csv / setup_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、识别模块、信号形态、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
 `data_inventory.csv` 保存本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含是否存在、行数、起止时间、文件大小、修改时间和路径；`stats.json` 同步写入 `data_inventory_row_count / data_inventory_cached_count / data_inventory_missing_file_count` 等摘要。
 `stats.json` 同步写入 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejected_no_fill_count / rejected_no_liquidity_count / rejected_no_bars_count / rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_already_open_count`
@@ -246,7 +246,7 @@ python -m trending_winning.cli portfolio-backtest \
   --benchmark
 ```
 
-保存目录会包含 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
+保存目录会包含 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，用于比较不同 detector、仓位参数和高周期门控下的月度稳定性。
@@ -258,7 +258,7 @@ python -m trending_winning.cli portfolio-backtest \
 `order_decisions.csv` 记录组合层接受或拒绝每个候选订单的原因，例如 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable`、`max_open_positions`、`same_symbol_overlap`、`no_capital`；组合容量或资金拒绝也会保留候选成交的 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`。
 `strategy_filter_decisions.csv` 记录订单进入组合撮合前被策略门控过滤的原因，包括观察/中部不交易方向、信号 K 无流动性和高周期方向门控；包装策略会保留内层过滤日志，便于单策略回测和组合回测分别定位问题。
 `limit_filter_audit.csv` 记录日线过滤状态；严格模式下 `daily_missing` 会中止回测，关闭严格门禁排查时重点看 `daily_missing` 和 `filtered_days`。
-`order_decision_stats.csv` 和 `strategy_filter_stats.csv` 分别汇总撮合层与策略门控层的决策分布；`decision_rate` 是全局占比，`group_decision_rate` 是当前策略或过滤器组内占比，撮合层聚合表包含实际风险、追价和实际盈亏比摘要。
+`order_decision_stats.csv` 和 `strategy_filter_stats.csv` 分别汇总撮合层与策略门控层的决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 用同一口径按 setup 继续拆分拒绝结构；`decision_rate` 是全局占比，`group_decision_rate` 是当前策略、setup 或过滤器组内占比，撮合层聚合表包含实际风险、追价和实际盈亏比摘要。
 手续费率、滑点 bps 和初始资金会写入 `config.json`，并直接传给单策略、组合策略和参数遍历撮合层。
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、

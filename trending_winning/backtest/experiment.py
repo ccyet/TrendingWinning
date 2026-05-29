@@ -310,6 +310,8 @@ class PortfolioExperimentResult:
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -334,6 +336,8 @@ class SingleStrategyExperimentResult:
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -438,6 +442,14 @@ def run_single_strategy_experiment(
             backtest.strategy_filter_decisions,
             group_fields=("strategy_name", "filter_name", "context_timeframe"),
         ),
+        setup_order_decision_stats=compute_decision_reason_statistics(
+            backtest.order_decisions,
+            group_fields=("detector_name", "event_type", "side"),
+        ),
+        setup_strategy_filter_stats=compute_decision_reason_statistics(
+            backtest.strategy_filter_decisions,
+            group_fields=("detector_name", "event_type", "side", "filter_name", "context_timeframe"),
+        ),
         monthly_returns=monthly_returns,
     )
     if save:
@@ -497,6 +509,14 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         strategy_filter_stats=compute_decision_reason_statistics(
             backtest.strategy_filter_decisions,
             group_fields=("strategy_name", "filter_name", "context_timeframe"),
+        ),
+        setup_order_decision_stats=compute_decision_reason_statistics(
+            backtest.order_decisions,
+            group_fields=("detector_name", "event_type", "side"),
+        ),
+        setup_strategy_filter_stats=compute_decision_reason_statistics(
+            backtest.strategy_filter_decisions,
+            group_fields=("detector_name", "event_type", "side", "filter_name", "context_timeframe"),
         ),
         monthly_returns=monthly_returns,
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
@@ -1114,6 +1134,8 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
     result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
     result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
+    result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
+    result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
     return output_dir
 
@@ -1151,6 +1173,8 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
     result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
     result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
+    result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
+    result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
     return output_dir
 

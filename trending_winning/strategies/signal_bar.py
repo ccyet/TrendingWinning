@@ -170,6 +170,7 @@ def _signal_filter_decisions(
                 "strategy_name": strategy_name,
                 "base_strategy_name": strategy_name,
                 "detector_name": event.get("detector_name", ""),
+                "event_type": event.get("event_type", ""),
                 "stock_code": event.get("stock_code", ""),
                 "timeframe": event.get("timeframe", ""),
                 "signal_date": event.get("date", pd.NaT),

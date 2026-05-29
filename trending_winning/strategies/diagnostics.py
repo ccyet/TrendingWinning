@@ -12,6 +12,7 @@ STRATEGY_FILTER_DECISION_COLUMNS = [
     "strategy_name",
     "base_strategy_name",
     "detector_name",
+    "event_type",
     "stock_code",
     "timeframe",
     "signal_date",

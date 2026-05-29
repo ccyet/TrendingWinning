@@ -96,6 +96,8 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "strategy_filter_decisions.csv").exists()
     assert (output_dir / "order_decision_stats.csv").exists()
     assert (output_dir / "strategy_filter_stats.csv").exists()
+    assert (output_dir / "setup_order_decision_stats.csv").exists()
+    assert (output_dir / "setup_strategy_filter_stats.csv").exists()
     assert (output_dir / "equity_curve.csv").exists()
     assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
@@ -117,6 +119,8 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     saved_filter_decisions = pd.read_csv(output_dir / "strategy_filter_decisions.csv")
     saved_decision_stats = pd.read_csv(output_dir / "order_decision_stats.csv")
     saved_filter_stats = pd.read_csv(output_dir / "strategy_filter_stats.csv")
+    saved_setup_decision_stats = pd.read_csv(output_dir / "setup_order_decision_stats.csv")
+    saved_setup_filter_stats = pd.read_csv(output_dir / "setup_strategy_filter_stats.csv")
     assert saved_config["detectors"] == ["trend", "range"]
     assert saved_config["short_margin_rate"] == 1.5
     assert saved_config["intrabar_exit_policy"] == "optimistic"
@@ -144,7 +148,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert result.limit_filter_audit["status"].tolist() == ["daily_missing"]
     assert saved_limit_filter_audit.loc[0, "status"] == "daily_missing"
     assert {"order_id", "status", "reason"}.issubset(saved_decisions.columns)
-    assert {"order_id", "status", "reason"}.issubset(saved_filter_decisions.columns)
+    assert {"order_id", "event_type", "status", "reason"}.issubset(saved_filter_decisions.columns)
     assert {"strategy_name", "detector_name", "status", "reason", "decision_count", "decision_rate"}.issubset(
         saved_decision_stats.columns
     )
@@ -153,6 +157,18 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     )
     assert {"status", "reason", "decision_count"}.issubset(result.order_decision_stats.columns)
     assert {"status", "reason", "decision_count"}.issubset(result.strategy_filter_stats.columns)
+    assert {"detector_name", "event_type", "side", "status", "reason", "decision_count"}.issubset(
+        saved_setup_decision_stats.columns
+    )
+    assert {"detector_name", "event_type", "side", "filter_name", "status", "reason", "decision_count"}.issubset(
+        saved_setup_filter_stats.columns
+    )
+    assert {"detector_name", "event_type", "side", "status", "reason", "decision_count"}.issubset(
+        result.setup_order_decision_stats.columns
+    )
+    assert {"detector_name", "event_type", "side", "filter_name", "status", "reason", "decision_count"}.issubset(
+        result.setup_strategy_filter_stats.columns
+    )
     assert "strategy_name" in result.strategy_stats.columns
     assert "detector_name" in result.detector_stats.columns
     assert {"detector_name", "event_type", "side"}.issubset(result.setup_stats.columns)
@@ -1964,6 +1980,8 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert not result.monthly_returns.empty
     assert (output_dir / "config.json").exists()
     assert (output_dir / "trades.csv").exists()
+    assert (output_dir / "setup_order_decision_stats.csv").exists()
+    assert (output_dir / "setup_strategy_filter_stats.csv").exists()
     assert (output_dir / "equity_curve.csv").exists()
     assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
