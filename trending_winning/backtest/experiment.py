@@ -27,7 +27,11 @@ from trending_winning.backtest.stats import (
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
-from trending_winning.data.repository import MarketDataRepository
+from trending_winning.data.repository import (
+    MarketDataRepository,
+    summarize_data_audit,
+    summarize_limit_filter_audit,
+)
 from trending_winning.strategies.diagnostics import collect_strategy_filter_decisions
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
@@ -365,6 +369,11 @@ def run_portfolio_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    data_stats = _data_management_statistics(
+        data.data_audit,
+        data.limit_filter_audit,
+        filtered_limit_open_count=len(data.filtered_limit_open_days),
+    )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     candidates_by_execution: dict[tuple[tuple[object, ...], tuple[object, ...]], PortfolioCandidateSet] = {}
@@ -431,6 +440,7 @@ def run_portfolio_parameter_sweep(
             "candidate_rejection_count": int(len(candidate_set.rejections)),
         }
         row.update(_sweep_parameter_record(config, variant, grid.keys()))
+        row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
         row.update(summarize_strategy_filter_decisions(filter_decisions_by_config.get(order_key, pd.DataFrame())))
@@ -469,6 +479,11 @@ def run_single_strategy_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    data_stats = _data_management_statistics(
+        data.data_audit,
+        data.limit_filter_audit,
+        filtered_limit_open_count=len(data.filtered_limit_open_days),
+    )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     for case_index, variant in enumerate(variants, start=1):
@@ -504,6 +519,7 @@ def run_single_strategy_parameter_sweep(
             "generated_order_count": int(len(orders)),
         }
         row.update(_sweep_parameter_record(config, variant, grid.keys()))
+        row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
         row.update(summarize_strategy_filter_decisions(filter_decisions))
@@ -788,12 +804,31 @@ def build_portfolio_benchmark_report(result: PortfolioExperimentResult) -> Portf
     )
 
 
+def _data_management_statistics(
+    data_audit: pd.DataFrame,
+    limit_filter_audit: pd.DataFrame,
+    *,
+    filtered_limit_open_count: int,
+) -> dict[str, float]:
+    """把数据审计和日 K 过滤审计并入实验统计，避免结果脱离数据质量语境。"""
+    stats = summarize_data_audit(data_audit)
+    stats.update(summarize_limit_filter_audit(limit_filter_audit))
+    stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
+    return stats
+
+
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
     output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
     stats = dict(result.backtest.stats)
-    stats["filtered_limit_open_count"] = float(result.filtered_limit_open_count)
+    stats.update(
+        _data_management_statistics(
+            result.data_coverage,
+            result.limit_filter_audit,
+            filtered_limit_open_count=result.filtered_limit_open_count,
+        )
+    )
     stats["elapsed_seconds"] = float(result.elapsed_seconds)
     (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
     result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
@@ -818,7 +853,14 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
     stats = dict(result.backtest.stats)
-    stats["filtered_limit_open_count"] = float(result.filtered_limit_open_count)
+    stats.update(
+        _data_management_statistics(
+            result.data_coverage,
+            result.limit_filter_audit,
+            filtered_limit_open_count=result.filtered_limit_open_count,
+        )
+    )
+    stats["elapsed_seconds"] = float(result.elapsed_seconds)
     (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
     result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)

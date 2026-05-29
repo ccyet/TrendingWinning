@@ -18,6 +18,8 @@ from trending_winning.data.repository import (
     prepare_tdx_backtest_data,
     resolve_daily_root,
     resolve_timeframe_root,
+    summarize_data_audit,
+    summarize_limit_filter_audit,
     update_from_tdx,
     write_local_bars,
 )
@@ -213,6 +215,51 @@ def test_repository_data_loaders_reject_start_after_end(tmp_path: Path) -> None:
             start="2026-05-26",
             end="2026-05-25",
         )
+
+
+def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
+    data_audit = pd.DataFrame(
+        {
+            "status": ["ok", "quality_error", "missing_file"],
+            "expected_rows": [8, 8, 0],
+            "missing_rows": [1, 4, 0],
+            "coverage_ratio": [0.875, 0.5, 0.0],
+            "max_missing_gap_minutes": [30, 90, 0],
+            "zero_volume_amount_rows": [2, 0, 0],
+            "non_positive_price_rows": [0, 1, 0],
+            "negative_volume_amount_rows": [0, 1, 0],
+        }
+    )
+    filter_audit = pd.DataFrame(
+        {
+            "status": ["ok", "daily_missing"],
+            "filter_enabled": [True, True],
+            "filtered_days": [2, 0],
+        }
+    )
+
+    assert summarize_data_audit(data_audit) == {
+        "data_audit_row_count": 3.0,
+        "data_audit_ok_count": 1.0,
+        "data_audit_failed_count": 2.0,
+        "data_audit_missing_file_count": 1.0,
+        "data_audit_quality_error_count": 1.0,
+        "data_expected_rows": 16.0,
+        "data_missing_rows": 5.0,
+        "data_weighted_coverage_ratio": pytest.approx(11 / 16),
+        "data_min_coverage_ratio": 0.5,
+        "data_max_missing_gap_minutes": 90.0,
+        "data_zero_volume_amount_rows": 2.0,
+        "data_non_positive_price_rows": 1.0,
+        "data_negative_volume_amount_rows": 1.0,
+    }
+    assert summarize_limit_filter_audit(filter_audit) == {
+        "limit_filter_audit_row_count": 2.0,
+        "limit_filter_enabled_count": 2.0,
+        "limit_filter_ok_count": 1.0,
+        "limit_filter_failed_count": 1.0,
+        "limit_filter_filtered_days": 2.0,
+    }
 
 
 def test_daily_repository_uses_existing_market_daily_layout(tmp_path: Path) -> None:

@@ -36,6 +36,8 @@ __all__ = [
     "prepare_tdx_backtest_data",
     "resolve_daily_root",
     "resolve_timeframe_root",
+    "summarize_data_audit",
+    "summarize_limit_filter_audit",
     "update_from_tdx",
     "write_local_bars",
 ]
@@ -114,6 +116,30 @@ LIMIT_FILTER_AUDIT_COLUMNS = [
     "daily_rows",
     "filtered_days",
     "message",
+]
+
+DATA_AUDIT_SUMMARY_KEYS = [
+    "data_audit_row_count",
+    "data_audit_ok_count",
+    "data_audit_failed_count",
+    "data_audit_missing_file_count",
+    "data_audit_quality_error_count",
+    "data_expected_rows",
+    "data_missing_rows",
+    "data_weighted_coverage_ratio",
+    "data_min_coverage_ratio",
+    "data_max_missing_gap_minutes",
+    "data_zero_volume_amount_rows",
+    "data_non_positive_price_rows",
+    "data_negative_volume_amount_rows",
+]
+
+LIMIT_FILTER_SUMMARY_KEYS = [
+    "limit_filter_audit_row_count",
+    "limit_filter_enabled_count",
+    "limit_filter_ok_count",
+    "limit_filter_failed_count",
+    "limit_filter_filtered_days",
 ]
 
 
@@ -656,6 +682,85 @@ def audit_local_data(
         for symbol in unique_symbols(tuple(symbols))
     ]
     return pd.DataFrame(rows, columns=AUDIT_COLUMNS)
+
+
+def summarize_data_audit(audit: pd.DataFrame) -> dict[str, float]:
+    """把行情审计表压成统计字段，便于 stats.json 和参数遍历表直接对比数据质量。"""
+    if audit.empty:
+        return {key: 0.0 for key in DATA_AUDIT_SUMMARY_KEYS}
+    status = (
+        audit["status"].fillna("").astype(str)
+        if "status" in audit.columns
+        else pd.Series([""] * len(audit), index=audit.index)
+    )
+    expected_rows = _audit_numeric_column(audit, "expected_rows")
+    missing_rows = _audit_numeric_column(audit, "missing_rows")
+    coverage_ratio = _audit_numeric_column(audit, "coverage_ratio")
+    expected_mask = expected_rows.gt(0)
+    expected_total = float(expected_rows.sum())
+    missing_total = float(missing_rows.sum())
+    return {
+        "data_audit_row_count": float(len(audit)),
+        "data_audit_ok_count": float(status.eq("ok").sum()),
+        "data_audit_failed_count": float(status.ne("ok").sum()),
+        "data_audit_missing_file_count": float(status.eq("missing_file").sum()),
+        "data_audit_quality_error_count": float(status.eq("quality_error").sum()),
+        "data_expected_rows": expected_total,
+        "data_missing_rows": missing_total,
+        "data_weighted_coverage_ratio": _audit_ratio_or_zero(expected_total - missing_total, expected_total),
+        "data_min_coverage_ratio": _audit_min_or_zero(coverage_ratio.loc[expected_mask]),
+        "data_max_missing_gap_minutes": _audit_max_or_zero(_audit_numeric_column(audit, "max_missing_gap_minutes")),
+        "data_zero_volume_amount_rows": float(_audit_numeric_column(audit, "zero_volume_amount_rows").sum()),
+        "data_non_positive_price_rows": float(_audit_numeric_column(audit, "non_positive_price_rows").sum()),
+        "data_negative_volume_amount_rows": float(_audit_numeric_column(audit, "negative_volume_amount_rows").sum()),
+    }
+
+
+def summarize_limit_filter_audit(filter_audit: pd.DataFrame) -> dict[str, float]:
+    """把日 K 涨停开盘过滤审计压成统计字段，避免只靠人工打开 CSV 判断。"""
+    if filter_audit.empty:
+        return {key: 0.0 for key in LIMIT_FILTER_SUMMARY_KEYS}
+    status = (
+        filter_audit["status"].fillna("").astype(str)
+        if "status" in filter_audit.columns
+        else pd.Series([""] * len(filter_audit), index=filter_audit.index)
+    )
+    enabled = (
+        filter_audit["filter_enabled"].fillna(False).astype(bool)
+        if "filter_enabled" in filter_audit.columns
+        else pd.Series([False] * len(filter_audit), index=filter_audit.index)
+    )
+    return {
+        "limit_filter_audit_row_count": float(len(filter_audit)),
+        "limit_filter_enabled_count": float(enabled.sum()),
+        "limit_filter_ok_count": float(status.eq("ok").sum()),
+        "limit_filter_failed_count": float(status.ne("ok").sum()),
+        "limit_filter_filtered_days": float(_audit_numeric_column(filter_audit, "filtered_days").sum()),
+    }
+
+
+def _audit_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series([0.0] * len(frame), index=frame.index, dtype=float)
+    return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float)
+
+
+def _audit_ratio_or_zero(numerator: float, denominator: float) -> float:
+    if denominator <= 0:
+        return 0.0
+    return float(round(float(numerator) / float(denominator), 12))
+
+
+def _audit_min_or_zero(values: pd.Series) -> float:
+    if values.empty:
+        return 0.0
+    return float(round(float(values.min()), 12))
+
+
+def _audit_max_or_zero(values: pd.Series) -> float:
+    if values.empty:
+        return 0.0
+    return float(round(float(values.max()), 12))
 
 
 def _audit_window_for_timeframe(

@@ -663,6 +663,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "generated_order_count",
         "candidate_count",
         "candidate_rejection_count",
+        "data_weighted_coverage_ratio",
+        "filtered_limit_open_count",
     }.issubset(result.table.columns)
     assert result.table["total_return"].tolist() == sorted(result.table["total_return"].tolist(), reverse=True)
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
@@ -683,6 +685,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "generated_order_count",
         "candidate_count",
         "candidate_rejection_count",
+        "data_weighted_coverage_ratio",
+        "filtered_limit_open_count",
     }.issubset(saved_sweep.columns)
 
 
@@ -1107,6 +1111,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "generated_order_count",
         "order_count",
         "strategy_signal_count",
+        "data_weighted_coverage_ratio",
+        "filtered_limit_open_count",
     }.issubset(result.table.columns)
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert (output_dir / "sweep.csv").exists()
@@ -1115,7 +1121,14 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_config["name"] == "single-sweep"
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
-    assert {"fee_rate", "slippage_bps", "order_cache_status", "generated_order_count"}.issubset(saved_sweep.columns)
+    assert {
+        "fee_rate",
+        "slippage_bps",
+        "order_cache_status",
+        "generated_order_count",
+        "data_weighted_coverage_ratio",
+        "filtered_limit_open_count",
+    }.issubset(saved_sweep.columns)
 
 
 def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_params_change(
@@ -1319,6 +1332,11 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_config["reversal_require_old_extreme_test"] is False
     assert saved_config["reversal_require_structure_confirmation"] is False
     assert saved_stats["elapsed_seconds"] == pytest.approx(result.elapsed_seconds)
+    assert saved_stats["data_audit_row_count"] == 1.0
+    assert saved_stats["data_weighted_coverage_ratio"] == pytest.approx(1.0)
+    assert saved_stats["data_missing_rows"] == 0.0
+    assert saved_stats["limit_filter_audit_row_count"] == 1.0
+    assert saved_stats["limit_filter_filtered_days"] == 0.0
 
 
 def test_single_strategy_experiment_builds_strategy_without_default_suite(tmp_path: Path, monkeypatch) -> None:
