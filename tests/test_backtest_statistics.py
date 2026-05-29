@@ -4,6 +4,7 @@ import pytest
 import pandas as pd
 
 from trending_winning.backtest.stats import (
+    build_equity_curve,
     compute_decision_reason_statistics,
     compute_equity_statistics,
     compute_grouped_trade_statistics,
@@ -12,6 +13,44 @@ from trending_winning.backtest.stats import (
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
+
+
+def test_build_equity_curve_keeps_trade_dates_for_period_statistics() -> None:
+    trades = pd.DataFrame(
+        {
+            "entry_date": pd.to_datetime(["2026-05-30 10:00:00", "2026-06-02 10:00:00"]),
+            "exit_date": pd.to_datetime(["2026-06-01 10:00:00", "2026-06-03 10:00:00"]),
+            "return_pct": [10.0, -5.0],
+        }
+    )
+
+    equity = build_equity_curve(trades, initial_equity=2.0)
+
+    assert equity["trade_no"].tolist() == [0, 1, 2]
+    assert equity["date"].tolist() == [
+        pd.Timestamp("2026-05-30 10:00:00"),
+        pd.Timestamp("2026-06-01 10:00:00"),
+        pd.Timestamp("2026-06-03 10:00:00"),
+    ]
+    assert equity["net_value"].tolist() == pytest.approx([2.0, 2.2, 2.09])
+    monthly = compute_period_returns(equity, freq="M").set_index("period")
+    assert monthly.loc["2026-05", "return"] == pytest.approx(0.0)
+    assert monthly.loc["2026-06", "return"] == pytest.approx(2.09 / 2.0 - 1.0)
+
+
+def test_compute_equity_statistics_preserves_same_date_trade_order() -> None:
+    equity = pd.DataFrame(
+        {
+            "trade_no": [0, 1, 2],
+            "date": pd.to_datetime(["2026-05-30", "2026-05-30", "2026-05-30"]),
+            "net_value": [1.0, 1.1, 1.045],
+        }
+    )
+
+    stats = compute_equity_statistics(equity, periods_per_year=2)
+
+    assert stats["total_return"] == pytest.approx(0.045)
+    assert stats["max_drawdown"] == pytest.approx(1.045 / 1.1 - 1.0)
 
 
 def test_compute_trade_statistics_reports_risk_adjusted_and_streak_metrics() -> None:

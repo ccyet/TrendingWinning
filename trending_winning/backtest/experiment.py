@@ -918,6 +918,8 @@ def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str) -> pd.DataFrame:
 
 def _trade_dated_equity_curve(backtest: BacktestResult) -> pd.DataFrame:
     equity = backtest.equity_curve.copy()
+    if "date" in equity.columns:
+        return equity
     trades = backtest.trades.copy()
     if equity.empty or trades.empty or "exit_date" not in trades.columns:
         return equity

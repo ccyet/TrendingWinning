@@ -1288,6 +1288,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert result.config.detector == "trend"
     assert result.elapsed_seconds > 0
     assert result.backtest.stats["trade_count"] >= 1
+    assert "date" in result.backtest.equity_curve.columns
     assert result.backtest.trades["detector_name"].eq("trend").all()
     assert result.backtest.trades["strategy_name"].eq("trend_signal_bar").all()
     assert result.data_coverage["status"].tolist() == ["ok"]

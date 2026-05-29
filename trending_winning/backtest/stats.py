@@ -198,7 +198,7 @@ def _decision_metric_statistics(data: pd.DataFrame, group_keys: list[str]) -> pd
 
 
 def build_equity_curve(trades: pd.DataFrame, initial_equity: float = 1.0) -> pd.DataFrame:
-    """把逐笔收益转成净值曲线；这里只做统计，不关心策略来源。"""
+    """把逐笔收益转成净值曲线；有成交日期时同步保留时间轴。"""
     if trades.empty:
         return pd.DataFrame({"trade_no": [0], "net_value": [float(initial_equity)]})
     returns = _returns_as_decimal(trades)
@@ -206,12 +206,16 @@ def build_equity_curve(trades: pd.DataFrame, initial_equity: float = 1.0) -> pd.
         [pd.Series([float(initial_equity)]), initial_equity * (1.0 + returns).cumprod()],
         ignore_index=True,
     )
-    return pd.DataFrame(
+    result = pd.DataFrame(
         {
             "trade_no": range(0, len(net_values)),
             "net_value": net_values,
         }
     )
+    dates = _trade_equity_dates(trades)
+    if dates is not None:
+        result.insert(1, "date", dates)
+    return result
 
 
 def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
@@ -320,11 +324,16 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return _empty_equity_statistics()
     data = equity_curve.copy()
+    data["_row_order"] = range(len(data))
     data["net_value"] = pd.to_numeric(data["net_value"], errors="coerce")
     data = data.dropna(subset=["net_value"])
     if "date" in data.columns:
         data["date"] = pd.to_datetime(data["date"], errors="coerce")
-        data = data.sort_values("date")
+        sort_columns = ["date", "_row_order"]
+        if "trade_no" in data.columns:
+            data["trade_no"] = pd.to_numeric(data["trade_no"], errors="coerce")
+            sort_columns = ["date", "trade_no", "_row_order"]
+        data = data.sort_values(sort_columns, kind="mergesort")
     net_value = data["net_value"].reset_index(drop=True)
     if net_value.empty:
         return _empty_equity_statistics()
@@ -382,10 +391,17 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
     if equity_curve.empty or not {"date", "net_value"}.issubset(equity_curve.columns):
         return pd.DataFrame(columns=_PERIOD_RETURN_COLUMNS)
 
-    data = equity_curve[["date", "net_value"]].copy()
+    columns = ["date", "net_value", *(["trade_no"] if "trade_no" in equity_curve.columns else [])]
+    data = equity_curve[columns].copy()
+    data["_row_order"] = range(len(data))
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
     data["net_value"] = pd.to_numeric(data["net_value"], errors="coerce")
-    data = data.dropna(subset=["date", "net_value"]).sort_values("date")
+    data = data.dropna(subset=["date", "net_value"])
+    sort_columns = ["date", "_row_order"]
+    if "trade_no" in data.columns:
+        data["trade_no"] = pd.to_numeric(data["trade_no"], errors="coerce")
+        sort_columns = ["date", "trade_no", "_row_order"]
+    data = data.sort_values(sort_columns, kind="mergesort")
     if data.empty:
         return pd.DataFrame(columns=_PERIOD_RETURN_COLUMNS)
 
@@ -563,6 +579,37 @@ def _rejected_reason_counts(reason: pd.Series, rejected: pd.Series, *, prefix: s
 def _metric_safe_reason(reason: str) -> str:
     normalized = re.sub(r"[^0-9a-zA-Z]+", "_", reason.strip().lower()).strip("_")
     return re.sub(r"_+", "_", normalized)
+
+
+def _trade_equity_dates(trades: pd.DataFrame) -> pd.Series | None:
+    """用入场日作为初始点、出场日作为成交点，生成单策略净值时间轴。"""
+    trade_dates = _coalesced_datetime_columns(trades, ("exit_date", "entry_date", "signal_date"))
+    if trade_dates is None:
+        return None
+    trade_dates = trade_dates.ffill().bfill()
+    if trade_dates.isna().all():
+        return None
+    start_candidates: list[pd.Series] = []
+    for column in ("entry_date", "signal_date", "exit_date"):
+        if column in trades.columns:
+            start_candidates.append(pd.to_datetime(trades[column], errors="coerce").dropna())
+    if not start_candidates:
+        return None
+    start_pool = pd.concat(start_candidates, ignore_index=True)
+    if start_pool.empty:
+        return None
+    return pd.Series([start_pool.min(), *trade_dates.tolist()])
+
+
+def _coalesced_datetime_columns(frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series | None:
+    """按优先级合并多个日期列，避免单列缺失导致时间轴丢失。"""
+    result: pd.Series | None = None
+    for column in columns:
+        if column not in frame.columns:
+            continue
+        values = pd.to_datetime(frame[column], errors="coerce").reset_index(drop=True)
+        result = values if result is None else result.fillna(values)
+    return result
 
 
 def _returns_as_decimal(trades: pd.DataFrame) -> pd.Series:
