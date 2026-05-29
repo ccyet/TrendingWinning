@@ -23,6 +23,7 @@ from trending_winning.data.schema import (
 )
 
 TDX_TQCENTER_ENV_VAR = "TDX_TQCENTER_PATH"
+TDX_ALLOW_MAC_TQCENTER_ENV_VAR = "TDX_ALLOW_MAC_TQCENTER"
 TDX_REQUEST_BATCH_SIZE = 100
 REFRESHABLE_KLINE_PERIODS = {"5m"}
 TDX_PERIOD_MAP = {"1d": "1d", "5m": "5m", "15m": "15m", "30m": "30m", "60m": "1h"}
@@ -219,6 +220,11 @@ def _diagnosis_row(
 
 def _load_tq(tqcenter_path: str = "") -> Any:
     global _TQ_CLIENT
+    if _mac_local_tq_disabled():
+        raise RuntimeError(
+            "Mac 通达信不支持 tqcenter 取数。请在 Mac 端使用 CLI 参数 `--runtime parallels` "
+            "调用 Parallels/Windows 通达信，或直接在 Windows 侧运行本项目。"
+        )
     if _TQ_CLIENT is not None:
         return _TQ_CLIENT
 
@@ -253,9 +259,13 @@ def _load_tq(tqcenter_path: str = "") -> Any:
         errors.append(f"normal import: {exc}")
         details = " | ".join(errors)
         raise RuntimeError(
-            "无法导入 tqcenter。请先安装并登录本机通达信终端，并通过 "
-            f"{TDX_TQCENTER_ENV_VAR} 或页面输入框指向 PYPlugins/user。详情: {details}"
+            "无法导入 tqcenter。请先在 Windows/Parallels 内启动并登录通达信终端，并通过 "
+            f"{TDX_TQCENTER_ENV_VAR} 或页面文件夹选择器指向 PYPlugins/user。详情: {details}"
         ) from exc
+
+
+def _mac_local_tq_disabled() -> bool:
+    return sys.platform == "darwin" and os.getenv(TDX_ALLOW_MAC_TQCENTER_ENV_VAR, "") != "1"
 
 
 def _candidate_import_paths(tqcenter_path: str = "") -> list[Path]:

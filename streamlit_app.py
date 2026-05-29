@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from pathlib import Path
+import sys
 
 import pandas as pd
 import streamlit as st
@@ -39,6 +40,8 @@ def main() -> None:
             if use_default_tdx_path
             else str(_directory_picker("TDX PYPlugins/user", Path.home(), key="tdx_path_picker"))
         )
+        if sys.platform == "darwin":
+            st.caption("Mac 本机通达信不支持取数；真实 TDX 请求请用 CLI 的 Parallels runtime 或在 Win 侧运行页面。")
 
     fetch_tab, scan_tab, backtest_tab = st.tabs(["TDX K线", "策略扫描", "回测"])
     with fetch_tab:

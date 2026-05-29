@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import json
 from pathlib import Path
@@ -45,6 +46,8 @@ def test_cli_tdx_doctor_prints_diagnostic_table(monkeypatch, capsys) -> None:
             "2026-05-25 09:30:00",
             "--end",
             "2026-05-25 15:00:00",
+            "--runtime",
+            "local",
             "--tdx-path",
             "/tmp/tdx/PYPlugins/user",
         ],
@@ -57,6 +60,52 @@ def test_cli_tdx_doctor_prints_diagnostic_table(monkeypatch, capsys) -> None:
     assert captured["symbols"] == ("000001.SZ",)
     assert captured["timeframes"] == ("30m",)
     assert captured["tqcenter_path"] == "/tmp/tdx/PYPlugins/user"
+
+
+def test_cli_tdx_doctor_routes_to_parallels_runtime(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_parallels_tdx_command(**kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(["prlctl"], 0, stdout="windows status ok\n", stderr="")
+
+    monkeypatch.setattr(cli_module, "run_parallels_tdx_command", fake_run_parallels_tdx_command)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "tdx-doctor",
+            "--symbols",
+            "000001.SZ",
+            "--timeframes",
+            "30m",
+            "--start",
+            "2026-05-25 09:30:00",
+            "--end",
+            "2026-05-25 15:00:00",
+            "--runtime",
+            "parallels",
+            "--parallels-vm",
+            "Windows 11",
+            "--windows-python",
+            r"C:\Users\Public\venvs\trending-winning\Scripts\python.exe",
+            "--windows-repo",
+            r"C:\Mac\Home\Documents\TrendingWinning",
+            "--tdx-path",
+            r"C:\new_tdx\T0002\PYPlugins\user",
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    forwarded = captured["cli_args"]
+    assert "windows status ok" in out
+    assert captured["config"].vm_name == "Windows 11"
+    assert forwarded[:3] == ["tdx-doctor", "--runtime", "local"]
+    assert "--parallels-vm" not in forwarded
+    assert r"C:\new_tdx\T0002\PYPlugins\user" in forwarded
 
 
 def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -416,6 +465,8 @@ def test_cli_prepare_data_calls_repository_prepare_from_tdx(tmp_path: Path, monk
             str(data_root),
             "--tdx-path",
             "/tmp/tdx/PYPlugins/user",
+            "--runtime",
+            "local",
             "--min-coverage-ratio",
             "0.95",
         ],

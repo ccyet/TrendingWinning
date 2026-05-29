@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
+import sys
 
 import pandas as pd
 
@@ -20,6 +21,12 @@ from trending_winning.backtest.experiment import (
 from trending_winning.backtest.engine import BacktestConfig, run_backtest
 from trending_winning.data.repository import MarketDataRepository
 from trending_winning.data.tdx import diagnose_tdx_source
+from trending_winning.data.tdx_parallels import (
+    ParallelsTdxConfig,
+    default_parallels_tdx_config,
+    mac_path_to_parallels_shared_path,
+    run_parallels_tdx_command,
+)
 from trending_winning.strategy import StrategyConfig, scan_bars
 
 
@@ -162,6 +169,7 @@ def main() -> None:
     fetch_parser.add_argument("--adjust", default="qfq")
     fetch_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
     fetch_parser.add_argument("--tdx-path", default="")
+    _add_tdx_runtime_args(fetch_parser)
 
     doctor_parser = subparsers.add_parser("tdx-doctor", help="diagnose TDX import, login and sample K-line requests")
     doctor_parser.add_argument("--symbols", required=True)
@@ -170,6 +178,7 @@ def main() -> None:
     doctor_parser.add_argument("--end", required=True)
     doctor_parser.add_argument("--adjust", default="qfq")
     doctor_parser.add_argument("--tdx-path", default="")
+    _add_tdx_runtime_args(doctor_parser)
 
     prepare_parser = subparsers.add_parser("prepare-data", help="audit local data and fetch only missing/bad bars from TDX")
     prepare_parser.add_argument("--symbols", required=True)
@@ -181,6 +190,7 @@ def main() -> None:
     prepare_parser.add_argument("--tdx-path", default="")
     prepare_parser.add_argument("--min-coverage-ratio", type=float, default=None)
     prepare_parser.add_argument("--allow-incomplete-after-update", action="store_true")
+    _add_tdx_runtime_args(prepare_parser)
 
     plan_parser = subparsers.add_parser("plan-data", help="audit local data and print the TDX fetch plan")
     plan_parser.add_argument("--symbols", required=True)
@@ -425,6 +435,9 @@ def main() -> None:
 
     args = parser.parse_args()
     symbols = tuple(item.strip() for item in args.symbols.split(",") if item.strip())
+    if args.command in {"tdx-doctor", "fetch", "prepare-data"} and _resolve_tdx_runtime(args.runtime) == "parallels":
+        _run_tdx_cli_in_parallels(args)
+        return
     if args.command == "tdx-doctor":
         result = diagnose_tdx_source(
             symbols=symbols,
@@ -772,6 +785,118 @@ def main() -> None:
     print(result.stats)
     if not result.trades.empty:
         print(result.trades.to_string(index=False))
+
+
+def _add_tdx_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--runtime",
+        choices=["auto", "local", "parallels"],
+        default="auto",
+        help="TDX 执行位置；Mac 默认调度到 Parallels，Windows 默认本地执行。",
+    )
+    parser.add_argument("--parallels-vm", default="", help="Parallels 虚拟机名称，默认 Windows 11。")
+    parser.add_argument(
+        "--windows-python",
+        default="",
+        help=(
+            "Windows 内 Python 可执行文件，默认 "
+            r"C:\Users\Public\venvs\trending-winning\Scripts\python.exe。"
+        ),
+    )
+    parser.add_argument("--windows-repo", default="", help="Windows 内本仓库路径，默认由 Mac 共享目录推导。")
+
+
+def _resolve_tdx_runtime(runtime: str) -> str:
+    if runtime == "auto":
+        return "parallels" if sys.platform == "darwin" else "local"
+    return runtime
+
+
+def _run_tdx_cli_in_parallels(args: argparse.Namespace) -> None:
+    config = _parallels_config_from_args(args)
+    result = run_parallels_tdx_command(config=config, cli_args=_tdx_forward_args(args))
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+
+
+def _parallels_config_from_args(args: argparse.Namespace) -> ParallelsTdxConfig:
+    default = default_parallels_tdx_config(cwd=Path.cwd())
+    return ParallelsTdxConfig(
+        vm_name=args.parallels_vm or default.vm_name,
+        windows_python=args.windows_python or default.windows_python,
+        windows_repo=args.windows_repo or default.windows_repo,
+    )
+
+
+def _tdx_forward_args(args: argparse.Namespace) -> list[str]:
+    if args.command == "tdx-doctor":
+        return [
+            "tdx-doctor",
+            "--runtime",
+            "local",
+            "--symbols",
+            args.symbols,
+            "--timeframes",
+            args.timeframes,
+            "--start",
+            args.start,
+            "--end",
+            args.end,
+            "--adjust",
+            args.adjust,
+            "--tdx-path",
+            mac_path_to_parallels_shared_path(args.tdx_path),
+        ]
+    if args.command == "fetch":
+        return [
+            "fetch",
+            "--runtime",
+            "local",
+            "--symbols",
+            args.symbols,
+            "--timeframe",
+            args.timeframe,
+            "--start",
+            args.start,
+            "--end",
+            args.end,
+            "--adjust",
+            args.adjust,
+            "--data-root",
+            mac_path_to_parallels_shared_path(args.data_root),
+            "--tdx-path",
+            mac_path_to_parallels_shared_path(args.tdx_path),
+        ]
+    if args.command == "prepare-data":
+        forwarded = [
+            "prepare-data",
+            "--runtime",
+            "local",
+            "--symbols",
+            args.symbols,
+            "--timeframes",
+            args.timeframes,
+            "--start",
+            args.start,
+            "--end",
+            args.end,
+            "--adjust",
+            args.adjust,
+            "--data-root",
+            mac_path_to_parallels_shared_path(args.data_root),
+            "--tdx-path",
+            mac_path_to_parallels_shared_path(args.tdx_path),
+        ]
+        if args.min_coverage_ratio is not None:
+            forwarded.extend(["--min-coverage-ratio", str(args.min_coverage_ratio)])
+        if args.allow_incomplete_after_update:
+            forwarded.append("--allow-incomplete-after-update")
+        return forwarded
+    raise ValueError(f"不支持通过 Parallels 运行的命令：{args.command}")
 
 
 if __name__ == "__main__":

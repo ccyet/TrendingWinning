@@ -190,6 +190,15 @@ def test_fetch_tdx_bars_reports_tdx_error_payload() -> None:
         )
 
 
+def test_load_tq_rejects_macos_runtime_without_explicit_override(monkeypatch) -> None:
+    monkeypatch.setattr(tdx_module.sys, "platform", "darwin")
+    monkeypatch.delenv("TDX_ALLOW_MAC_TQCENTER", raising=False)
+    monkeypatch.setattr(tdx_module, "_TQ_CLIENT", None)
+
+    with pytest.raises(RuntimeError, match="Mac 通达信不支持"):
+        tdx_module._load_tq("")
+
+
 def test_diagnose_tdx_source_reports_each_timeframe_sample_request() -> None:
     fake = PeriodPayloadTq({"1d": _daily_payload(), "30m": _payload(), "1h": _payload()})
 

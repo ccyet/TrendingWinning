@@ -229,7 +229,7 @@
       <pre><code>cd /Users/a1234/Documents/TrendingWinning
 python -m pip install -r requirements.txt
 streamlit run streamlit_app.py --server.port 8520</code></pre>
-      <div class="note">Web 页面包含三个主栏目：<b>TDX K线</b>、<b>策略扫描</b>、<b>回测</b>。侧边栏只放全局数据目录、复权方式和 TDX 插件目录。</div>
+      <div class="note">Web 页面包含三个主栏目：<b>TDX K线</b>、<b>策略扫描</b>、<b>回测</b>。侧边栏只放全局数据目录、复权方式和 TDX 插件目录。Mac 本机不作为真实 TDX 取数环境，真实请求用 Parallels/Windows。</div>
     </section>
 
     <section id="paths">
@@ -239,7 +239,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
         <thead><tr><th>位置</th><th>用途</th><th>交互方式</th></tr></thead>
         <tbody>
           <tr><td>行情根目录</td><td>本地 K 线仓库，例如 <code>market/daily</code>。</td><td>侧边栏选择快速位置、进入子文件夹、选定当前文件夹。</td></tr>
-          <tr><td>TDX PYPlugins/user</td><td>指定 <code>tqcenter</code> 所在目录。</td><td>默认使用系统环境；需要指定时取消勾选后用文件夹选择器。</td></tr>
+          <tr><td>TDX PYPlugins/user</td><td>Windows 通达信 <code>tqcenter</code> 所在目录。</td><td>Win 侧页面用文件夹选择器；Mac 侧 CLI 用 <code>--runtime parallels</code> 调度到 Win。</td></tr>
           <tr><td>输出父目录</td><td>保存回测或参数遍历产物。</td><td>选择父目录，系统自动按实验名生成子文件夹。</td></tr>
         </tbody>
       </table>
@@ -248,12 +248,14 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
 
     <section id="data">
       <h2>TDX K线</h2>
-      <p>先用诊断确认 TDX 通道，再做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
+      <p>先用诊断确认 Windows/Parallels TDX 通道，再做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
       <pre><code>python -m trending_winning.cli tdx-doctor \
   --symbols 000001.SZ,600519.SH \
   --timeframes 1d,5m,15m,30m,60m \
   --start "2026-05-25 09:30:00" \
-  --end "2026-05-25 15:00:00"</code></pre>
+  --end "2026-05-25 15:00:00" \
+  --runtime parallels \
+  --tdx-path "C:\\new_tdx\\T0002\\PYPlugins\\user"</code></pre>
       <pre><code>python -m trending_winning.cli plan-data \
   --symbols 000001.SZ,600519.SH \
   --timeframes 1d,5m,15m,30m,60m \
@@ -270,6 +272,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
   --data-root /path/to/market/daily</code></pre>
       <ul>
         <li><code>plan-data</code> 只读取本地 parquet 和日 K 交易日锚点，不请求 TDX。</li>
+        <li><code>prepare-data</code> 在 Mac 侧默认通过 Parallels 进入 Windows 执行真实 TDX 请求。</li>
         <li><code>prepare-data</code> 只请求缺失、质量错误或覆盖率低于门槛的标的周期。</li>
         <li>分钟周期会自动带上 <code>1d</code> 依赖，日 K 用于覆盖率锚点和涨停开盘过滤。</li>
         <li>所有入口会校验 <code>start &lt;= end</code>，时间窗口写反会直接失败。</li>
@@ -365,16 +368,17 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
       <pre><code>docker build -t trending-winning .
 docker run --rm -p 8520:8501 \
   -v /Users/a1234/Desktop/trend-backtest/data:/data \
-  -e TDX_TQCENTER_PATH=/path/to/PYPlugins/user \
   trending-winning</code></pre>
-      <p>容器内页面数据目录可选择 <code>/data/market/daily</code>。</p>
+      <p>容器内页面数据目录可选择 <code>/data/market/daily</code>。Docker 更适合读取已落地 parquet 后做扫描和回测，真实 TDX 取数仍走 Windows/Parallels。</p>
     </section>
 
     <section id="windows">
       <h2>Win/TDX 注意</h2>
       <ul>
-        <li>真实 TDX 请求依赖本机通达信已启动并登录。</li>
-        <li>需要能定位 <code>PYPlugins/user</code>，其中应能导入 <code>tqcenter</code>。</li>
+        <li>真实 TDX 请求依赖 Windows/Parallels 内通达信已启动并登录。</li>
+        <li>Mac CLI 默认 <code>--runtime auto</code> 会调度到 Parallels；需要本地强制运行时显式写 <code>--runtime local</code>。</li>
+        <li>默认 Windows Python 是 <code>C:\Users\Public\venvs\trending-winning\Scripts\python.exe</code>，可用 <code>--windows-python</code> 覆盖。</li>
+        <li>需要能定位 Windows <code>PYPlugins/user</code>，其中应能导入 <code>tqcenter</code>。</li>
         <li>在 Win 侧测试时，Web 文件夹选择器会浏览 Win 侧本机路径，不需要手写 macOS 路径。</li>
         <li><code>60m</code> 会映射成 TDX 的 <code>1h</code> period。</li>
         <li>分钟线能否返回取决于客户端本地是否已有对应周期数据。</li>
