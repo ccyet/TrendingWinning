@@ -97,6 +97,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "order_decision_stats.csv").exists()
     assert (output_dir / "strategy_filter_stats.csv").exists()
     assert (output_dir / "equity_curve.csv").exists()
+    assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "limit_filter_audit.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
@@ -108,6 +109,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     saved_config = json.loads((output_dir / "config.json").read_text())
     saved_stats = json.loads((output_dir / "stats.json").read_text())
     saved_coverage = pd.read_csv(output_dir / "data_coverage.csv")
+    saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_limit_filter_audit = pd.read_csv(output_dir / "limit_filter_audit.csv")
     saved_decisions = pd.read_csv(output_dir / "order_decisions.csv")
     saved_filter_decisions = pd.read_csv(output_dir / "strategy_filter_decisions.csv")
@@ -125,8 +127,13 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert result.backtest.stats["limit_filter_audit_row_count"] == 1.0
     assert result.backtest.stats["limit_filter_failed_count"] == 1.0
     assert saved_stats["data_audit_row_count"] == result.backtest.stats["data_audit_row_count"]
+    assert saved_stats["data_inventory_row_count"] == 2.0
+    assert saved_stats["data_inventory_cached_count"] == 1.0
+    assert saved_stats["data_inventory_missing_file_count"] == 1.0
     assert saved_stats["limit_filter_failed_count"] == result.backtest.stats["limit_filter_failed_count"]
     assert result.data_coverage["status"].tolist() == ["ok"]
+    assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
+    assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert saved_coverage.loc[0, "stock_code"] == "000001.SZ"
     assert result.limit_filter_audit["status"].tolist() == ["daily_missing"]
     assert saved_limit_filter_audit.loc[0, "status"] == "daily_missing"
@@ -684,13 +691,16 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.table.columns[3] == "case_config_hash"
     assert result.table["total_return"].tolist() == sorted(result.table["total_return"].tolist(), reverse=True)
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
+    assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
+    assert (output_dir / "data_inventory.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["name"] == "sweep"
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
         "sweep_rank",
@@ -714,6 +724,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert [item["case_name"] for item in saved_cases] == saved_sweep["case_name"].tolist()
+    assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000002.SZ", "30m"), "status"] == "cached"
     assert saved_cases[0]["config"]["name"] == "sweep"
     assert {"risk_reward", "max_holding_bars"}.issubset(saved_cases[0]["grid_fields"])
 
@@ -1154,13 +1165,16 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.table.columns[2] == "is_pareto_efficient"
     assert result.table.columns[3] == "case_config_hash"
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
+    assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
+    assert (output_dir / "data_inventory.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["name"] == "single-sweep"
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
         "sweep_rank",
@@ -1177,6 +1191,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
+    assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert saved_cases[0]["config"]["name"] == "single-sweep"
     assert {"fee_rate", "slippage_bps"}.issubset(saved_cases[0]["grid_fields"])
 
@@ -1468,6 +1483,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert (output_dir / "config.json").exists()
     assert (output_dir / "trades.csv").exists()
     assert (output_dir / "equity_curve.csv").exists()
+    assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
     assert (output_dir / "symbol_stats.csv").exists()
@@ -1476,6 +1492,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert (output_dir / "monthly_returns.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     saved_stats = json.loads((output_dir / "stats.json").read_text())
+    saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     assert saved_config["detector"] == "trend"
     assert saved_config["max_actual_risk_pct"] == 0.08
     assert saved_config["max_chase_pct"] == 0.08
@@ -1488,8 +1505,13 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_stats["data_audit_row_count"] == 1.0
     assert saved_stats["data_weighted_coverage_ratio"] == pytest.approx(1.0)
     assert saved_stats["data_missing_rows"] == 0.0
+    assert saved_stats["data_inventory_row_count"] == 2.0
+    assert saved_stats["data_inventory_cached_count"] == 1.0
+    assert saved_stats["data_inventory_missing_file_count"] == 1.0
     assert saved_stats["limit_filter_audit_row_count"] == 1.0
     assert saved_stats["limit_filter_filtered_days"] == 0.0
+    assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
+    assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
 
 
 def test_single_strategy_experiment_builds_strategy_without_default_suite(tmp_path: Path, monkeypatch) -> None:

@@ -192,6 +192,7 @@ class PortfolioExperimentResult:
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -213,6 +214,7 @@ class SingleStrategyExperimentResult:
     order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -240,6 +242,7 @@ class PortfolioSweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -254,6 +257,7 @@ class SingleStrategySweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -263,6 +267,7 @@ class _LoadedExperimentData:
     bars: pd.DataFrame
     higher_bars: pd.DataFrame
     data_audit: pd.DataFrame
+    data_inventory: pd.DataFrame
     limit_filter_audit: pd.DataFrame
     filtered_limit_open_days: pd.DataFrame
 
@@ -294,6 +299,7 @@ def run_single_strategy_experiment(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         data_coverage=data.data_audit,
+        data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
         symbol_stats=_grouped_trade_statistics(backtest.trades, by="stock_code"),
@@ -349,6 +355,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         data_coverage=data.data_audit,
+        data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
         symbol_stats=_grouped_trade_statistics(backtest.trades, by="stock_code"),
@@ -384,6 +391,7 @@ def run_portfolio_parameter_sweep(
         data.data_audit,
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
+        data_inventory=data.data_inventory,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
@@ -464,6 +472,7 @@ def run_portfolio_parameter_sweep(
         grid={key: list(values) for key, values in grid.items()},
         table=table,
         data_coverage=data.data_audit,
+        data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
@@ -491,6 +500,7 @@ def run_single_strategy_parameter_sweep(
         data.data_audit,
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
+        data_inventory=data.data_inventory,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
@@ -540,6 +550,7 @@ def run_single_strategy_parameter_sweep(
         grid={key: list(values) for key, values in grid.items()},
         table=table,
         data_coverage=data.data_audit,
+        data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
@@ -555,6 +566,10 @@ def _load_experiment_data(
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
 ) -> _LoadedExperimentData:
     higher_timeframe = str(config.higher_timeframe).strip()
+    data_inventory = repo.inventory(
+        timeframes=tuple(_experiment_inventory_timeframes(config)),
+        symbols=config.symbols,
+    )
     if higher_timeframe:
         if higher_timeframe == config.timeframe:
             raise ValueError("higher_timeframe 不能和 timeframe 相同。")
@@ -570,6 +585,7 @@ def _load_experiment_data(
             bars=bundle.bars_by_timeframe.get(config.timeframe, pd.DataFrame()),
             higher_bars=bundle.bars_by_timeframe.get(higher_timeframe, pd.DataFrame()),
             data_audit=bundle.data_audit,
+            data_inventory=data_inventory,
             limit_filter_audit=bundle.limit_filter_audit,
             filtered_limit_open_days=bundle.filtered_limit_open_days,
         )
@@ -585,9 +601,19 @@ def _load_experiment_data(
         bars=bundle.bars,
         higher_bars=pd.DataFrame(),
         data_audit=bundle.data_audit,
+        data_inventory=data_inventory,
         limit_filter_audit=bundle.limit_filter_audit,
         filtered_limit_open_days=bundle.filtered_limit_open_days,
     )
+
+
+def _experiment_inventory_timeframes(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> list[str]:
+    """实验结果需要保存日 K 依赖、主周期和可选高周期的本地缓存快照。"""
+    timeframes = ["1d", str(config.timeframe)]
+    higher_timeframe = str(config.higher_timeframe).strip()
+    if higher_timeframe and higher_timeframe not in timeframes:
+        timeframes.append(higher_timeframe)
+    return timeframes
 
 
 def _wrap_higher_timeframe_strategies(
@@ -793,6 +819,7 @@ def _with_data_management_statistics(result: BacktestResult, data: _LoadedExperi
             data.data_audit,
             data.limit_filter_audit,
             filtered_limit_open_count=len(data.filtered_limit_open_days),
+            data_inventory=data.data_inventory,
         )
     )
     return BacktestResult(
@@ -833,12 +860,49 @@ def _data_management_statistics(
     limit_filter_audit: pd.DataFrame,
     *,
     filtered_limit_open_count: int,
+    data_inventory: pd.DataFrame | None = None,
 ) -> dict[str, float]:
     """把数据审计和日 K 过滤审计并入实验统计，避免结果脱离数据质量语境。"""
     stats = summarize_data_audit(data_audit)
+    stats.update(_data_inventory_statistics(data_inventory))
     stats.update(summarize_limit_filter_audit(limit_filter_audit))
     stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
     return stats
+
+
+def _data_inventory_statistics(data_inventory: pd.DataFrame | None) -> dict[str, float]:
+    """把本地缓存库存压成统计字段；用于快速判断结果是否基于完整缓存快照。"""
+    keys = {
+        "data_inventory_row_count": 0.0,
+        "data_inventory_cached_count": 0.0,
+        "data_inventory_missing_file_count": 0.0,
+        "data_inventory_read_error_count": 0.0,
+        "data_inventory_total_rows": 0.0,
+        "data_inventory_total_file_size_bytes": 0.0,
+    }
+    if data_inventory is None or data_inventory.empty:
+        return keys
+    status = (
+        data_inventory["status"].fillna("").astype(str)
+        if "status" in data_inventory.columns
+        else pd.Series([""] * len(data_inventory), index=data_inventory.index)
+    )
+    rows = _inventory_numeric_column(data_inventory, "rows")
+    file_size = _inventory_numeric_column(data_inventory, "file_size_bytes")
+    return {
+        "data_inventory_row_count": float(len(data_inventory)),
+        "data_inventory_cached_count": float(status.eq("cached").sum()),
+        "data_inventory_missing_file_count": float(status.eq("missing_file").sum()),
+        "data_inventory_read_error_count": float(status.eq("read_error").sum()),
+        "data_inventory_total_rows": float(rows.sum()),
+        "data_inventory_total_file_size_bytes": float(file_size.sum()),
+    }
+
+
+def _inventory_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series([0.0] * len(frame), index=frame.index, dtype=float)
+    return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float)
 
 
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
@@ -851,6 +915,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
             result.data_coverage,
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,
+            data_inventory=result.data_inventory,
         )
     )
     stats["elapsed_seconds"] = float(result.elapsed_seconds)
@@ -859,6 +924,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
     result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
     result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
+    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
@@ -882,6 +948,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
             result.data_coverage,
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,
+            data_inventory=result.data_inventory,
         )
     )
     stats["elapsed_seconds"] = float(result.elapsed_seconds)
@@ -890,6 +957,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
     result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
     result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
+    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
@@ -918,6 +986,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
+    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     return output_dir
@@ -931,6 +1000,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
+    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     return output_dir

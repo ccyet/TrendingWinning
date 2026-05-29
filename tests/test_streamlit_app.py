@@ -163,6 +163,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "TDX K线" in html
     assert "inventory-data" in html
     assert "本地缓存库存" in html
+    assert "data_inventory.csv" in html
 
 
 def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
