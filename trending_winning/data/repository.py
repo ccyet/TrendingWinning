@@ -175,6 +175,8 @@ DATA_AUDIT_SUMMARY_KEYS = [
     "data_coverage_p50",
     "data_coverage_p95",
     "data_max_missing_gap_minutes",
+    "data_max_missing_gap_start_at",
+    "data_max_missing_gap_end_at",
     "data_zero_volume_amount_rows",
     "data_non_positive_price_rows",
     "data_negative_volume_amount_rows",
@@ -864,10 +866,10 @@ def audit_local_data(
     return pd.DataFrame(rows, columns=AUDIT_COLUMNS)
 
 
-def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | None = None) -> dict[str, float]:
+def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | None = None) -> dict[str, object]:
     """把行情审计表压成统计字段，便于 stats.json 和参数遍历表直接对比数据质量。"""
     if audit.empty:
-        return {key: 0.0 for key in DATA_AUDIT_SUMMARY_KEYS}
+        return _empty_data_audit_summary()
     min_coverage_ratio = _normalize_min_coverage_ratio(min_coverage_ratio)
     status = (
         audit["status"].fillna("").astype(str)
@@ -881,6 +883,8 @@ def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | Non
     below_min = _coverage_below_min_mask(expected_mask, coverage_ratio, min_coverage_ratio)
     expected_total = float(expected_rows.sum())
     missing_total = float(missing_rows.sum())
+    max_missing_gap = _audit_numeric_column(audit, "max_missing_gap_minutes")
+    max_missing_gap_bounds = _max_missing_gap_bounds(audit, max_missing_gap)
     return {
         "data_audit_row_count": float(len(audit)),
         "data_audit_ok_count": float(status.eq("ok").sum()),
@@ -900,11 +904,37 @@ def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | Non
         "data_coverage_p05": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.05),
         "data_coverage_p50": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.50),
         "data_coverage_p95": _audit_quantile_or_zero(coverage_ratio.loc[expected_mask], 0.95),
-        "data_max_missing_gap_minutes": _audit_max_or_zero(_audit_numeric_column(audit, "max_missing_gap_minutes")),
+        "data_max_missing_gap_minutes": _audit_max_or_zero(max_missing_gap),
+        **max_missing_gap_bounds,
         "data_zero_volume_amount_rows": float(_audit_numeric_column(audit, "zero_volume_amount_rows").sum()),
         "data_non_positive_price_rows": float(_audit_numeric_column(audit, "non_positive_price_rows").sum()),
         "data_negative_volume_amount_rows": float(_audit_numeric_column(audit, "negative_volume_amount_rows").sum()),
     }
+
+
+def _empty_data_audit_summary() -> dict[str, object]:
+    summary = {key: 0.0 for key in DATA_AUDIT_SUMMARY_KEYS}
+    summary["data_max_missing_gap_start_at"] = ""
+    summary["data_max_missing_gap_end_at"] = ""
+    return summary
+
+
+def _max_missing_gap_bounds(audit: pd.DataFrame, max_missing_gap: pd.Series) -> dict[str, str]:
+    if audit.empty or max_missing_gap.empty or max_missing_gap.max() <= 0:
+        return {"data_max_missing_gap_start_at": "", "data_max_missing_gap_end_at": ""}
+    row_index = max_missing_gap.idxmax()
+    row = audit.loc[row_index]
+    return {
+        "data_max_missing_gap_start_at": _audit_timestamp_label(row.get("max_missing_gap_start_at")),
+        "data_max_missing_gap_end_at": _audit_timestamp_label(row.get("max_missing_gap_end_at")),
+    }
+
+
+def _audit_timestamp_label(value: object) -> str:
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        return ""
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def summarize_limit_filter_audit(filter_audit: pd.DataFrame) -> dict[str, float]:

@@ -54,6 +54,10 @@ def _assert_parameter_summary_decision_metrics(
         assert summary[summary_column] == pytest.approx(cases[sweep_column].mean())
 
 
+def _csv_text(value: object) -> str:
+    return "" if pd.isna(value) else str(value)
+
+
 def test_experiment_module_does_not_import_trend_detector_at_module_load() -> None:
     source_before_config = getsource(experiment_module).split("DATA_SCOPE_SWEEP_FIELDS", maxsplit=1)[0]
 
@@ -897,6 +901,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_summary["candidate_cache_hit_rate"] == 0.0
     assert saved_summary["data_coverage_below_min_count"] == 0.0
     assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
+    assert saved_summary["data_max_missing_gap_start_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_start_at"])
+    assert saved_summary["data_max_missing_gap_end_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_end_at"])
     assert saved_summary["limit_filter_filtered_days"] == 0.0
     assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
     assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
@@ -1546,6 +1552,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_summary["generated_order_count"] == 0
     assert saved_summary["data_coverage_below_min_count"] == 0.0
     assert saved_summary["data_weighted_coverage_ratio"] == saved_sweep.loc[0, "data_weighted_coverage_ratio"]
+    assert saved_summary["data_max_missing_gap_start_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_start_at"])
+    assert saved_summary["data_max_missing_gap_end_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_end_at"])
     assert saved_summary["limit_filter_filtered_days"] == 0.0
     assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
     assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
@@ -2159,6 +2167,8 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert result.backtest.stats["data_min_coverage_threshold"] == pytest.approx(0.1)
     assert saved_stats["data_weighted_coverage_ratio"] == pytest.approx(1.0)
     assert saved_stats["data_missing_rows"] == 0.0
+    assert saved_stats["data_max_missing_gap_start_at"] == ""
+    assert saved_stats["data_max_missing_gap_end_at"] == ""
     assert saved_stats["data_inventory_row_count"] == 2.0
     assert saved_stats["data_inventory_cached_count"] == 1.0
     assert saved_stats["data_inventory_missing_file_count"] == 1.0
