@@ -4,7 +4,12 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-from streamlit_app import _parse_float_mapping, _parse_int_mapping, _parse_text_mapping
+from streamlit_app import (
+    _parse_float_mapping,
+    _parse_int_mapping,
+    _parse_text_mapping,
+    _resolve_native_directory_choice,
+)
 
 
 def test_streamlit_app_renders_without_widget_id_conflicts() -> None:
@@ -142,7 +147,36 @@ def test_streamlit_path_controls_use_folder_picker_instead_of_text_inputs() -> N
     assert 'st.text_input("TDX PYPlugins/user"' not in source
     assert 'st.text_input(\n            "输出目录"' not in source
     assert "_directory_picker(" in source
+    assert "_open_native_directory_dialog(" in source
+    assert "选择文件夹" in source
     assert "已选文件夹" in source
+
+
+def test_streamlit_path_controls_render_native_folder_buttons() -> None:
+    root = Path(__file__).resolve().parents[1]
+    app = AppTest.from_file(str(root / "streamlit_app.py"))
+
+    app.run(timeout=5)
+
+    assert not app.exception
+    assert any(button.label == "选择文件夹" for button in app.button)
+
+
+def test_native_directory_choice_uses_existing_parent_and_handles_cancel(tmp_path: Path) -> None:
+    calls: dict[str, object] = {}
+    selected_path = tmp_path / "selected"
+
+    def askdirectory(**kwargs: object) -> str:
+        calls.update(kwargs)
+        return str(selected_path)
+
+    selected = _resolve_native_directory_choice(tmp_path / "missing" / "daily", "选择目录", askdirectory)
+
+    assert selected == selected_path
+    assert calls["title"] == "选择目录"
+    assert calls["initialdir"] == str(tmp_path)
+    assert calls["mustexist"] is False
+    assert _resolve_native_directory_choice(tmp_path, "选择目录", lambda **_: "") is None
 
 
 def test_streamlit_primary_inputs_are_grouped_horizontally() -> None:
@@ -173,6 +207,9 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     readme = (root / "README.md").read_text(encoding="utf-8")
     guide = (root / "docs" / "usage_guide.html").read_text(encoding="utf-8")
 
+    assert "选择文件夹" in readme
+    assert "选择文件夹" in guide
+    assert "无法打开系统选择框" in guide
     assert r"C:\new_tdx64\PYPlugins\user" in readme
     assert r"C:\\new_tdx64\\PYPlugins\\user" in guide
     assert "Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准" in readme

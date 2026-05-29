@@ -234,16 +234,16 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
 
     <section id="paths">
       <h2>路径选择</h2>
-      <p>所有文件夹路径都通过本地文件夹选择器完成，不再要求用户手写目录字符串。</p>
+      <p>所有文件夹路径都通过“选择文件夹”按钮弹出系统选择框，不再要求用户手写目录字符串。</p>
       <table>
         <thead><tr><th>位置</th><th>用途</th><th>交互方式</th></tr></thead>
         <tbody>
-          <tr><td>行情根目录</td><td>本地 K 线仓库，例如 <code>market/daily</code>。</td><td>侧边栏选择快速位置、进入子文件夹、选定当前文件夹。</td></tr>
-          <tr><td>TDX PYPlugins/user</td><td>Windows 通达信 <code>tqcenter</code> 所在目录。</td><td>Win 侧页面用文件夹选择器；Mac 侧 CLI 用 <code>--runtime parallels</code> 调度到 Win。</td></tr>
+          <tr><td>行情根目录</td><td>本地 K 线仓库，例如 <code>market/daily</code>。</td><td>点击“选择文件夹”弹出系统目录框；也可用快速位置、子文件夹和选定当前文件夹浏览。</td></tr>
+          <tr><td>TDX PYPlugins/user</td><td>Windows 通达信 <code>tqcenter</code> 所在目录。</td><td>Win 侧页面直接弹出本机目录框；Mac 侧 CLI 用 <code>--runtime parallels</code> 调度到 Win。</td></tr>
           <tr><td>输出父目录</td><td>保存回测或参数遍历产物。</td><td>选择父目录，系统自动按实验名生成子文件夹。</td></tr>
         </tbody>
       </table>
-      <div class="note warn">浏览器出于安全限制不能弹出操作系统原生文件夹对话框；当前实现使用 Streamlit 本地目录浏览器，运行在本机或 Win 侧时可浏览该机器上的目录。</div>
+      <div class="note warn">如果当前会话没有可用桌面窗口或缺少 tkinter，页面会明确提示无法打开系统选择框，并继续提供站内目录浏览器。</div>
     </section>
 
     <section id="data">

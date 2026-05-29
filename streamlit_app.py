@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 import sys
@@ -53,7 +54,7 @@ def main() -> None:
 
 
 def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bool = False) -> Path:
-    """本地文件夹选择器；用下拉框和按钮浏览路径，避免让用户手写目录字符串。"""
+    """本地文件夹选择器；优先弹出系统选择框，保留站内浏览作为补充。"""
     selected_key = f"{key}_selected_path"
     current_key = f"{key}_current_path"
     default_path = Path(default).expanduser()
@@ -63,6 +64,25 @@ def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bo
         st.session_state[current_key] = str(_initial_browse_directory(default_path))
 
     st.markdown(f"**{label}**")
+    picker_cols = st.columns([1, 3])
+    with picker_cols[0]:
+        if st.button(
+            "选择文件夹",
+            key=f"{key}_native_select",
+            disabled=disabled,
+            help="打开系统文件夹选择框",
+        ):
+            try:
+                selected = _open_native_directory_dialog(st.session_state[selected_key], f"选择{label}")
+            except (ImportError, OSError, RuntimeError) as exc:
+                st.warning(f"无法打开系统文件夹选择框：{exc}")
+            else:
+                if selected is not None:
+                    st.session_state[selected_key] = str(selected)
+                    st.session_state[current_key] = str(_existing_directory(selected))
+    with picker_cols[1]:
+        st.caption(f"已选文件夹：{_display_path(st.session_state[selected_key])}")
+
     quick_cols = st.columns([4, 1])
     with quick_cols[0]:
         quick_root = st.selectbox(
@@ -98,8 +118,44 @@ def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bo
             st.session_state[current_key] = str(_initial_browse_directory(default_path))
 
     selected = Path(st.session_state[selected_key]).expanduser()
-    st.caption(f"已选文件夹：{_display_path(str(selected))}")
     return selected
+
+
+def _open_native_directory_dialog(initial_directory: str | Path, title: str) -> Path | None:
+    """打开系统文件夹选择框；仅在本地桌面运行 Streamlit 时可用。"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError("当前 Python 环境缺少 tkinter，无法弹出系统选择框") from exc
+
+    root: tk.Tk | None = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        return _resolve_native_directory_choice(initial_directory, title, filedialog.askdirectory)
+    except tk.TclError as exc:
+        raise RuntimeError("当前会话没有可用桌面窗口，无法弹出系统选择框") from exc
+    finally:
+        if root is not None:
+            root.destroy()
+
+
+def _resolve_native_directory_choice(
+    initial_directory: str | Path,
+    title: str,
+    askdirectory: Callable[..., str],
+) -> Path | None:
+    """执行文件夹选择并归一化结果；空字符串表示用户取消选择。"""
+    initial = _existing_directory(Path(initial_directory).expanduser())
+    selected = askdirectory(title=title, initialdir=str(initial), mustexist=False)
+    if not selected:
+        return None
+    return Path(selected).expanduser()
 
 
 def _initial_browse_directory(path: Path) -> Path:
