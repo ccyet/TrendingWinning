@@ -468,6 +468,7 @@ def run_portfolio_parameter_sweep(
         row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
+        row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
         row.update(summarize_strategy_filter_decisions(filter_decisions_by_config.get(order_key, pd.DataFrame())))
         rows.append(row)
 
@@ -546,6 +547,7 @@ def run_single_strategy_parameter_sweep(
         row.update(data_stats)
         row.update(summarize_order_decisions(backtest.order_decisions))
         row.update(backtest.stats)
+        row.update(_monthly_period_statistics(backtest, use_trade_dates=True))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
 
@@ -847,6 +849,13 @@ def _with_period_return_statistics(result: BacktestResult, period_returns: pd.Da
         order_decisions=result.order_decisions,
         strategy_filter_decisions=result.strategy_filter_decisions,
     )
+
+
+def _monthly_period_statistics(result: BacktestResult, *, use_trade_dates: bool) -> dict[str, float]:
+    """给参数遍历行计算月度稳定性；组合用盯市净值，单策略用成交时间轴。"""
+    equity_curve = _trade_dated_equity_curve(result) if use_trade_dates else result.equity_curve
+    monthly_returns = compute_period_returns(equity_curve, freq="M")
+    return compute_period_return_statistics(monthly_returns, prefix="monthly")
 
 
 def benchmark_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = False) -> PortfolioBenchmarkReport:

@@ -685,7 +685,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "candidate_rejection_count",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
+        "monthly_count",
+        "monthly_win_rate",
+        "monthly_worst_return",
+        "monthly_return_std",
     }.issubset(result.table.columns)
+    assert result.table["monthly_count"].ge(1.0).all()
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert result.table["case_config_hash"].is_unique
@@ -723,7 +728,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "candidate_rejection_count",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
+        "monthly_count",
+        "monthly_win_rate",
+        "monthly_worst_return",
+        "monthly_return_std",
     }.issubset(saved_sweep.columns)
+    assert saved_sweep["monthly_count"].ge(1.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
@@ -1160,7 +1170,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "strategy_signal_count",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
+        "monthly_count",
+        "monthly_win_rate",
+        "monthly_worst_return",
+        "monthly_return_std",
     }.issubset(result.table.columns)
+    assert result.table["monthly_count"].eq(0.0).all()
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert result.table["case_config_hash"].is_unique
@@ -1191,7 +1206,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "generated_order_count",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
+        "monthly_count",
+        "monthly_win_rate",
+        "monthly_worst_return",
+        "monthly_return_std",
     }.issubset(saved_sweep.columns)
+    assert saved_sweep["monthly_count"].eq(0.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()

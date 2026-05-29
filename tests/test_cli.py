@@ -862,7 +862,9 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
     saved = pd.read_csv(output_dir / "sweep.csv")
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 4
-    assert {"risk_reward", "max_holding_bars", "total_return"}.issubset(saved.columns)
+    assert {"risk_reward", "max_holding_bars", "total_return", "monthly_count", "monthly_worst_return"}.issubset(
+        saved.columns
+    )
     assert saved_config["capital_per_trade"] == 0.2
     assert saved_config["reserve_cash"] == 0.1
     assert saved_config["allow_same_symbol_overlap"] is True
@@ -929,7 +931,15 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
     saved = pd.read_csv(output_dir / "sweep.csv")
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 8
-    assert {"detector", "risk_reward", "max_holding_bars", "trend_min_score", "total_return"}.issubset(saved.columns)
+    assert {
+        "detector",
+        "risk_reward",
+        "max_holding_bars",
+        "trend_min_score",
+        "total_return",
+        "monthly_count",
+        "monthly_worst_return",
+    }.issubset(saved.columns)
     assert saved_config["detector"] == "trend"
     assert saved_config["sweep_grid"] == {
         "risk_reward": [1.5, 2.0],
