@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
-from trending_winning.detectors.base import DetectorEvent, empty_events, events_to_frame
+from trending_winning.detectors.base import DETECTOR_EVENT_COLUMNS, empty_events
 from trending_winning.detectors.features import attach_bar_features, rolling_slope_z
 
 
@@ -42,67 +43,106 @@ class ReversalDetector:
         if featured.empty:
             return empty_events()
 
-        events: list[DetectorEvent] = []
+        frames: list[pd.DataFrame] = []
         for symbol, group in featured.groupby("stock_code", sort=False):
             scored = group.reset_index(drop=True).copy()
             scored["slope_z"] = rolling_slope_z(scored["close"], self.config.lookback).fillna(0.0)
             scored["_prior_slope"] = scored["slope_z"].shift(1)
-            bull_watch: dict[str, object] | None = None
-            bear_watch: dict[str, object] | None = None
-            for index, row in enumerate(scored.to_records(index=False)):
-                event_type = ""
-                direction = "neutral"
-                metadata = self._metadata(row, None, old_extreme_failed=False, structure_confirmed=False)
-                if self._first_bull_reversal(row):
-                    event_type = "first_reversal_watch_long"
-                    direction = "neutral"
-                    bull_watch = self._new_watch(scored, index, "long")
-                    metadata = self._metadata(row, bull_watch, old_extreme_failed=False, structure_confirmed=False)
-                elif self._first_bear_reversal(row):
-                    event_type = "first_reversal_watch_short"
-                    direction = "neutral"
-                    bear_watch = self._new_watch(scored, index, "short")
-                    metadata = self._metadata(row, bear_watch, old_extreme_failed=False, structure_confirmed=False)
-                elif self._can_trade_second_reversal(bull_watch, index) and self._bull_follow_through(row):
-                    old_extreme_failed = self._old_extreme_test_failed(scored, bull_watch, index)
-                    structure_confirmed = self._structure_confirmed(row, bull_watch)
-                    if not self._second_reversal_confirmed(old_extreme_failed, structure_confirmed):
-                        continue
-                    event_type = "second_reversal_long"
-                    direction = "long"
-                    bull_watch["used"] = True
-                    metadata = self._metadata(row, bull_watch, old_extreme_failed, structure_confirmed)
-                elif self._can_trade_second_reversal(bear_watch, index) and self._bear_follow_through(row):
-                    old_extreme_failed = self._old_extreme_test_failed(scored, bear_watch, index)
-                    structure_confirmed = self._structure_confirmed(row, bear_watch)
-                    if not self._second_reversal_confirmed(old_extreme_failed, structure_confirmed):
-                        continue
-                    event_type = "second_reversal_short"
-                    direction = "short"
-                    bear_watch["used"] = True
-                    metadata = self._metadata(row, bear_watch, old_extreme_failed, structure_confirmed)
-                if not event_type:
+            frame = self._events_for_group(str(symbol), timeframe, scored)
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return empty_events()
+        return pd.concat(frames, ignore_index=True).loc[:, DETECTOR_EVENT_COLUMNS]
+
+    def _events_for_group(self, symbol: str, timeframe: str, scored: pd.DataFrame) -> pd.DataFrame:
+        """只遍历可能成为反转的候选 K；watch 状态保持显式，避免全量逐 K 记录扫描。"""
+        first_bull = self._first_bull_reversal_mask(scored)
+        first_bear = self._first_bear_reversal_mask(scored)
+        bull_follow = self._bull_follow_through_mask(scored)
+        bear_follow = self._bear_follow_through_mask(scored)
+        candidate_mask = first_bull | first_bear | bull_follow | bear_follow
+        if not bool(candidate_mask.any()):
+            return empty_events()
+
+        event_rows: list[dict[str, object]] = []
+        bull_watch: dict[str, object] | None = None
+        bear_watch: dict[str, object] | None = None
+        for index in np.flatnonzero(candidate_mask.to_numpy(dtype=bool)):
+            row = scored.iloc[int(index)]
+            event_type = ""
+            direction = "neutral"
+            metadata: dict[str, object] | None = None
+            if bool(first_bull.iloc[int(index)]):
+                event_type = "first_reversal_watch_long"
+                bull_watch = self._new_watch(scored, int(index), "long")
+                metadata = self._metadata(row, bull_watch, old_extreme_failed=False, structure_confirmed=False)
+            elif bool(first_bear.iloc[int(index)]):
+                event_type = "first_reversal_watch_short"
+                bear_watch = self._new_watch(scored, int(index), "short")
+                metadata = self._metadata(row, bear_watch, old_extreme_failed=False, structure_confirmed=False)
+            elif self._can_trade_second_reversal(bull_watch, int(index)) and bool(bull_follow.iloc[int(index)]):
+                old_extreme_failed = self._old_extreme_test_failed(scored, bull_watch, int(index))
+                structure_confirmed = self._structure_confirmed(row, bull_watch)
+                if not self._second_reversal_confirmed(old_extreme_failed, structure_confirmed):
                     continue
-                symbol_text = str(symbol)
-                entry, stop, signal = self._event_prices(row, direction, event_type)
-                events.append(
-                    DetectorEvent(
-                        event_id=f"{self.name}:{symbol_text}:{pd.Timestamp(row['date']).isoformat()}:{event_type}",
-                        detector_name=self.name,
-                        stock_code=symbol_text,
-                        timeframe=timeframe,
-                        date=pd.Timestamp(row["date"]),
-                        bar_index=int(index),
-                        event_type=event_type,
-                        direction=direction,
-                        signal_price=signal,
-                        entry_price=entry,
-                        stop_price=stop,
-                        confidence=0.5 if direction == "neutral" else 1.0,
-                        metadata=metadata,
-                    )
+                event_type = "second_reversal_long"
+                direction = "long"
+                bull_watch["used"] = True
+                metadata = self._metadata(row, bull_watch, old_extreme_failed, structure_confirmed)
+            elif self._can_trade_second_reversal(bear_watch, int(index)) and bool(bear_follow.iloc[int(index)]):
+                old_extreme_failed = self._old_extreme_test_failed(scored, bear_watch, int(index))
+                structure_confirmed = self._structure_confirmed(row, bear_watch)
+                if not self._second_reversal_confirmed(old_extreme_failed, structure_confirmed):
+                    continue
+                event_type = "second_reversal_short"
+                direction = "short"
+                bear_watch["used"] = True
+                metadata = self._metadata(row, bear_watch, old_extreme_failed, structure_confirmed)
+            if not event_type or metadata is None:
+                continue
+            event_rows.append(
+                self._event_record(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    row=row,
+                    index=int(index),
+                    event_type=event_type,
+                    direction=direction,
+                    metadata=metadata,
                 )
-        return events_to_frame(events)
+            )
+        if not event_rows:
+            return empty_events()
+        return pd.DataFrame(event_rows, columns=DETECTOR_EVENT_COLUMNS)
+
+    def _event_record(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        row: pd.Series,
+        index: int,
+        event_type: str,
+        direction: str,
+        metadata: dict[str, object],
+    ) -> dict[str, object]:
+        entry, stop, signal = self._event_prices(row, direction, event_type)
+        return {
+            "event_id": f"{self.name}:{symbol}:{pd.Timestamp(row['date']).isoformat()}:{event_type}",
+            "detector_name": self.name,
+            "stock_code": symbol,
+            "timeframe": timeframe,
+            "date": pd.Timestamp(row["date"]),
+            "bar_index": int(index),
+            "event_type": event_type,
+            "direction": direction,
+            "signal_price": signal,
+            "entry_price": entry,
+            "stop_price": stop,
+            "confidence": 0.5 if direction == "neutral" else 1.0,
+            "metadata": metadata,
+        }
 
     def _event_prices(self, row: object, direction: str, event_type: str) -> tuple[float, float, float]:
         if direction == "long":
@@ -130,6 +170,15 @@ class ReversalDetector:
             and float(row["close"]) > float(row["open"])
         )
 
+    def _first_bull_reversal_mask(self, scored: pd.DataFrame) -> pd.Series:
+        return (
+            pd.to_numeric(scored["_prior_slope"], errors="coerce").lt(0)
+            & pd.to_numeric(scored["slope_z"], errors="coerce").ge(0)
+            & pd.to_numeric(scored["close_pos"], errors="coerce").ge(self.config.strong_close_pos)
+            & pd.to_numeric(scored["body_ratio"], errors="coerce").ge(self.config.min_body_ratio)
+            & pd.to_numeric(scored["close"], errors="coerce").gt(pd.to_numeric(scored["open"], errors="coerce"))
+        )
+
     def _first_bear_reversal(self, row: object) -> bool:
         return (
             float(row["_prior_slope"]) > 0
@@ -137,6 +186,15 @@ class ReversalDetector:
             and float(row["close_pos"]) <= 1.0 - self.config.strong_close_pos
             and float(row["body_ratio"]) >= self.config.min_body_ratio
             and float(row["close"]) < float(row["open"])
+        )
+
+    def _first_bear_reversal_mask(self, scored: pd.DataFrame) -> pd.Series:
+        return (
+            pd.to_numeric(scored["_prior_slope"], errors="coerce").gt(0)
+            & pd.to_numeric(scored["slope_z"], errors="coerce").le(0)
+            & pd.to_numeric(scored["close_pos"], errors="coerce").le(1.0 - self.config.strong_close_pos)
+            & pd.to_numeric(scored["body_ratio"], errors="coerce").ge(self.config.min_body_ratio)
+            & pd.to_numeric(scored["close"], errors="coerce").lt(pd.to_numeric(scored["open"], errors="coerce"))
         )
 
     def _new_watch(self, scored: pd.DataFrame, index: int, direction: str) -> dict[str, object]:
@@ -206,7 +264,17 @@ class ReversalDetector:
     def _bull_follow_through(self, row: object) -> bool:
         return float(row["close_pos"]) >= self.config.strong_close_pos and float(row["close"]) > float(row["open"])
 
+    def _bull_follow_through_mask(self, scored: pd.DataFrame) -> pd.Series:
+        return pd.to_numeric(scored["close_pos"], errors="coerce").ge(self.config.strong_close_pos) & pd.to_numeric(
+            scored["close"], errors="coerce"
+        ).gt(pd.to_numeric(scored["open"], errors="coerce"))
+
     def _bear_follow_through(self, row: object) -> bool:
         return (
             float(row["close_pos"]) <= 1.0 - self.config.strong_close_pos and float(row["close"]) < float(row["open"])
         )
+
+    def _bear_follow_through_mask(self, scored: pd.DataFrame) -> pd.Series:
+        return pd.to_numeric(scored["close_pos"], errors="coerce").le(
+            1.0 - self.config.strong_close_pos
+        ) & pd.to_numeric(scored["close"], errors="coerce").lt(pd.to_numeric(scored["open"], errors="coerce"))

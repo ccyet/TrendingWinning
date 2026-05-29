@@ -165,6 +165,12 @@ def test_channel_detector_can_emit_events_from_swing_channel() -> None:
     assert "channel_anchor_index_1" in events.iloc[-1]["metadata"]
 
 
+def test_channel_detector_emits_events_without_row_record_scan() -> None:
+    source = getsource(ChannelDetector.detect)
+
+    assert ".to_records(" not in source
+
+
 def test_swing_channel_maintains_confirmed_anchors_incrementally() -> None:
     source = getsource(_attach_group_swing_channel)
 

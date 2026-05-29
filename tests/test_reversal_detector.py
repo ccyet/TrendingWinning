@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from inspect import getsource
+
 import pandas as pd
 
 from trending_winning.detectors.reversal import ReversalDetector, ReversalDetectorConfig
@@ -67,3 +69,9 @@ def test_reversal_detector_does_not_trade_second_reversal_without_failed_old_ext
 
     assert "first_reversal_watch_short" in events["event_type"].tolist()
     assert "second_reversal_short" not in events["event_type"].tolist()
+
+
+def test_reversal_detector_evaluates_candidates_without_row_record_scan() -> None:
+    source = getsource(ReversalDetector.detect)
+
+    assert ".to_records(" not in source

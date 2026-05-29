@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from trending_winning.data.schema import normalize_bars
-from trending_winning.detectors.base import DetectorEvent, empty_events, events_to_frame
+from trending_winning.detectors.base import DETECTOR_EVENT_COLUMNS, empty_events
 from trending_winning.detectors.pivots import confirmed_pivots
 
 
@@ -52,64 +52,119 @@ class ChannelDetector:
         if channeled.empty:
             return empty_events()
 
-        events: list[DetectorEvent] = []
+        frames: list[pd.DataFrame] = []
         for _, group in channeled.groupby("stock_code", sort=False):
             group = group.reset_index(drop=True)
-            for index, row in enumerate(group.to_records(index=False)):
-                if pd.isna(row["channel_upper"]) or pd.isna(row["channel_lower"]):
-                    continue
-                prev_upper = row["prev_channel_upper"]
-                prev_lower = row["prev_channel_lower"]
-                if pd.isna(prev_upper) or pd.isna(prev_lower):
-                    continue
-                close = float(row["close"])
-                upper = float(prev_upper)
-                lower = float(prev_lower)
-                event_type = ""
-                direction = "neutral"
-                if close > upper * (1.0 + self.config.break_buffer):
-                    event_type = "channel_overshoot_up"
-                    direction = "long"
-                    signal_price = float(row["high"])
-                    entry_price = signal_price + self.config.tick_size
-                    stop_price = lower
-                elif close < lower * (1.0 - self.config.break_buffer):
-                    event_type = "channel_break_down"
-                    direction = "short"
-                    signal_price = float(row["low"])
-                    entry_price = signal_price - self.config.tick_size
-                    stop_price = upper
-                if not event_type:
-                    continue
-                symbol = str(row["stock_code"])
-                events.append(
-                    DetectorEvent(
-                        event_id=f"{self.name}:{symbol}:{pd.Timestamp(row['date']).isoformat()}:{event_type}",
-                        detector_name=self.name,
-                        stock_code=symbol,
-                        timeframe=timeframe,
-                        date=pd.Timestamp(row["date"]),
-                        bar_index=int(index),
-                        event_type=event_type,
-                        direction=direction,
-                        signal_price=float(signal_price),
-                        entry_price=float(entry_price),
-                        stop_price=float(stop_price),
-                        confidence=1.0,
-                        metadata={
-                            "channel_upper": upper,
-                            "channel_lower": lower,
-                            "channel_slope": float(row["channel_slope"]),
-                            "channel_pos": float(row["channel_pos"]),
-                            "channel_sigma": float(row["channel_sigma"]),
-                            "channel_r2": _metadata_float(_record_get(row, "channel_r2")),
-                            "channel_method": str(_record_get(row, "channel_method", self.config.channel_method)),
-                            "channel_anchor_index_1": _metadata_float(_record_get(row, "channel_anchor_index_1")),
-                            "channel_anchor_index_2": _metadata_float(_record_get(row, "channel_anchor_index_2")),
-                        },
-                    )
-                )
-        return events_to_frame(events)
+            frame = self._events_for_group(group, timeframe=timeframe)
+            if not frame.empty:
+                frames.append(frame)
+        if not frames:
+            return empty_events()
+        return pd.concat(frames, ignore_index=True).loc[:, DETECTOR_EVENT_COLUMNS]
+
+    def _events_for_group(self, group: pd.DataFrame, *, timeframe: str) -> pd.DataFrame:
+        """批量生成通道突破事件；通道自身只负责边界突破，不混入趋势判断。"""
+        valid_channel = group["channel_upper"].notna() & group["channel_lower"].notna()
+        upper = pd.to_numeric(group["prev_channel_upper"], errors="coerce")
+        lower = pd.to_numeric(group["prev_channel_lower"], errors="coerce")
+        close = pd.to_numeric(group["close"], errors="coerce")
+        high = pd.to_numeric(group["high"], errors="coerce")
+        low = pd.to_numeric(group["low"], errors="coerce")
+        valid = valid_channel & upper.notna() & lower.notna()
+        overshoot_up = valid & close.gt(upper * (1.0 + self.config.break_buffer))
+        break_down = valid & ~overshoot_up & close.lt(lower * (1.0 - self.config.break_buffer))
+        event_mask = overshoot_up | break_down
+        if not bool(event_mask.any()):
+            return empty_events()
+
+        event_type = pd.Series("", index=group.index, dtype=object)
+        direction = pd.Series("", index=group.index, dtype=object)
+        signal_price = pd.Series(np.nan, index=group.index, dtype=float)
+        entry_price = pd.Series(np.nan, index=group.index, dtype=float)
+        stop_price = pd.Series(np.nan, index=group.index, dtype=float)
+
+        event_type.loc[overshoot_up] = "channel_overshoot_up"
+        direction.loc[overshoot_up] = "long"
+        signal_price.loc[overshoot_up] = high.loc[overshoot_up]
+        entry_price.loc[overshoot_up] = high.loc[overshoot_up] + self.config.tick_size
+        stop_price.loc[overshoot_up] = lower.loc[overshoot_up]
+
+        event_type.loc[break_down] = "channel_break_down"
+        direction.loc[break_down] = "short"
+        signal_price.loc[break_down] = low.loc[break_down]
+        entry_price.loc[break_down] = low.loc[break_down] - self.config.tick_size
+        stop_price.loc[break_down] = upper.loc[break_down]
+
+        selected = group.loc[event_mask].copy()
+        selected_type = event_type.loc[event_mask]
+        selected_symbol = selected["stock_code"].astype(str)
+        dates = pd.to_datetime(selected["date"], errors="coerce")
+        return pd.DataFrame(
+            {
+                "event_id": [
+                    f"{self.name}:{symbol}:{pd.Timestamp(date).isoformat()}:{event}"
+                    for symbol, date, event in zip(selected_symbol, dates, selected_type, strict=True)
+                ],
+                "detector_name": self.name,
+                "stock_code": selected_symbol.to_numpy(),
+                "timeframe": timeframe,
+                "date": dates.to_numpy(),
+                "bar_index": selected.index.astype(int).to_numpy(),
+                "event_type": selected_type.to_numpy(),
+                "direction": direction.loc[event_mask].to_numpy(),
+                "signal_price": signal_price.loc[event_mask].to_numpy(dtype=float),
+                "entry_price": entry_price.loc[event_mask].to_numpy(dtype=float),
+                "stop_price": stop_price.loc[event_mask].to_numpy(dtype=float),
+                "confidence": np.ones(int(event_mask.sum()), dtype=float),
+                "metadata": self._metadata_records(selected, upper.loc[event_mask], lower.loc[event_mask]),
+            },
+            columns=DETECTOR_EVENT_COLUMNS,
+        )
+
+    def _metadata_records(
+        self,
+        selected: pd.DataFrame,
+        upper: pd.Series,
+        lower: pd.Series,
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "channel_upper": float(channel_upper),
+                "channel_lower": float(channel_lower),
+                "channel_slope": float(channel_slope),
+                "channel_pos": float(channel_pos),
+                "channel_sigma": float(channel_sigma),
+                "channel_r2": _metadata_float(channel_r2),
+                "channel_method": str(channel_method),
+                "channel_anchor_index_1": _metadata_float(channel_anchor_index_1),
+                "channel_anchor_index_2": _metadata_float(channel_anchor_index_2),
+            }
+            for (
+                channel_upper,
+                channel_lower,
+                channel_slope,
+                channel_pos,
+                channel_sigma,
+                channel_r2,
+                channel_method,
+                channel_anchor_index_1,
+                channel_anchor_index_2,
+            ) in zip(
+                pd.to_numeric(upper, errors="coerce").fillna(0.0),
+                pd.to_numeric(lower, errors="coerce").fillna(0.0),
+                pd.to_numeric(selected["channel_slope"], errors="coerce").fillna(0.0),
+                pd.to_numeric(selected["channel_pos"], errors="coerce").fillna(0.0),
+                pd.to_numeric(selected["channel_sigma"], errors="coerce").fillna(0.0),
+                selected.get("channel_r2", pd.Series([pd.NA] * len(selected), index=selected.index)),
+                selected.get(
+                    "channel_method",
+                    pd.Series([self.config.channel_method] * len(selected), index=selected.index),
+                ),
+                selected.get("channel_anchor_index_1", pd.Series([pd.NA] * len(selected), index=selected.index)),
+                selected.get("channel_anchor_index_2", pd.Series([pd.NA] * len(selected), index=selected.index)),
+                strict=True,
+            )
+        ]
 
 
 def attach_log_regression_channel(bars: pd.DataFrame, config: ChannelDetectorConfig | None = None) -> pd.DataFrame:
@@ -307,8 +362,3 @@ def _metadata_float(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
     return float(value)
-
-
-def _record_get(row: object, key: str, default: object = None) -> object:
-    names = getattr(getattr(row, "dtype", None), "names", ()) or ()
-    return row[key] if key in names else default
