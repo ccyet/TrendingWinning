@@ -78,6 +78,41 @@ def _daily_payload() -> dict[str, pd.DataFrame]:
     }
 
 
+def _empty_payload() -> dict[str, pd.DataFrame]:
+    empty = pd.DataFrame({"000001.SZ": []}, index=pd.DatetimeIndex([]))
+    return {field: empty.copy() for field in ("Open", "High", "Low", "Close", "Volume", "Amount")}
+
+
+def _five_min_payload(symbol: str = "000001.SZ") -> dict[str, pd.DataFrame]:
+    index = pd.date_range("2026-05-25 09:35:00", periods=12, freq="5min")
+    opens = [10.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 11.0, 11.1]
+    closes = [price + 0.05 for price in opens]
+    highs = [price + 0.2 for price in opens]
+    lows = [price - 0.1 for price in opens]
+    volume = [100.0 + index for index in range(12)]
+    amount = [vol * close for vol, close in zip(volume, closes, strict=False)]
+    return {
+        "Open": pd.DataFrame({symbol: opens}, index=index),
+        "High": pd.DataFrame({symbol: highs}, index=index),
+        "Low": pd.DataFrame({symbol: lows}, index=index),
+        "Close": pd.DataFrame({symbol: closes}, index=index),
+        "Volume": pd.DataFrame({symbol: volume}, index=index),
+        "Amount": pd.DataFrame({symbol: amount}, index=index),
+    }
+
+
+def _partial_direct_30m_payload() -> dict[str, pd.DataFrame]:
+    index = pd.to_datetime(["2026-05-25 10:00:00"])
+    return {
+        "Open": pd.DataFrame({"000001.SZ": [20.0], "000002.SZ": [float("nan")]}, index=index),
+        "High": pd.DataFrame({"000001.SZ": [21.0], "000002.SZ": [float("nan")]}, index=index),
+        "Low": pd.DataFrame({"000001.SZ": [19.5], "000002.SZ": [float("nan")]}, index=index),
+        "Close": pd.DataFrame({"000001.SZ": [20.5], "000002.SZ": [float("nan")]}, index=index),
+        "Volume": pd.DataFrame({"000001.SZ": [1000.0], "000002.SZ": [float("nan")]}, index=index),
+        "Amount": pd.DataFrame({"000001.SZ": [20500.0], "000002.SZ": [float("nan")]}, index=index),
+    }
+
+
 def test_fetch_tdx_bars_supports_60m_batch_payload() -> None:
     fake = FakeTq(_payload())
 
@@ -118,6 +153,48 @@ def test_fetch_tdx_bars_supports_1d_daily_payload() -> None:
     assert fake.refresh_calls == []
     assert out["date"].tolist() == [pd.Timestamp("2026-05-24"), pd.Timestamp("2026-05-25")]
     assert out["close"].tolist() == [9.9, 10.7]
+
+
+def test_fetch_tdx_bars_derives_30m_from_tdx_5m_when_direct_period_has_no_data() -> None:
+    fake = PeriodPayloadTq({"30m": _empty_payload(), "5m": _five_min_payload()})
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 10:30:00",
+        timeframe="30m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert [call["period"] for call in fake.market_calls] == ["30m", "5m"]
+    assert fake.refresh_calls == [(["000001.SZ"], "5m")]
+    assert out["date"].tolist() == [pd.Timestamp("2026-05-25 10:00:00"), pd.Timestamp("2026-05-25 10:30:00")]
+    assert out["open"].tolist() == [10.0, 10.6]
+    assert out["high"].tolist() == pytest.approx([10.7, 11.3])
+    assert out["low"].tolist() == pytest.approx([9.9, 10.5])
+    assert out["close"].tolist() == pytest.approx([10.55, 11.15])
+    assert out["volume"].tolist() == pytest.approx([615.0, 651.0])
+    assert out["amount"].tolist() == pytest.approx([6336.25, 7097.65])
+
+
+def test_fetch_tdx_bars_derives_only_missing_symbols_from_5m_fallback() -> None:
+    fake = PeriodPayloadTq({"30m": _partial_direct_30m_payload(), "5m": _five_min_payload("000002.SZ")})
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ", "000002.SZ"),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 10:30:00",
+        timeframe="30m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert [call["period"] for call in fake.market_calls] == ["30m", "5m"]
+    assert fake.market_calls[1]["stock_list"] == ["000002.SZ"]
+    by_symbol = out.groupby("stock_code")["close"].apply(list).to_dict()
+    assert by_symbol["000001.SZ"] == [20.5]
+    assert by_symbol["000002.SZ"] == pytest.approx([10.55, 11.15])
 
 
 def test_fetch_tdx_bars_initializes_new_client_even_when_python_reuses_id(monkeypatch) -> None:

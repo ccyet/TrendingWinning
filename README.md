@@ -7,6 +7,7 @@ TDX-only A 股 K 线趋势策略工作台。
 首版能力：
 
 - TDX `tqcenter` K 线：日 K `1d` 和分钟 K `5m / 15m / 30m / 60m`
+- TDX 分钟兜底：`15m / 30m / 60m` 原生周期无数据时，自动用 TDX `5m` 聚合生成目标周期 K 线
 - 本地 parquet 落地：兼容 `trend-backtest/data/market/<timeframe>/<adjust>/<symbol>.parquet`，其中 `1d` 写入既有 `market/daily/<adjust>` 目录
 - 标志K识别：振幅、量能、实体比例参数化
 - 趋势通道识别：支持批量滚动 log 回归通道和摆动点趋势通道，上下轨、斜率、R²、方向和锚点可追溯
@@ -40,7 +41,7 @@ python -m pip install -r requirements.txt
 streamlit run streamlit_app.py --server.port 8520
 ```
 
-TDX 真取数只支持 Windows/Parallels 内的通达信。Mac 本机通达信不支持 `tqcenter` 取数，Mac 端 CLI 默认用 `--runtime auto` 调度到 Parallels；Windows 侧运行时默认本地执行。`60m` 会按 TDX 接口要求映射为 `1h` 请求；分钟线是否能返回数据取决于 Windows 通达信本地是否已下载对应周期数据。
+TDX 真取数只支持 Windows/Parallels 内的通达信。Mac 本机通达信不支持 `tqcenter` 取数，Mac 端 CLI 默认用 `--runtime auto` 调度到 Parallels；Windows 侧运行时默认本地执行。`60m` 会按 TDX 接口要求映射为 `1h` 请求；`15m / 30m / 60m` 如果原生周期无数据，会自动回退到 TDX `5m` 并按 A 股上午、下午交易段聚合。分钟线能否返回数据仍取决于 Windows 通达信本地是否已有对应 5m 数据。
 
 Parallels 默认配置：
 

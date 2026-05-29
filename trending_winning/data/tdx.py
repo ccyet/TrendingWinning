@@ -27,6 +27,7 @@ TDX_ALLOW_MAC_TQCENTER_ENV_VAR = "TDX_ALLOW_MAC_TQCENTER"
 TDX_REQUEST_BATCH_SIZE = 100
 REFRESHABLE_KLINE_PERIODS = {"5m"}
 TDX_PERIOD_MAP = {"1d": "1d", "5m": "5m", "15m": "15m", "30m": "30m", "60m": "1h"}
+DERIVABLE_FROM_5M_TIMEFRAMES = {"15m", "30m", "60m"}
 ADJUST_MAP = {"": "none", "qfq": "front", "hfq": "back"}
 TDX_DIAG_COLUMNS = ["timeframe", "tdx_period", "status", "rows", "symbols", "start", "end", "message"]
 REQUIRED_FIELDS = ("Open", "High", "Low", "Close", "Volume", "Amount")
@@ -76,27 +77,40 @@ def fetch_tdx_bars(
     tq = tq_client or _load_tq(tqcenter_path)
     _ensure_initialized(tq)
 
-    frames: list[pd.DataFrame] = []
-    for batch in _batched_symbols(normalized_symbols, TDX_REQUEST_BATCH_SIZE):
-        _refresh_tdx_kline_cache(tq, batch, period)
-        payload = tq.get_market_data(
-            field_list=list(REQUIRED_FIELDS),
-            stock_list=batch,
-            period=period,
-            start_time=_format_market_time(start),
-            end_time=_format_market_time(end),
-            count=-1,
-            dividend_type=dividend_type,
-            fill_data=False,
-        )
-        for symbol in batch:
-            frame = _normalize_tdx_payload(payload, symbol=symbol, start=start, end=end)
-            if not frame.empty:
-                frames.append(frame)
+    bars = _fetch_tdx_period_bars(
+        tq,
+        symbols=normalized_symbols,
+        start=start,
+        end=end,
+        period=period,
+        dividend_type=dividend_type,
+    )
+    if normalized_timeframe not in DERIVABLE_FROM_5M_TIMEFRAMES:
+        return bars
+    missing_symbols = _symbols_missing_bars(normalized_symbols, bars)
+    if not missing_symbols:
+        return bars
 
-    if not frames:
-        return empty_bars()
-    return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
+    fallback_start, fallback_end = _expanded_5m_aggregation_window(start, end)
+    five_minute_bars = _fetch_tdx_period_bars(
+        tq,
+        symbols=missing_symbols,
+        start=fallback_start,
+        end=fallback_end,
+        period="5m",
+        dividend_type=dividend_type,
+    )
+    derived = _aggregate_5m_bars(
+        five_minute_bars,
+        timeframe=normalized_timeframe,
+        start=start,
+        end=end,
+    )
+    if bars.empty:
+        return derived
+    if derived.empty:
+        return bars
+    return pd.concat([bars, derived], ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
 
 
 def diagnose_tdx_source(
@@ -194,6 +208,105 @@ def _diagnosis_request_window(timeframe: str, start: str, end: str) -> tuple[str
     if timeframe != "1d":
         return start, end
     return str(pd.Timestamp(start).normalize().date()), str(pd.Timestamp(end).normalize().date())
+
+
+def _fetch_tdx_period_bars(
+    tq: Any,
+    *,
+    symbols: list[str],
+    start: str,
+    end: str,
+    period: str,
+    dividend_type: str,
+) -> pd.DataFrame:
+    """按一个 TDX 原生周期请求并标准化；高周期 fallback 复用这个低层入口。"""
+    frames: list[pd.DataFrame] = []
+    for batch in _batched_symbols(symbols, TDX_REQUEST_BATCH_SIZE):
+        _refresh_tdx_kline_cache(tq, batch, period)
+        payload = tq.get_market_data(
+            field_list=list(REQUIRED_FIELDS),
+            stock_list=batch,
+            period=period,
+            start_time=_format_market_time(start),
+            end_time=_format_market_time(end),
+            count=-1,
+            dividend_type=dividend_type,
+            fill_data=False,
+        )
+        for symbol in batch:
+            frame = _normalize_tdx_payload(payload, symbol=symbol, start=start, end=end)
+            if not frame.empty:
+                frames.append(frame)
+    if not frames:
+        return empty_bars()
+    return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
+
+
+def _expanded_5m_aggregation_window(start: str, end: str) -> tuple[str, str]:
+    """高周期由 5m 聚合时按整段交易日取数，避免起点裁掉首根高周期 K 的组成 5m。"""
+    start_ts, end_ts = parse_time_window(start, end)
+    return f"{start_ts.date()} 09:30:00", f"{end_ts.date()} 15:00:00"
+
+
+def _symbols_missing_bars(symbols: list[str], bars: pd.DataFrame) -> list[str]:
+    if bars.empty or "stock_code" not in bars.columns:
+        return list(symbols)
+    present = set(bars["stock_code"].dropna().astype(str))
+    return [symbol for symbol in symbols if symbol not in present]
+
+
+def _aggregate_5m_bars(bars: pd.DataFrame, *, timeframe: str, start: str, end: str) -> pd.DataFrame:
+    """把 TDX 5m K 线聚合成 15/30/60m；只保留组成数量完整的目标 K。"""
+    if bars.empty:
+        return empty_bars()
+    minutes = int(ensure_supported_timeframe(timeframe).removesuffix("m"))
+    if minutes <= 5 or minutes % 5 != 0:
+        raise ValueError("5m 聚合只支持 15m、30m、60m。")
+    data = bars.copy()
+    data["date"] = pd.to_datetime(data["date"], errors="coerce")
+    data["_bucket_end"] = data["date"].map(lambda value: _intraday_bucket_end(value, minutes))
+    data = data.dropna(subset=["date", "_bucket_end"])
+    if data.empty:
+        return empty_bars()
+    data = data.sort_values(["stock_code", "date"])
+    grouped = (
+        data.groupby(["stock_code", "_bucket_end"], sort=True, dropna=False)
+        .agg(
+            open=("open", "first"),
+            high=("high", "max"),
+            low=("low", "min"),
+            close=("close", "last"),
+            volume=("volume", "sum"),
+            amount=("amount", "sum"),
+            bar_count=("date", "count"),
+        )
+        .reset_index()
+        .rename(columns={"_bucket_end": "date"})
+    )
+    complete_count = minutes // 5
+    grouped = grouped.loc[grouped["bar_count"].ge(complete_count)].copy()
+    if grouped.empty:
+        return empty_bars()
+    start_ts, end_ts = _filter_window(start, end)
+    grouped = grouped.loc[grouped["date"].between(start_ts, end_ts)].copy()
+    if grouped.empty:
+        return empty_bars()
+    return grouped[CANONICAL_COLUMNS].sort_values(["stock_code", "date"]).reset_index(drop=True)
+
+
+def _intraday_bucket_end(value: pd.Timestamp, minutes: int) -> pd.Timestamp | pd.NaT:
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        return pd.NaT
+    for session_start_text, session_end_text in (("09:30", "11:30"), ("13:00", "15:00")):
+        session_start = pd.Timestamp(f"{timestamp.date()} {session_start_text}")
+        session_end = pd.Timestamp(f"{timestamp.date()} {session_end_text}")
+        if session_start < timestamp <= session_end:
+            elapsed_minutes = int((timestamp - session_start).total_seconds() // 60)
+            bucket_minutes = ((elapsed_minutes + minutes - 1) // minutes) * minutes
+            bucket_end = session_start + pd.Timedelta(minutes=bucket_minutes)
+            return bucket_end if bucket_end <= session_end else pd.NaT
+    return pd.NaT
 
 
 def _diagnosis_row(
