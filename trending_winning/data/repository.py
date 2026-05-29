@@ -58,6 +58,8 @@ AUDIT_COLUMNS = [
     "max_missing_gap_minutes",
     "first_missing_at",
     "last_missing_at",
+    "max_missing_gap_start_at",
+    "max_missing_gap_end_at",
     "start",
     "end",
     "requested_start",
@@ -99,6 +101,12 @@ PREPARE_COLUMNS = [
     "after_last_missing_at",
     "first_missing_at",
     "last_missing_at",
+    "before_max_missing_gap_start_at",
+    "before_max_missing_gap_end_at",
+    "after_max_missing_gap_start_at",
+    "after_max_missing_gap_end_at",
+    "max_missing_gap_start_at",
+    "max_missing_gap_end_at",
     "path",
     "message",
 ]
@@ -117,6 +125,8 @@ PLAN_COLUMNS = [
     "max_missing_gap_minutes",
     "first_missing_at",
     "last_missing_at",
+    "max_missing_gap_start_at",
+    "max_missing_gap_end_at",
     "path",
     "message",
 ]
@@ -1099,6 +1109,8 @@ def _audit_record(base: dict[str, object], **overrides: object) -> dict[str, obj
         "max_missing_gap_minutes": 0,
         "first_missing_at": pd.NaT,
         "last_missing_at": pd.NaT,
+        "max_missing_gap_start_at": pd.NaT,
+        "max_missing_gap_end_at": pd.NaT,
         "start": pd.NaT,
         "end": pd.NaT,
         "invalid_date_rows": 0,
@@ -1152,6 +1164,8 @@ def _intraday_session_coverage(
             "max_missing_gap_minutes": 0,
             "first_missing_at": pd.NaT,
             "last_missing_at": pd.NaT,
+            "max_missing_gap_start_at": pd.NaT,
+            "max_missing_gap_end_at": pd.NaT,
         }
     minutes = _timeframe_minutes(timeframe)
     actual_dates = pd.to_datetime(in_window["date"], errors="coerce").dropna().dt.floor("min")
@@ -1171,17 +1185,16 @@ def _intraday_session_coverage(
             "max_missing_gap_minutes": 0,
             "first_missing_at": pd.NaT,
             "last_missing_at": pd.NaT,
+            "max_missing_gap_start_at": pd.NaT,
+            "max_missing_gap_end_at": pd.NaT,
         }
     actual_set = set(actual_dates)
     missing = [timestamp for timestamp in expected if timestamp not in actual_set]
-    first_missing, last_missing = _missing_timestamp_bounds(missing)
     return {
         "expected_rows": int(expected_count),
         "missing_rows": int(len(missing)),
         "coverage_ratio": round((expected_count - len(missing)) / expected_count, 12),
-        "max_missing_gap_minutes": int(_max_missing_gap_minutes(expected, set(missing), minutes)),
-        "first_missing_at": first_missing,
-        "last_missing_at": last_missing,
+        **_missing_coverage_summary(expected, missing=set(missing), minutes=minutes),
     }
 
 
@@ -1210,17 +1223,16 @@ def _daily_session_coverage(
             "max_missing_gap_minutes": 0,
             "first_missing_at": pd.NaT,
             "last_missing_at": pd.NaT,
+            "max_missing_gap_start_at": pd.NaT,
+            "max_missing_gap_end_at": pd.NaT,
         }
     actual_set = set(actual_dates)
     missing = [timestamp for timestamp in expected if timestamp not in actual_set]
-    first_missing, last_missing = _missing_timestamp_bounds(missing)
     return {
         "expected_rows": int(expected_count),
         "missing_rows": int(len(missing)),
         "coverage_ratio": round((expected_count - len(missing)) / expected_count, 12),
-        "max_missing_gap_minutes": int(_max_missing_gap_minutes(expected, set(missing), 1440)),
-        "first_missing_at": first_missing,
-        "last_missing_at": last_missing,
+        **_missing_coverage_summary(expected, missing=set(missing), minutes=1440),
     }
 
 
@@ -1344,27 +1356,44 @@ def _session_range(session: pd.Timestamp, start: str, end: str, minutes: int) ->
     return [pd.Timestamp(item) for item in pd.date_range(start=start_ts, end=end_ts, freq=f"{minutes}min")]
 
 
-def _max_missing_gap_minutes(
+def _missing_coverage_summary(
     expected: list[pd.Timestamp],
     missing: set[pd.Timestamp],
     minutes: int,
-) -> int:
-    best = 0
-    current = 0
+) -> dict[str, object]:
+    """单次扫描缺失 K，返回全局缺口首尾和最长连续缺口边界。"""
+    first_missing = pd.NaT
+    last_missing = pd.NaT
+    max_gap_minutes = 0
+    max_gap_start = pd.NaT
+    max_gap_end = pd.NaT
+    current_gap_minutes = 0
+    current_gap_start = pd.NaT
+    current_gap_end = pd.NaT
     for timestamp in expected:
         if timestamp in missing:
-            current += minutes
-            best = max(best, current)
+            if pd.isna(first_missing):
+                first_missing = timestamp
+            last_missing = timestamp
+            if current_gap_minutes == 0:
+                current_gap_start = timestamp
+            current_gap_minutes += minutes
+            current_gap_end = timestamp
+            if current_gap_minutes > max_gap_minutes:
+                max_gap_minutes = current_gap_minutes
+                max_gap_start = current_gap_start
+                max_gap_end = current_gap_end
         else:
-            current = 0
-    return best
-
-
-def _missing_timestamp_bounds(missing: Sequence[pd.Timestamp]) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """返回缺口首尾时间；无缺口时显式使用 NaT，方便 CSV/计划表排障。"""
-    if not missing:
-        return pd.NaT, pd.NaT
-    return min(missing), max(missing)
+            current_gap_minutes = 0
+            current_gap_start = pd.NaT
+            current_gap_end = pd.NaT
+    return {
+        "max_missing_gap_minutes": int(max_gap_minutes),
+        "first_missing_at": first_missing,
+        "last_missing_at": last_missing,
+        "max_missing_gap_start_at": max_gap_start,
+        "max_missing_gap_end_at": max_gap_end,
+    }
 
 
 def update_from_tdx(
@@ -1597,6 +1626,8 @@ def _tdx_plan_rows(audit: pd.DataFrame, *, min_coverage_ratio: float | None) -> 
                 "max_missing_gap_minutes": int(row.max_missing_gap_minutes),
                 "first_missing_at": getattr(row, "first_missing_at"),
                 "last_missing_at": getattr(row, "last_missing_at"),
+                "max_missing_gap_start_at": getattr(row, "max_missing_gap_start_at"),
+                "max_missing_gap_end_at": getattr(row, "max_missing_gap_end_at"),
                 "path": str(row.path),
                 "message": str(row.message),
             }
@@ -1664,6 +1695,12 @@ def _prepare_summary_rows(
                 "after_last_missing_at": getattr(after_row, "last_missing_at"),
                 "first_missing_at": getattr(after_row, "first_missing_at"),
                 "last_missing_at": getattr(after_row, "last_missing_at"),
+                "before_max_missing_gap_start_at": getattr(before_row, "max_missing_gap_start_at"),
+                "before_max_missing_gap_end_at": getattr(before_row, "max_missing_gap_end_at"),
+                "after_max_missing_gap_start_at": getattr(after_row, "max_missing_gap_start_at"),
+                "after_max_missing_gap_end_at": getattr(after_row, "max_missing_gap_end_at"),
+                "max_missing_gap_start_at": getattr(after_row, "max_missing_gap_start_at"),
+                "max_missing_gap_end_at": getattr(after_row, "max_missing_gap_end_at"),
                 "path": str(after_row.path),
                 "message": str(after_row.message),
             }

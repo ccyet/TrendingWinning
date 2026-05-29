@@ -15,7 +15,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 突破 trigger：基于上一根已完成通道上轨，避免把当前突破 K 纳入边界
 - 多周期扫描：一次聚合 `5m / 15m / 30m / 60m` 的最新通道和突破状态
 - 多周期门控策略：高周期方向只过滤低周期订单，不改趋势/区间/通道/反转 detector 输出
-- 数据审计：本地 parquet 覆盖、日期/标的代码、字段质量、OHLC 合法性、重复 K、交易时段内缺失 K、缺口首尾时间、零流动性 K 和覆盖率显式输出
+- 数据审计：本地 parquet 覆盖、日期/标的代码、字段质量、OHLC 合法性、重复 K、交易时段内缺失 K、缺口首尾时间、最长连续缺口边界、零流动性 K 和覆盖率显式输出
 - 独立 detector 策略：趋势、区间、通道、反转模块解耦，单策略回测只消费本策略事件
 - Detector 事件契约：非空事件表必须包含 `event_id / detector_name / stock_code / timeframe / date / bar_index / event_type / direction / signal_price / entry_price / stop_price / confidence / metadata`，策略层统一校验，缺字段会直接报错
 - 订单契约：撮合层要求 `order_id / event_id / stock_code / signal_date / signal_bar_index / side / entry_price / stop_price / target_price` 必备，组合回测额外要求 `strategy_name`；空 `order_id` 或 `event_id` 记为 `invalid_order`，重复 `order_id` 记为 `duplicate_order_id`
@@ -111,7 +111,7 @@ python -m trending_winning.cli prepare-data \
 
 `inventory-data` 只列本地缓存库存，不做覆盖率判断；指定 `--symbols` 时会把缺失的 `stock_code/timeframe` 标成 `missing_file`，不指定时会按已有 parquet 自动发现代码。
 `plan-data` 只读取本地 parquet 和日 K 交易日锚点，不请求 TDX；它会把每个 `stock_code/timeframe` 标成 `cached` 或 `fetch`，并写明 `missing_file / quality_error / coverage_below_min / local_ok`。
-`prepare-data` 会输出每个 `stock_code/timeframe` 的 `cached/fetched` 动作、补数前后状态、写入行数、补前/补后覆盖率、补前/补后缺失 K 数、补前/补后最长连续缺口、补前/补后缺口首尾时间和本地 parquet 路径；默认补完后仍不达标会直接失败。
+`prepare-data` 会输出每个 `stock_code/timeframe` 的 `cached/fetched` 动作、补数前后状态、写入行数、补前/补后覆盖率、补前/补后缺失 K 数、补前/补后最长连续缺口、补前/补后全局缺口首尾时间、补前/补后最长连续缺口起止时间和本地 parquet 路径；默认补完后仍不达标会直接失败。
 `plan-data` 和 `prepare-data` 遇到分钟周期会自动把 `1d` 作为依赖先审计/补齐；补完日 K 后再用它锚定分钟线交易日覆盖率和一字涨停开盘过滤。
 即使 `start` 写成 `2026-05-01 09:30:00`，日 K 请求和审计也会覆盖 5 月 1 日整天，不会因为日 K 时间戳是 00:00 而漏掉首日。
 所有本地读取、审计、补数计划和回测数据包入口都会校验 `start <= end`；时间窗口写反会直接失败，不会静默返回空行情。
@@ -133,7 +133,7 @@ python -m trending_winning.cli audit-data \
 组合回测默认启用严格数据质量门禁：本地 parquet 缺失、请求窗口无可交易数据、缺字段、日期无法解析、标的代码为空或无法规范化、重复 K、OHLC 为空、价格非正、high/low 与 open/close 不一致、volume/amount 为空或负数，以及日 K 缺失导致一字涨停过滤无法执行，都会直接失败。`volume` 或 `amount` 为 0 会记录为 `zero_volume_amount_rows`，不直接记为字段质量错误，但覆盖率按剔除这些 K 后的可交易 K 计算，回测数据包也会先剔除这些 K；裸策略/撮合入口仍不会用这类 K 入场、止盈止损或统计路径波动。
 临时排查时可以在 CLI 里加 `--allow-bad-data`，页面里取消“严格数据质量门禁”。
 多周期扫描会复用同一套数据门禁和涨停开盘过滤，不再直接绕过本地行情审计。
-`audit-data` 会同时输出 `invalid_date_rows / invalid_symbol_rows / zero_volume_amount_rows / expected_rows / missing_rows / coverage_ratio / max_missing_gap_minutes / first_missing_at / last_missing_at`；其中 `rows_in_window / missing_rows / coverage_ratio` 按剔除零流动性后的可交易 K 计算，`zero_volume_amount_rows` 单独保留原始零流动性数量。
+`audit-data` 会同时输出 `invalid_date_rows / invalid_symbol_rows / zero_volume_amount_rows / expected_rows / missing_rows / coverage_ratio / max_missing_gap_minutes / first_missing_at / last_missing_at / max_missing_gap_start_at / max_missing_gap_end_at`；其中 `rows_in_window / missing_rows / coverage_ratio` 按剔除零流动性后的可交易 K 计算，`zero_volume_amount_rows` 单独保留原始零流动性数量。
 直接审计和回测加载都会优先用本地日 K 作为交易日锚点计算分钟线覆盖度，可暴露整天分钟 K 缺失；日 K 不存在时才退回按已观测分钟交易日计算。
 需要把覆盖度也变成硬门禁时，在单策略、组合或参数遍历命令里加 `--min-coverage-ratio 0.95`。
 
