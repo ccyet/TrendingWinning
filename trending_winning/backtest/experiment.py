@@ -1065,7 +1065,12 @@ def load_sweep_case_config(
     config_payload = matches[0].get("config")
     if not isinstance(config_payload, Mapping):
         raise ValueError("case 配置缺少 config 对象。")
-    return _experiment_config_from_payload(config_payload)
+    config = _experiment_config_from_payload(config_payload)
+    recorded_hash = str(matches[0].get("case_config_hash", ""))
+    actual_hash = _case_config_hash(config)
+    if recorded_hash and recorded_hash != actual_hash:
+        raise ValueError("case_config_hash 与 config 内容不一致，拒绝回放被篡改或损坏的 case 配置。")
+    return config
 
 
 def _experiment_config_from_payload(payload: Mapping[str, object]) -> PortfolioExperimentConfig | SingleStrategyExperimentConfig:

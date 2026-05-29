@@ -183,6 +183,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "case_configs.jsonl" in guide
     assert "replay-case" in readme
     assert "replay-case" in guide
+    assert "拒绝回放" in readme
+    assert "拒绝回放" in guide
     assert r"C:\new_tdx\T0002\PYPlugins\user" not in readme
     assert r"C:\\new_tdx\\T0002\\PYPlugins\\user" not in guide
 

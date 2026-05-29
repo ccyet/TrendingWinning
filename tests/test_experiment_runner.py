@@ -1255,6 +1255,31 @@ def test_sweep_case_config_hash_is_stable_and_changes_with_config() -> None:
     assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(changed)
 
 
+def test_load_sweep_case_config_rejects_tampered_config_hash(tmp_path: Path) -> None:
+    config = SingleStrategyExperimentConfig(
+        name="single-sweep",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        risk_reward=1.5,
+    )
+    config_hash = experiment_module._case_config_hash(config)
+    payload = {
+        "case_name": "single-sweep-001",
+        "case_config_hash": config_hash,
+        "config": experiment_module._json_ready(config.__dict__),
+    }
+    payload["config"]["risk_reward"] = 2.0
+    case_configs = tmp_path / "case_configs.jsonl"
+    case_configs.write_text(json.dumps(payload, ensure_ascii=False) + "\n")
+
+    with pytest.raises(ValueError, match="case_config_hash 与 config 内容不一致"):
+        experiment_module.load_sweep_case_config(case_configs, case_config_hash=config_hash)
+
+
 def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_params_change(
     tmp_path: Path,
     monkeypatch,

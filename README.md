@@ -336,7 +336,7 @@ python -m trending_winning.cli replay-case \
   --output-dir runs/replay-001
 ```
 
-`replay-case` 会读取完整 case 配置并运行对应的单策略或组合回测；传入 `--output-dir` 时会保存新的 `config.json / stats.json / trades.csv / equity_curve.csv` 等回测产物。
+`replay-case` 会读取完整 case 配置并运行对应的单策略或组合回测；回放前会重新计算配置指纹，发现 `case_config_hash` 与配置内容不一致时拒绝回放；传入 `--output-dir` 时会保存新的 `config.json / stats.json / trades.csv / equity_curve.csv` 等回测产物。
 
 ## Docker
 
