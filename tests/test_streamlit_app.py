@@ -189,6 +189,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "按收益、回撤、月度稳定性、交易数和 case 名稳定排序" in guide
     assert "data_coverage_p05" in readme
     assert "data_coverage_p05" in guide
+    assert "data_coverage_below_min_count" in readme
+    assert "data_coverage_below_min_count" in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
     assert "pareto_rank" in readme

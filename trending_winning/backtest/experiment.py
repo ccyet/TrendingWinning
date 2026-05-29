@@ -294,7 +294,7 @@ def run_single_strategy_experiment(
         _backtest_config(config),
         timeframe=config.timeframe,
     )
-    backtest = _with_data_management_statistics(backtest, data)
+    backtest = _with_data_management_statistics(backtest, data, min_coverage_ratio=config.min_coverage_ratio)
     monthly_returns = compute_period_returns(_trade_dated_equity_curve(backtest), freq="M")
     backtest = _with_period_return_statistics(backtest, monthly_returns)
     result = SingleStrategyExperimentResult(
@@ -353,7 +353,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         ),
         timeframe=config.timeframe,
     )
-    backtest = _with_data_management_statistics(backtest, data)
+    backtest = _with_data_management_statistics(backtest, data, min_coverage_ratio=config.min_coverage_ratio)
     monthly_returns = compute_period_returns(backtest.equity_curve, freq="M")
     backtest = _with_period_return_statistics(backtest, monthly_returns)
     result = PortfolioExperimentResult(
@@ -399,6 +399,7 @@ def run_portfolio_parameter_sweep(
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
         data_inventory=data.data_inventory,
+        min_coverage_ratio=config.min_coverage_ratio,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
@@ -509,6 +510,7 @@ def run_single_strategy_parameter_sweep(
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
         data_inventory=data.data_inventory,
+        min_coverage_ratio=config.min_coverage_ratio,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
@@ -820,7 +822,12 @@ def _with_strategy_filter_decisions(result: BacktestResult, filter_decisions: pd
     )
 
 
-def _with_data_management_statistics(result: BacktestResult, data: _LoadedExperimentData) -> BacktestResult:
+def _with_data_management_statistics(
+    result: BacktestResult,
+    data: _LoadedExperimentData,
+    *,
+    min_coverage_ratio: float | None,
+) -> BacktestResult:
     """运行态结果也携带数据审计摘要，保证 Web/CLI 和保存产物统计口径一致。"""
     stats = dict(result.stats)
     stats.update(
@@ -829,6 +836,7 @@ def _with_data_management_statistics(result: BacktestResult, data: _LoadedExperi
             data.limit_filter_audit,
             filtered_limit_open_count=len(data.filtered_limit_open_days),
             data_inventory=data.data_inventory,
+            min_coverage_ratio=min_coverage_ratio,
         )
     )
     return BacktestResult(
@@ -890,9 +898,10 @@ def _data_management_statistics(
     *,
     filtered_limit_open_count: int,
     data_inventory: pd.DataFrame | None = None,
+    min_coverage_ratio: float | None = None,
 ) -> dict[str, float]:
     """把数据审计和日 K 过滤审计并入实验统计，避免结果脱离数据质量语境。"""
-    stats = summarize_data_audit(data_audit)
+    stats = summarize_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
     stats.update(_data_inventory_statistics(data_inventory))
     stats.update(summarize_limit_filter_audit(limit_filter_audit))
     stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
@@ -945,6 +954,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,
             data_inventory=result.data_inventory,
+            min_coverage_ratio=result.config.min_coverage_ratio,
         )
     )
     stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))
@@ -979,6 +989,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,
             data_inventory=result.data_inventory,
+            min_coverage_ratio=result.config.min_coverage_ratio,
         )
     )
     stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))

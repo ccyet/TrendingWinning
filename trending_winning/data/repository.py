@@ -141,6 +141,9 @@ DATA_AUDIT_SUMMARY_KEYS = [
     "data_audit_failed_count",
     "data_audit_missing_file_count",
     "data_audit_quality_error_count",
+    "data_min_coverage_threshold",
+    "data_coverage_below_min_count",
+    "data_coverage_below_min_ratio",
     "data_expected_rows",
     "data_missing_rows",
     "data_weighted_coverage_ratio",
@@ -837,10 +840,11 @@ def audit_local_data(
     return pd.DataFrame(rows, columns=AUDIT_COLUMNS)
 
 
-def summarize_data_audit(audit: pd.DataFrame) -> dict[str, float]:
+def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | None = None) -> dict[str, float]:
     """把行情审计表压成统计字段，便于 stats.json 和参数遍历表直接对比数据质量。"""
     if audit.empty:
         return {key: 0.0 for key in DATA_AUDIT_SUMMARY_KEYS}
+    min_coverage_ratio = _normalize_min_coverage_ratio(min_coverage_ratio)
     status = (
         audit["status"].fillna("").astype(str)
         if "status" in audit.columns
@@ -850,6 +854,7 @@ def summarize_data_audit(audit: pd.DataFrame) -> dict[str, float]:
     missing_rows = _audit_numeric_column(audit, "missing_rows")
     coverage_ratio = _audit_numeric_column(audit, "coverage_ratio")
     expected_mask = expected_rows.gt(0)
+    below_min = _coverage_below_min_mask(expected_mask, coverage_ratio, min_coverage_ratio)
     expected_total = float(expected_rows.sum())
     missing_total = float(missing_rows.sum())
     return {
@@ -858,6 +863,9 @@ def summarize_data_audit(audit: pd.DataFrame) -> dict[str, float]:
         "data_audit_failed_count": float(status.ne("ok").sum()),
         "data_audit_missing_file_count": float(status.eq("missing_file").sum()),
         "data_audit_quality_error_count": float(status.eq("quality_error").sum()),
+        "data_min_coverage_threshold": float(min_coverage_ratio or 0.0),
+        "data_coverage_below_min_count": float(below_min.sum()),
+        "data_coverage_below_min_ratio": _audit_ratio_or_zero(float(below_min.sum()), float(expected_mask.sum())),
         "data_expected_rows": expected_total,
         "data_missing_rows": missing_total,
         "data_weighted_coverage_ratio": _audit_ratio_or_zero(expected_total - missing_total, expected_total),
@@ -905,6 +913,16 @@ def _audit_ratio_or_zero(numerator: float, denominator: float) -> float:
     if denominator <= 0:
         return 0.0
     return float(round(float(numerator) / float(denominator), 12))
+
+
+def _coverage_below_min_mask(
+    expected_mask: pd.Series,
+    coverage_ratio: pd.Series,
+    min_coverage_ratio: float | None,
+) -> pd.Series:
+    if min_coverage_ratio is None:
+        return pd.Series([False] * len(coverage_ratio), index=coverage_ratio.index)
+    return expected_mask & coverage_ratio.lt(min_coverage_ratio)
 
 
 def _audit_min_or_zero(values: pd.Series) -> float:

@@ -1569,6 +1569,9 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_config["reversal_require_structure_confirmation"] is False
     assert saved_stats["elapsed_seconds"] == pytest.approx(result.elapsed_seconds)
     assert saved_stats["data_audit_row_count"] == 1.0
+    assert saved_stats["data_min_coverage_threshold"] == pytest.approx(0.1)
+    assert saved_stats["data_coverage_below_min_count"] == 0.0
+    assert result.backtest.stats["data_min_coverage_threshold"] == pytest.approx(0.1)
     assert saved_stats["data_weighted_coverage_ratio"] == pytest.approx(1.0)
     assert saved_stats["data_missing_rows"] == 0.0
     assert saved_stats["data_inventory_row_count"] == 2.0

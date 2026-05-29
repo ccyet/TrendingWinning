@@ -299,12 +299,15 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
         }
     )
 
-    assert summarize_data_audit(data_audit) == {
+    assert summarize_data_audit(data_audit, min_coverage_ratio=0.8) == {
         "data_audit_row_count": 3.0,
         "data_audit_ok_count": 1.0,
         "data_audit_failed_count": 2.0,
         "data_audit_missing_file_count": 1.0,
         "data_audit_quality_error_count": 1.0,
+        "data_min_coverage_threshold": 0.8,
+        "data_coverage_below_min_count": 1.0,
+        "data_coverage_below_min_ratio": 0.5,
         "data_expected_rows": 16.0,
         "data_missing_rows": 5.0,
         "data_weighted_coverage_ratio": pytest.approx(11 / 16),
