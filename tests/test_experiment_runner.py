@@ -686,10 +686,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
+    assert (output_dir / "case_configs.jsonl").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["name"] == "sweep"
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -710,6 +712,10 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     }.issubset(saved_sweep.columns)
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
+    assert [item["case_name"] for item in saved_cases] == saved_sweep["case_name"].tolist()
+    assert saved_cases[0]["config"]["name"] == "sweep"
+    assert {"risk_reward", "max_holding_bars"}.issubset(saved_cases[0]["grid_fields"])
 
 
 def test_portfolio_parameter_sweep_rejects_data_scope_grid_fields(tmp_path: Path, monkeypatch) -> None:
@@ -1150,10 +1156,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
+    assert (output_dir / "case_configs.jsonl").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["name"] == "single-sweep"
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -1168,6 +1176,9 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     }.issubset(saved_sweep.columns)
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
+    assert saved_cases[0]["config"]["name"] == "single-sweep"
+    assert {"fee_rate", "slippage_bps"}.issubset(saved_cases[0]["grid_fields"])
 
 
 def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:

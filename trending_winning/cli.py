@@ -617,7 +617,9 @@ def main() -> None:
         result = run_single_strategy_parameter_sweep(config, grid=grid, save=bool(args.output_dir))
         print(result.table.to_string(index=False))
         if args.output_dir:
-            print(f"sweep.csv saved: {Path(args.output_dir).expanduser() / 'sweep.csv'}")
+            output_dir = Path(args.output_dir).expanduser()
+            print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
+            print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return
 
     if args.command == "portfolio-backtest":
@@ -771,7 +773,9 @@ def main() -> None:
         )
         print(result.table.to_string(index=False))
         if args.output_dir:
-            print(f"sweep.csv saved: {Path(args.output_dir).expanduser() / 'sweep.csv'}")
+            output_dir = Path(args.output_dir).expanduser()
+            print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
+            print(f"case_configs.jsonl saved: {output_dir / 'case_configs.jsonl'}")
         return
 
     bundle = repo.load_backtest_data(

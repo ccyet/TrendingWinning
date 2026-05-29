@@ -917,6 +917,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     config_payload["sweep_grid"] = _json_ready(result.grid)
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
+    _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     return output_dir
@@ -929,6 +930,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     config_payload["sweep_grid"] = _json_ready(result.grid)
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
+    _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     return output_dir
@@ -1010,6 +1012,34 @@ def _case_config_hash(config: PortfolioExperimentConfig | SingleStrategyExperime
     """给完整实验配置生成稳定指纹，用于 sweep 行跨机器复现和对照。"""
     payload = json.dumps(_json_ready(asdict(config)), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sweep_case_config_records(result: PortfolioSweepResult | SingleStrategySweepResult) -> list[dict[str, object]]:
+    """按 sweep 表排序输出每个 case 的完整配置，便于从结果行直接复现实验。"""
+    records_by_hash: dict[str, dict[str, object]] = {}
+    for case_index, variant in enumerate(_sweep_variants(result.config, result.grid), start=1):
+        config_hash = _case_config_hash(variant)
+        records_by_hash[config_hash] = {
+            "case_name": f"{result.config.name}-{case_index:03d}",
+            "case_config_hash": config_hash,
+            "grid_fields": list(result.grid),
+            "config": _json_ready(asdict(variant)),
+        }
+    if result.table.empty or "case_config_hash" not in result.table.columns:
+        return list(records_by_hash.values())
+
+    records: list[dict[str, object]] = []
+    for row in result.table.to_dict("records"):
+        config_hash = str(row["case_config_hash"])
+        record = records_by_hash.get(config_hash)
+        if record is None:
+            raise ValueError(f"sweep 表包含未知 case_config_hash：{config_hash}")
+        enriched = dict(record)
+        for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+            if column in row:
+                enriched[column] = row[column]
+        records.append(enriched)
+    return records
 
 
 def _pareto_front_ranks(table: pd.DataFrame) -> list[int]:
@@ -1106,3 +1136,11 @@ def _json_ready(value):
 
 def _json_dump(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False)
+
+
+def _write_jsonl(path: Path, records: Sequence[Mapping[str, object]]) -> None:
+    lines = [
+        json.dumps(_json_ready(record), ensure_ascii=False, sort_keys=True, allow_nan=False, separators=(",", ":"))
+        for record in records
+    ]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""))
