@@ -108,6 +108,44 @@ def test_cli_tdx_doctor_routes_to_parallels_runtime(monkeypatch, capsys) -> None
     assert r"C:\new_tdx64\PYPlugins\user" in forwarded
 
 
+def test_cli_tdx_doctor_auto_runtime_on_macos_routes_to_parallels(monkeypatch, capsys) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_parallels_tdx_command(**kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(["prlctl"], 0, stdout="windows auto ok\n", stderr="")
+
+    monkeypatch.setattr(cli_module.sys, "platform", "darwin")
+    monkeypatch.setattr(cli_module, "run_parallels_tdx_command", fake_run_parallels_tdx_command)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "tdx-doctor",
+            "--symbols",
+            "000001.SZ",
+            "--timeframes",
+            "5m",
+            "--start",
+            "2026-05-25 09:30:00",
+            "--end",
+            "2026-05-25 15:00:00",
+            "--tdx-path",
+            r"C:\new_tdx64\PYPlugins\user",
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    forwarded = captured["cli_args"]
+    assert "windows auto ok" in out
+    assert captured["config"].vm_name == "Windows 11"
+    assert forwarded[:3] == ["tdx-doctor", "--runtime", "local"]
+    assert r"C:\new_tdx64\PYPlugins\user" in forwarded
+
+
 def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

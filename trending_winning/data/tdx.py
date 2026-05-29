@@ -184,7 +184,7 @@ def diagnose_tdx_source(
                 _diagnosis_row(
                     timeframe=timeframe,
                     status="no_data",
-                    message="TDX 请求成功但样本窗口无 K 线。",
+                    message=_no_data_diagnosis_message(timeframe),
                     symbols=normalized_symbols,
                 )
             )
@@ -208,6 +208,17 @@ def _diagnosis_request_window(timeframe: str, start: str, end: str) -> tuple[str
     if timeframe != "1d":
         return start, end
     return str(pd.Timestamp(start).normalize().date()), str(pd.Timestamp(end).normalize().date())
+
+
+def _no_data_diagnosis_message(timeframe: str) -> str:
+    """把 TDX 空结果翻译成可执行排障结论，避免误判为 Mac 本机取数。"""
+    if ensure_supported_timeframe(timeframe) == "1d":
+        return "TDX 请求成功但样本窗口无 K 线。"
+    return (
+        "TDX 请求成功但样本窗口无分钟 K 线；"
+        "Parallels/Windows 通达信本地没有返回分钟 K 线，Mac 本机通达信不参与取数。"
+        "请先在 Windows 通达信内确认 5m 分钟数据已下载，15m/30m/60m 可由原生周期或 5m 聚合生成。"
+    )
 
 
 def _fetch_tdx_period_bars(

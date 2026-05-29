@@ -249,6 +249,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
     <section id="data">
       <h2>TDX K线</h2>
       <p>先用诊断确认 Windows/Parallels TDX 通道，再做补齐计划，最后按需抓取缺失或质量异常的周期。</p>
+      <div class="note">Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准，先跑 <code>tdx-doctor --runtime parallels</code>，不要尝试从 Mac 本机通达信直接取数。若日 K 返回 <code>ok</code>、分钟 no_data，说明 Windows 通达信本地没有返回分钟 K 线；先确认 5m 分钟数据缓存，再做高周期请求或 5m 聚合。</div>
       <pre><code>python -m trending_winning.cli tdx-doctor \
   --symbols 000001.SZ,600519.SH \
   --timeframes 1d,5m,15m,30m,60m \

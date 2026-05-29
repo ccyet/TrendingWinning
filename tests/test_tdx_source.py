@@ -298,6 +298,23 @@ def test_diagnose_tdx_source_reports_each_timeframe_sample_request() -> None:
     assert [call["period"] for call in fake.market_calls] == ["1d", "30m", "1h"]
 
 
+def test_diagnose_tdx_source_explains_intraday_no_data_as_windows_cache_issue() -> None:
+    fake = PeriodPayloadTq({"5m": {}})
+
+    report = diagnose_tdx_source(
+        symbols=("000001.SZ",),
+        timeframes=("5m",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        tq_client=fake,
+    )
+
+    row = report.iloc[0]
+    assert row["status"] == "no_data"
+    assert "Parallels/Windows 通达信本地没有返回分钟 K 线" in row["message"]
+    assert "Mac 本机通达信不参与取数" in row["message"]
+
+
 def test_diagnose_tdx_source_rejects_start_after_end_before_initialization() -> None:
     fake = PeriodPayloadTq({"30m": _payload()})
 

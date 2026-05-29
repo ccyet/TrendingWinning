@@ -43,6 +43,8 @@ streamlit run streamlit_app.py --server.port 8520
 
 TDX 真取数只支持 Windows/Parallels 内的通达信。Mac 本机通达信不支持 `tqcenter` 取数，Mac 端 CLI 默认用 `--runtime auto` 调度到 Parallels；Windows 侧运行时默认本地执行。`60m` 会按 TDX 接口要求映射为 `1h` 请求；`15m / 30m / 60m` 如果原生周期无数据，会自动回退到 TDX `5m` 并按 A 股上午、下午交易段聚合。分钟线能否返回数据仍取决于 Windows 通达信本地是否已有对应 5m 数据。
 
+Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准，先跑 `tdx-doctor --runtime parallels`，不要尝试从 Mac 本机通达信直接取数。若日 K 返回 `ok`、分钟 no_data，说明 Parallels/Windows 通达信本地没有返回分钟 K 线；先在 Windows 通达信内确认 5m 分钟数据缓存，再做 `15m / 30m / 60m` 原生请求或 5m 聚合。
+
 Parallels 默认配置：
 
 - VM：`Windows 11`，可用 `--parallels-vm` 或 `TDX_PARALLELS_VM` 覆盖
