@@ -1101,6 +1101,10 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
     table = result.table
     summary: dict[str, object] = {
         "case_count": int(len(table)),
+        "grid_case_count": int(math.prod(_grid_value_counts(result.grid).values())) if result.grid else 0,
+        "grid_field_count": int(len(result.grid)),
+        "grid_fields": list(result.grid),
+        "grid_value_counts": _grid_value_counts(result.grid),
         "pareto_case_count": _truthy_column_count(table, "is_pareto_efficient"),
         "elapsed_seconds": float(result.elapsed_seconds),
         "input_bar_count": int(result.input_bar_count),
@@ -1125,6 +1129,10 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
         if column in table.columns:
             summary[column] = _numeric_column_sum(table, column)
     return summary
+
+
+def _grid_value_counts(grid: Mapping[str, Sequence[object]]) -> dict[str, int]:
+    return {str(key): len(list(values)) for key, values in grid.items()}
 
 
 def _cache_status_statistics(table: pd.DataFrame, column: str, *, prefix: str) -> dict[str, float]:
@@ -1195,10 +1203,26 @@ def _sweep_variants(
     empty_keys = [key for key, values in zip(keys, value_lists, strict=False) if not values]
     if empty_keys:
         raise ValueError(f"grid 字段不能为空：{', '.join(empty_keys)}")
-    return [
+    variants = [
         replace(config, **dict(zip(keys, values, strict=False)))
         for values in product(*value_lists)
     ]
+    return _deduplicate_sweep_variants(variants)
+
+
+def _deduplicate_sweep_variants(
+    variants: Sequence[PortfolioExperimentConfig | SingleStrategyExperimentConfig],
+) -> list[PortfolioExperimentConfig | SingleStrategyExperimentConfig]:
+    """按完整配置指纹去掉重复 case，避免重复 grid 值造成无效回测。"""
+    seen: set[str] = set()
+    deduplicated: list[PortfolioExperimentConfig | SingleStrategyExperimentConfig] = []
+    for variant in variants:
+        config_hash = _case_config_hash(variant)
+        if config_hash in seen:
+            continue
+        seen.add(config_hash)
+        deduplicated.append(variant)
+    return deduplicated
 
 
 def _sweep_parameter_record(

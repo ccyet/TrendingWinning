@@ -742,6 +742,9 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000002.SZ", "30m"), "status"] == "cached"
     saved_summary = json.loads((output_dir / "summary.json").read_text())
     assert saved_summary["case_count"] == 4
+    assert saved_summary["grid_case_count"] == 4
+    assert saved_summary["grid_field_count"] == 2
+    assert saved_summary["grid_value_counts"] == {"risk_reward": 2, "max_holding_bars": 2}
     assert saved_summary["pareto_case_count"] >= 1
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
@@ -1234,6 +1237,9 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     saved_summary = json.loads((output_dir / "summary.json").read_text())
     assert saved_summary["case_count"] == 4
+    assert saved_summary["grid_case_count"] == 4
+    assert saved_summary["grid_field_count"] == 2
+    assert saved_summary["grid_value_counts"] == {"fee_rate": 2, "slippage_bps": 2}
     assert saved_summary["pareto_case_count"] >= 1
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
@@ -1265,6 +1271,30 @@ def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
     assert ranked["sweep_rank"].tolist() == [1, 2, 3]
     assert ranked["case_name"].tolist() == ["case-c", "case-a", "case-b"]
     assert ranked.columns[0] == "sweep_rank"
+
+
+def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path) -> None:
+    config = SingleStrategyExperimentConfig(
+        name="duplicate-grid",
+        data_root=str(tmp_path),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+
+    variants = experiment_module._sweep_variants(
+        config,
+        {
+            "fee_rate": [0.0, 0.0],
+            "slippage_bps": [0.0, 0.0],
+        },
+    )
+
+    assert len(variants) == 1
+    assert variants[0].fee_rate == 0.0
+    assert variants[0].slippage_bps == 0.0
 
 
 def test_sweep_table_ranking_uses_monthly_stability_tie_breaks() -> None:
