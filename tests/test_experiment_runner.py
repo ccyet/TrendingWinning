@@ -101,6 +101,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "limit_filter_audit.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
+    assert (output_dir / "detector_stats.csv").exists()
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()
@@ -152,6 +153,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert {"status", "reason", "decision_count"}.issubset(result.order_decision_stats.columns)
     assert {"status", "reason", "decision_count"}.issubset(result.strategy_filter_stats.columns)
     assert "strategy_name" in result.strategy_stats.columns
+    assert "detector_name" in result.detector_stats.columns
     assert "stock_code" in result.symbol_stats.columns
     assert "side" in result.side_stats.columns
     assert "exit_reason" in result.exit_reason_stats.columns
@@ -1904,6 +1906,9 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert result.strategy_stats.set_index("strategy_name").loc["trend_signal_bar", "trade_count"] == result.backtest.stats[
         "trade_count"
     ]
+    assert result.detector_stats.set_index("detector_name").loc["trend", "trade_count"] == result.backtest.stats[
+        "trade_count"
+    ]
     assert not result.symbol_stats.empty
     assert not result.side_stats.empty
     assert not result.exit_reason_stats.empty
@@ -1914,6 +1919,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
+    assert (output_dir / "detector_stats.csv").exists()
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()

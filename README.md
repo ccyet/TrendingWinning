@@ -194,7 +194,7 @@ python -m trending_winning.cli single-backtest \
 ```
 
 保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
-`strategy_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
+`strategy_stats.csv`、`detector_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，避免参数对比时再手工汇总月度收益和连续亏损风险。
 单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio`。
@@ -204,7 +204,7 @@ python -m trending_winning.cli single-backtest \
 `strategy_filter_decisions.csv` 记录策略层过滤结果，例如 detector 输出观察/中部不交易方向、信号 K 无流动性、高周期方向不一致、无可用高周期上下文或上下文过期；基础策略过滤和高周期门控过滤会叠加保留，它早于撮合层，不和 `order_decisions.csv` 混用。
 `limit_filter_audit.csv` 记录日 K 一字涨停过滤是否真实执行；严格模式下日线缺失会直接失败，只有显式关闭严格数据门禁时才会继续输出 `daily_missing` 审计。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 按策略、状态和原因聚合决策分布；`decision_rate` 表示占全部决策的比例，`group_decision_rate` 表示在当前策略或过滤器组内的比例。订单聚合表还会汇总实际风险、追价和实际盈亏比，用于定位哪类参数在撮合层失效。
-组合回测的 `strategy_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
+`detector_stats.csv` 按 `detector_name` 独立汇总趋势、区间、通道、反转的成交绩效；组合回测的 `strategy_stats.csv / detector_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、识别模块、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
 `data_inventory.csv` 保存本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含是否存在、行数、起止时间、文件大小、修改时间和路径；`stats.json` 同步写入 `data_inventory_row_count / data_inventory_cached_count / data_inventory_missing_file_count` 等摘要。
 `stats.json` 同步写入 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejected_no_fill_count / rejected_no_liquidity_count / rejected_no_bars_count / rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_already_open_count`
 以及已接受订单的平均/最大 `capital_fraction / risk_fraction / margin_fraction`，若启用策略层过滤，还会写入 `strategy_signal_count / strategy_filter_acceptance_rate / strategy_rejected_signal_bar_no_liquidity_count / strategy_rejected_higher_timeframe_mismatch_count` 等摘要。数据审计摘要也会进入同一个文件，包括 `data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_missing_rows / data_audit_failed_count / data_audit_missing_file_count / data_audit_missing_columns_count / data_audit_no_window_data_count / data_audit_read_error_count / limit_filter_failed_count / limit_filter_daily_missing_count / limit_filter_filtered_days`。
@@ -247,7 +247,7 @@ python -m trending_winning.cli portfolio-backtest \
 ```
 
 保存目录会包含 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
-`strategy_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
+`strategy_stats.csv`、`detector_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，用于比较不同 detector、仓位参数和高周期门控下的月度稳定性。
 组合仓位容量按实际 `entry_date` 分配，不按信号时间提前占用资金；风险预算按真实 `entry_price / risk_per_share` 计算，不用计划挂单价低估跳空成交风险。
