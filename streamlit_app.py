@@ -53,7 +53,7 @@ class BacktestRiskInputs:
 
 @dataclass(frozen=True)
 class BacktestDataQualityInputs:
-    """回测数据质量门禁。"""
+    """回测数据质量检查。"""
 
     strict_data_quality: bool
     min_coverage_ratio: float | None
@@ -61,7 +61,7 @@ class BacktestDataQualityInputs:
 
 @dataclass(frozen=True)
 class HigherTimeframeInputs:
-    """高周期方向门控设置。"""
+    """大周期方向过滤设置。"""
 
     higher_timeframe: str
     higher_timeframe_max_age_minutes: int | None
@@ -78,7 +78,7 @@ class BacktestOutputInputs:
 
 @dataclass(frozen=True)
 class SingleStrategyInputs:
-    """单策略 detector 参数。"""
+    """单策略形态识别参数。"""
 
     detector: str
     experiment_name: str
@@ -123,7 +123,7 @@ class PortfolioAllocationInputs:
 
 @dataclass(frozen=True)
 class PortfolioDetectorInputs:
-    """组合回测中各 detector 的识别参数。"""
+    """组合回测中各形态识别模块的参数。"""
 
     trend_lookback: int
     channel_lookback: int
@@ -414,8 +414,8 @@ def _experiment_output_controls(prefix: str, default_name: str) -> tuple[bool, s
 
 
 def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[str, float | int]:
-    """高级 detector 参数；单策略和组合回测共用，避免 Web 表单和配置层脱节。"""
-    with st.expander(f"{label_prefix}高级 detector 参数", expanded=False):
+    """高级形态识别参数；单策略和组合回测共用，避免 Web 表单和配置层脱节。"""
+    with st.expander(f"{label_prefix}高级形态识别参数", expanded=False):
         trend_c1, trend_c2, trend_c3 = st.columns(3)
         with trend_c1:
             trend_strong_close_pos = st.number_input(
@@ -792,13 +792,13 @@ def _backtest_risk_module() -> BacktestRiskInputs:
 
 
 def _backtest_data_quality_module() -> BacktestDataQualityInputs:
-    with _backtest_module_container("3. 数据门禁", "先过滤低质量本地 K 线，再进入 detector 和撮合。"):
+    with _backtest_module_container("3. 数据质量检查", "先过滤低质量本地 K 线，再进入形态识别和撮合。"):
         q1, q2 = st.columns(2)
         with q1:
-            strict_data_quality = st.checkbox("严格数据质量门禁", value=True, key="bt_strict_quality")
+            strict_data_quality = st.checkbox("严格数据质量检查", value=True, key="bt_strict_quality")
         with q2:
             min_coverage_ratio_input = st.number_input(
-                "最低覆盖率门禁",
+                "最低K线覆盖率",
                 min_value=0.0,
                 max_value=1.0,
                 value=0.0,
@@ -814,19 +814,19 @@ def _backtest_data_quality_module() -> BacktestDataQualityInputs:
 
 
 def _backtest_higher_timeframe_module(timeframe: str) -> HigherTimeframeInputs:
-    with _backtest_module_container("4. 高周期门控", "高周期只过滤低周期订单，不改趋势、区间、通道或反转 detector 输出。"):
+    with _backtest_module_container("4. 大周期方向过滤", "用更大周期判断主方向，只过滤逆势订单，不改趋势、区间、通道或反转识别结果。"):
         mtf1, mtf2 = st.columns(2)
         higher_timeframe_options = ["", *[item for item in INTRADAY_TIMEFRAMES if item != timeframe]]
         with mtf1:
             higher_timeframe = st.selectbox(
-                "高周期方向门控",
+                "大周期方向过滤",
                 higher_timeframe_options,
                 format_func=lambda value: "关闭" if value == "" else value,
                 key="bt_higher_timeframe",
             )
         with mtf2:
             higher_timeframe_max_age = st.number_input(
-                "高周期最大过期分钟",
+                "大周期信号有效分钟",
                 min_value=0,
                 value=0,
                 step=15,
@@ -875,8 +875,8 @@ def _legacy_backtest_module(
 
 
 def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
-    with _backtest_module_container("5. 单策略参数", "只绑定一个 detector，用于验证单一模式识别模块。"):
-        detector = st.selectbox("单策略 detector", ["trend", "range", "channel", "reversal"], index=0, key="single_detector")
+    with _backtest_module_container("5. 单策略参数", "只绑定一个形态识别模块，用于验证单一交易形态。"):
+        detector = st.selectbox("单策略形态", ["trend", "range", "channel", "reversal"], index=0, key="single_detector")
         experiment_name = _experiment_name(f"single-{detector}", scope.timeframe, scope.start, scope.end)
         s1, s2, s3 = st.columns(3)
         with s1:
@@ -961,7 +961,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
 
 def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocationInputs:
     with _backtest_module_container("5. 组合仓位与资金", "组合层只处理多个单策略订单之间的资金、容量和暴露约束。"):
-        detectors = st.multiselect("组合 detector", ["trend", "range", "channel", "reversal"], default=["trend", "range", "channel"])
+        detectors = st.multiselect("组合形态", ["trend", "range", "channel", "reversal"], default=["trend", "range", "channel"])
         experiment_name = _experiment_name("portfolio", scope.timeframe, scope.start, scope.end)
         p1, p2, p3, p4 = st.columns(4)
         with p1:
@@ -1028,7 +1028,7 @@ def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocat
 
 
 def _portfolio_detector_module() -> PortfolioDetectorInputs:
-    with _backtest_module_container("6. 组合 detector 参数", "这里仍只配置各 detector 的识别阈值，不配置仓位。"):
+    with _backtest_module_container("6. 组合形态识别参数", "这里仍只配置各类形态的识别阈值，不配置仓位。"):
         detector_c1, detector_c2, detector_c3 = st.columns(3)
         with detector_c1:
             trend_lookback = st.number_input("组合趋势回看", min_value=3, value=20, key="pf_trend_lookback")

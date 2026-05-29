@@ -173,7 +173,7 @@
     }
     .kline-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
       margin-top: 16px;
     }
@@ -293,11 +293,11 @@
     <div class="wrap top">
       <div>
         <h1>回测界面 K 线使用说明</h1>
-        <p class="lead">这份页面只讲 Web 回测怎么用：先选数据和周期，再选单策略或组合策略，最后用 K 线例子理解信号 K、挂单、止损、止盈、过滤和输出文件。</p>
+        <p class="lead">这份页面只讲 Web 回测怎么用：先选数据和周期，再选单策略或组合策略，最后用 K 线图理解信号 K、突破挂单、止损、止盈、方向过滤和输出文件。</p>
       </div>
       <div class="summary">
         <b>核心原则</b>
-        <p>单策略只验证一个 detector；组合回测才处理资金分配。突破不等回测，只在信号 K 高点上方或低点下方挂 stop order。</p>
+        <p>单策略只验证一种交易形态；组合回测才处理资金分配。突破不等回踩，只在信号 K 高点上方或低点下方挂突破单。</p>
       </div>
     </div>
   </header>
@@ -306,7 +306,8 @@
     <div class="wrap">
       <a href="#workflow">使用流程</a>
       <a href="#interface">界面字段</a>
-      <a href="#kline">K线范例</a>
+      <a href="#terms">术语对照</a>
+      <a href="#kline">适用K线图</a>
       <a href="#single">单策略</a>
       <a href="#portfolio">组合策略</a>
       <a href="#outputs">输出解读</a>
@@ -321,10 +322,10 @@
         <div class="card"><b>选择目录</b><span>侧边栏选择行情根目录、复权方式；TDX 目录只在补数时使用，回测读取本地 parquet。</span></div>
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
-        <div class="card"><b>设置风控</b><span>统一设置止盈、止损、最大持有 K 数、手续费、滑点、覆盖率门禁和同 K 止盈止损冲突规则。</span></div>
-        <div class="card"><b>读取产物</b><span>先看订单拒绝和策略过滤，再看收益、回撤、setup 绩效和月度稳定性。</span></div>
+        <div class="card"><b>设置风控</b><span>统一设置止盈、止损、最大持有 K 数、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
+        <div class="card"><b>读取产物</b><span>先看未成交原因和入场前过滤，再看收益、回撤、信号形态绩效和月度稳定性。</span></div>
       </div>
-      <div class="note">建议每次只改一类参数：先调 detector 阈值，再调高周期门控，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
+      <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
     </section>
 
     <section id="interface">
@@ -335,10 +336,10 @@
         <tbody>
           <tr><td>1. 样本范围</td><td>周期、标的代码、日期窗口、回测模式。</td><td>全部模式</td></tr>
           <tr><td>2. 基础风控与成本</td><td>止盈、止损、最大持有 K 数、手续费、滑点、同 K 冲突规则。</td><td>全部模式</td></tr>
-          <tr><td>3. 数据门禁</td><td>严格数据质量和最低覆盖率门禁。</td><td>全部模式</td></tr>
-          <tr><td>4. 高周期门控</td><td>高周期方向和最大过期分钟。</td><td>现代单策略和组合策略重点使用</td></tr>
-          <tr><td>5. 单策略参数</td><td>一个 detector 的识别阈值、实际风险和追价过滤。</td><td>单策略回测</td></tr>
-          <tr><td>5. 组合仓位与资金</td><td>组合 detector、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
+          <tr><td>3. 数据质量检查</td><td>检查 K 线是否缺失、重复、价格异常，以及覆盖率是否足够。</td><td>全部模式</td></tr>
+          <tr><td>4. 大周期方向过滤</td><td>用 60m 或 30m 判断主方向，只保留顺势入场。</td><td>现代单策略和组合策略重点使用</td></tr>
+          <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、实际风险和追价过滤。</td><td>单策略回测</td></tr>
+          <tr><td>5. 组合仓位与资金</td><td>组合形态、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
         </tbody>
       </table>
@@ -346,8 +347,8 @@
         <div class="card"><b>样本字段</b><span><code>周期</code>、<code>标的代码</code>、<code>开始日期</code>、<code>结束日期</code>。标的代码支持逗号或换行分隔。</span></div>
         <div class="card"><b>基础风控</b><span><code>止盈</code>、<code>止损</code>、<code>最大持有K数</code>。旧突破回测使用百分比止盈止损；现代单策略和组合策略使用 <code>risk_reward</code> 生成目标价。</span></div>
         <div class="card"><b>成本模型</b><span><code>手续费率</code>、<code>滑点bps</code>、<code>初始资金</code> 写入配置，并进入所有撮合路径。</span></div>
-        <div class="card"><b>数据门禁</b><span><code>严格数据质量门禁</code> 和 <code>最低覆盖率门禁</code> 控制本地 parquet 是否足够可信。</span></div>
-        <div class="card"><b>高周期方向门控</b><span>用 60m 或 30m 过滤低周期订单，只拒绝方向不一致或上下文过期的订单，不改 detector 事件。</span></div>
+        <div class="card"><b>数据质量检查</b><span><code>严格数据质量检查</code> 和 <code>最低K线覆盖率</code> 控制本地 parquet 是否足够可信。</span></div>
+        <div class="card"><b>大周期方向过滤</b><span>用 60m 或 30m 过滤低周期订单，只拒绝逆势或大周期信号太旧的订单，不改形态识别结果。</span></div>
         <div class="card"><b>保存实验产物</b><span>选择输出父目录后，系统按实验名生成子文件夹，写入配置、成交、净值、拒单和审计文件。</span></div>
       </div>
       <table>
@@ -356,15 +357,33 @@
           <tr><td>同K止盈止损冲突</td><td>同一根 K 同时触发止盈和止损时，保守模式按止损优先。</td><td><code>trades.csv</code></td></tr>
           <tr><td>最大实际风险</td><td>真实成交价相对止损价的风险过大时拒单。</td><td><code>order_decisions.csv</code></td></tr>
           <tr><td>最大追价距离</td><td>跳空或高开导致成交价离信号价太远时拒单。</td><td><code>order_decisions.csv</code></td></tr>
-          <tr><td>高周期最大过期分钟</td><td>低周期信号找不到足够新的高周期上下文时拒绝。</td><td><code>strategy_filter_decisions.csv</code></td></tr>
-          <tr><td>最低覆盖率门禁</td><td>分钟 K 缺口太多时失败或记录低覆盖。</td><td><code>data_coverage.csv</code></td></tr>
+          <tr><td>大周期信号有效分钟</td><td>低周期信号找不到足够新的大周期方向时拒绝。</td><td><code>strategy_filter_decisions.csv</code></td></tr>
+          <tr><td>最低K线覆盖率</td><td>分钟 K 缺口太多时失败或记录低覆盖。</td><td><code>data_coverage.csv</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="terms">
+      <h2>3. 术语对照</h2>
+      <p>页面优先使用交易员能直接理解的词。括号里的英文或字段名只用于对应输出文件和代码配置。</p>
+      <table>
+        <thead><tr><th>页面说法</th><th>业内含义</th><th>在回测里怎么看</th></tr></thead>
+        <tbody>
+          <tr><td>形态识别模块（detector）</td><td>负责判断当前 K 线属于趋势、区间、通道或反转。</td><td>先产生候选信号，不负责资金分配。</td></tr>
+          <tr><td>信号形态（setup）</td><td>具体可交易形态，例如 H2 回撤、失败突破、通道突破、二次反转。</td><td>看 <code>setup_stats.csv</code> 比较哪类形态更有效。</td></tr>
+          <tr><td>大周期方向过滤</td><td>用更大周期确认主方向，小周期只做顺势方向。</td><td>60m 向上时，15m/5m 优先做多；方向不一致的订单会被记录为过滤。</td></tr>
+          <tr><td>K 线覆盖率检查</td><td>确认本地分钟 K 是否足够完整。</td><td>缺口太多时，先补数据再回测。</td></tr>
+          <tr><td>突破挂单</td><td>不追市价，等价格突破信号 K 高点或低点再成交。</td><td>没触发就是 <code>no_fill</code>，不是策略失败。</td></tr>
+          <tr><td>实际风险</td><td>真实成交价到止损价的距离。</td><td>跳空成交后风险过大，会被 <code>actual_risk_too_high</code> 拒绝。</td></tr>
+          <tr><td>追价距离</td><td>真实成交价偏离信号价的幅度。</td><td>偏离过大说明买得太远，会被 <code>chase_too_far</code> 拒绝。</td></tr>
+          <tr><td>同 K 冲突</td><td>同一根 K 同时碰到止盈和止损。</td><td>保守模式按止损优先，避免过度乐观。</td></tr>
         </tbody>
       </table>
     </section>
 
     <section id="kline">
-      <h2>3. K 线范例</h2>
-      <p>下面三张图对应回测里最容易误解的点：信号 K 不是市价追入；同级别区间中部不做；第一次反转基本只观察。</p>
+      <h2>4. 策略适用 K 线图</h2>
+      <p>下面六张图把不同策略真正适用的 K 线环境画出来。先看背景，再看信号 K，最后看突破挂单和风控线。</p>
       <div class="legend">
         <span>趋势/通道</span>
         <span>入场线</span>
@@ -376,7 +395,7 @@
         <article class="kline-card">
           <header>
             <h3>趋势回撤：H2 顺势做多</h3>
-            <p>高周期偏多，低周期两段回撤后出现强牛信号 K。</p>
+            <p>大周期偏多，小周期两段回撤后出现强牛信号 K。</p>
           </header>
           <svg viewBox="0 0 420 260" role="img" aria-label="趋势回撤 H2 买入 K 线范例">
             <line class="axis" x1="36" y1="218" x2="388" y2="218"/>
@@ -405,8 +424,38 @@
 
         <article class="kline-card">
           <header>
-            <h3>区间失败突破：只做极端</h3>
-            <p>同级别区间中部不做，只有上沿/下沿失败突破后才考虑反向。</p>
+            <h3>下降趋势：L2 顺势做空</h3>
+            <p>大周期向下，反弹两段仍未突破下降趋势线，出现强熊信号 K。</p>
+          </header>
+          <svg viewBox="0 0 420 260" role="img" aria-label="下降趋势 L2 做空 K 线范例">
+            <line class="axis" x1="36" y1="218" x2="388" y2="218"/>
+            <line class="channel" x1="48" y1="76" x2="380" y2="170"/>
+            <line class="channel" x1="48" y1="116" x2="380" y2="210"/>
+            <path class="trend-line" d="M54 86 L94 108 L134 132 L174 156 L214 138 L254 122 L294 148 L356 184"/>
+            <g>
+              <line class="wick" x1="62" y1="70" x2="62" y2="112"/><rect class="bear" x="56" y="82" width="12" height="22"/>
+              <line class="wick" x1="98" y1="96" x2="98" y2="136"/><rect class="bear" x="92" y="108" width="12" height="18"/>
+              <line class="wick" x1="134" y1="118" x2="134" y2="160"/><rect class="bear" x="128" y="130" width="12" height="20"/>
+              <line class="wick" x1="170" y1="144" x2="170" y2="184"/><rect class="bear" x="164" y="154" width="12" height="20"/>
+              <line class="wick" x1="206" y1="126" x2="206" y2="166"/><rect class="bull" x="200" y="136" width="12" height="18"/>
+              <line class="wick" x1="242" y1="108" x2="242" y2="150"/><rect class="bull" x="236" y="118" width="12" height="20"/>
+              <line class="wick" x1="278" y1="124" x2="278" y2="168"/><rect class="bear" x="272" y="136" width="12" height="20"/>
+              <line class="wick" x1="314" y1="142" x2="314" y2="198"/><rect class="signal" x="306" y="156" width="16" height="28"/>
+              <line class="wick" x1="350" y1="172" x2="350" y2="218"/><rect class="bear" x="344" y="184" width="12" height="22"/>
+            </g>
+            <line class="entry" x1="42" y1="190" x2="390" y2="190"/><text class="label" x="224" y="205">信号K低点下方挂卖出</text>
+            <line class="stop" x1="42" y1="142" x2="390" y2="142"/><text class="label" x="250" y="136">止损：信号K高点/结构高点</text>
+            <line class="target" x1="42" y1="225" x2="390" y2="225"/><text class="label" x="302" y="240">目标：R 倍数</text>
+            <text class="small-label" x="202" y="112">反弹腿1</text>
+            <text class="small-label" x="238" y="98">反弹腿2</text>
+          </svg>
+          <div class="formula">适用：下降趋势中的第二次反弹失败。避免在连续急跌后无反弹空间的位置追空。</div>
+        </article>
+
+        <article class="kline-card">
+          <header>
+            <h3>交易区间下沿：失败突破做多</h3>
+            <p>价格跌破区间下沿后快速收回，说明向下突破失败，按反向做多处理。</p>
           </header>
           <svg viewBox="0 0 420 260" role="img" aria-label="区间失败突破 K 线范例">
             <rect class="range-band" x="45" y="76" width="330" height="112" rx="4"/>
@@ -429,12 +478,68 @@
             <line class="stop" x1="42" y1="220" x2="390" y2="220"/><text class="label" x="244" y="237">止损：失败突破低点下方</text>
             <path class="trend-line" d="M230 214 C250 184, 260 166, 286 148"/>
           </svg>
-          <div class="formula">回测含义：中部信号进入 <code>strategy_filter_decisions.csv</code>；只有极端区失败突破输出事件。</div>
+          <div class="formula">适用：交易区间下沿附近的假跌破。中部信号只记录为入场前过滤，不作为交易。</div>
         </article>
 
         <article class="kline-card">
           <header>
-            <h3>反转：第二次信号才切换</h3>
+            <h3>交易区间上沿：失败突破做空</h3>
+            <p>价格冲出区间上沿但收不住，随后跌回区间内，按反向做空处理。</p>
+          </header>
+          <svg viewBox="0 0 420 260" role="img" aria-label="交易区间上沿失败突破做空 K 线范例">
+            <rect class="range-band" x="45" y="78" width="330" height="112" rx="4"/>
+            <line class="guide" x1="45" y1="134" x2="375" y2="134"/>
+            <text class="small-label" x="52" y="72">区间上沿</text>
+            <text class="small-label" x="52" y="206">区间下沿</text>
+            <text class="small-label" x="292" y="130">中部不交易</text>
+            <g>
+              <line class="wick" x1="62" y1="128" x2="62" y2="184"/><rect class="bull" x="56" y="148" width="12" height="20"/>
+              <line class="wick" x1="98" y1="100" x2="98" y2="164"/><rect class="bear" x="92" y="122" width="12" height="24"/>
+              <line class="wick" x1="134" y1="132" x2="134" y2="190"/><rect class="bull" x="128" y="152" width="12" height="22"/>
+              <line class="wick" x1="170" y1="92" x2="170" y2="150"/><rect class="bull" x="164" y="110" width="12" height="26"/>
+              <line class="wick" x1="206" y1="70" x2="206" y2="132"/><rect class="bull" x="200" y="88" width="12" height="28"/>
+              <line class="wick" x1="242" y1="42" x2="242" y2="116"/><rect class="signal" x="234" y="58" width="16" height="40"/>
+              <line class="wick" x1="278" y1="72" x2="278" y2="140"/><rect class="bear" x="272" y="92" width="12" height="30"/>
+              <line class="wick" x1="314" y1="108" x2="314" y2="168"/><rect class="bear" x="308" y="126" width="12" height="26"/>
+              <line class="wick" x1="350" y1="134" x2="350" y2="194"/><rect class="bull" x="344" y="154" width="12" height="24"/>
+            </g>
+            <line class="entry" x1="42" y1="106" x2="390" y2="106"/><text class="label" x="234" y="102">跌回区间后，信号K低点下方卖出</text>
+            <line class="stop" x1="42" y1="44" x2="390" y2="44"/><text class="label" x="258" y="39">止损：假突破高点上方</text>
+            <path class="trend-line" d="M246 58 C264 88, 288 112, 322 132"/>
+          </svg>
+          <div class="formula">适用：区间上沿的假突破。突破失败后才找反向入场，不在区间中部随意开仓。</div>
+        </article>
+
+        <article class="kline-card">
+          <header>
+            <h3>通道突破：顺势延续</h3>
+            <p>价格沿通道运行，强势 K 突破上一根已完成通道边界，按趋势延续处理。</p>
+          </header>
+          <svg viewBox="0 0 420 260" role="img" aria-label="通道突破顺势延续 K 线范例">
+            <line class="channel" x1="48" y1="174" x2="356" y2="92"/>
+            <line class="channel" x1="48" y1="216" x2="356" y2="134"/>
+            <path class="trend-line" d="M58 200 L96 176 L134 160 L172 146 L210 130 L248 118 L286 100 L332 68"/>
+            <g>
+              <line class="wick" x1="62" y1="186" x2="62" y2="218"/><rect class="bull" x="56" y="196" width="12" height="14"/>
+              <line class="wick" x1="98" y1="166" x2="98" y2="202"/><rect class="bear" x="92" y="176" width="12" height="16"/>
+              <line class="wick" x1="134" y1="150" x2="134" y2="184"/><rect class="bull" x="128" y="158" width="12" height="18"/>
+              <line class="wick" x1="170" y1="136" x2="170" y2="170"/><rect class="bull" x="164" y="144" width="12" height="18"/>
+              <line class="wick" x1="206" y1="122" x2="206" y2="156"/><rect class="bear" x="200" y="132" width="12" height="16"/>
+              <line class="wick" x1="242" y1="106" x2="242" y2="142"/><rect class="bull" x="236" y="114" width="12" height="18"/>
+              <line class="wick" x1="278" y1="88" x2="278" y2="126"/><rect class="bull" x="272" y="96" width="12" height="20"/>
+              <line class="wick" x1="318" y1="54" x2="318" y2="106"/><rect class="signal" x="310" y="66" width="16" height="30"/>
+              <line class="wick" x1="354" y1="44" x2="354" y2="88"/><rect class="bull" x="348" y="52" width="12" height="26"/>
+            </g>
+            <line class="entry" x1="42" y1="62" x2="390" y2="62"/><text class="label" x="246" y="56">突破通道上轨后买入</text>
+            <line class="stop" x1="42" y1="118" x2="390" y2="118"/><text class="label" x="250" y="133">止损：突破K低点/通道内侧</text>
+            <text class="small-label" x="56" y="160">上一根完成通道边界</text>
+          </svg>
+          <div class="formula">适用：通道斜率明确、突破 K 实体强、收盘靠近高点。避免在宽幅震荡区间里把普通波动当突破。</div>
+        </article>
+
+        <article class="kline-card">
+          <header>
+            <h3>主要反转：第二次信号才切换</h3>
             <p>第一次反转基本只观察；破趋势线、回测旧极端失败、第二次强信号齐备后才交易。</p>
           </header>
           <svg viewBox="0 0 420 260" role="img" aria-label="第二次反转 K 线范例">
@@ -464,11 +569,11 @@
     </section>
 
     <section id="single">
-      <h2>4. 单策略回测怎么读</h2>
+      <h2>5. 单策略回测怎么读</h2>
       <div class="two">
         <div class="card">
           <b>适用场景</b>
-          <span>验证一个 detector 的可交易性，例如只测 <code>trend</code> 的 H2/L2、只测 <code>range</code> 的失败突破、只测 <code>channel</code> 的通道突破。</span>
+          <span>验证一种形态的可交易性，例如只测 <code>trend</code> 的 H2/L2、只测 <code>range</code> 的失败突破、只测 <code>channel</code> 的通道突破。</span>
         </div>
         <div class="card">
           <b>不要混入组合问题</b>
@@ -478,14 +583,14 @@
       <table>
         <thead><tr><th>步骤</th><th>操作</th><th>判断标准</th></tr></thead>
         <tbody>
-          <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略 detector</code>。</td><td>只出现一个 detector 的事件和 setup。</td></tr>
-          <tr><td>2</td><td>先关闭高周期方向门控。</td><td>确认基础信号数量、成交数量和拒单原因。</td></tr>
-          <tr><td>3</td><td>开启高周期方向门控和过期分钟。</td><td>看 <code>strategy_filter_decisions.csv</code> 中高周期拒绝是否合理。</td></tr>
+          <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略形态</code>。</td><td>只出现一种形态识别结果和信号形态。</td></tr>
+          <tr><td>2</td><td>先关闭大周期方向过滤。</td><td>确认基础信号数量、成交数量和拒单原因。</td></tr>
+          <tr><td>3</td><td>开启大周期方向过滤和有效分钟。</td><td>看 <code>strategy_filter_decisions.csv</code> 中方向过滤是否合理。</td></tr>
           <tr><td>4</td><td>加入真实风险、追价、成本。</td><td>看 <code>order_decisions.csv</code> 中 <code>actual_risk_too_high</code> 和 <code>chase_too_far</code>。</td></tr>
         </tbody>
       </table>
       <pre><code>推荐起步：
-detector = trend
+形态 = trend
 timeframe = 15m 或 30m
 higher_timeframe = 60m
 risk_reward = 2.0
@@ -494,8 +599,8 @@ min_coverage_ratio = 0.95</code></pre>
     </section>
 
     <section id="portfolio">
-      <h2>5. 组合策略回测怎么读</h2>
-      <p>组合策略回测不是“多个 detector 简单相加”。它把多个单策略的候选订单按真实入场时间送入组合层，再处理资金和冲突。</p>
+      <h2>6. 组合策略回测怎么读</h2>
+      <p>组合策略回测不是“多个形态简单相加”。它把多个单策略的候选订单按真实入场时间送入组合层，再处理资金和冲突。</p>
       <div class="grid">
         <div class="card"><b>排序</b><span><code>策略优先级</code> 控制同一时间容量不够时谁先拿仓位。</span></div>
         <div class="card"><b>容量</b><span><code>最大组合持仓</code> 和 <code>允许同票重叠</code> 控制是否拒绝新订单。</span></div>
@@ -504,18 +609,18 @@ min_coverage_ratio = 0.95</code></pre>
         <div class="card"><b>空头</b><span><code>空头保证金倍数</code> 会影响可开空头名义仓位和保证金占用。</span></div>
         <div class="card"><b>净值</b><span>组合净值逐 K 盯市，输出现金、持仓市值、总暴露和持仓数。</span></div>
       </div>
-      <div class="note warn">组合结果差，不一定是 detector 差。先看 <code>order_decisions.csv</code> 是否大量因为容量、同票重叠、行业上限或资金不足被拒，再看 setup 收益。</div>
+      <div class="note warn">组合结果差，不一定是形态识别差。先看 <code>order_decisions.csv</code> 是否大量因为容量、同票重叠、行业上限或资金不足被拒，再看信号形态收益。</div>
     </section>
 
     <section id="outputs">
-      <h2>6. 输出文件怎么排查</h2>
+      <h2>7. 输出文件怎么排查</h2>
       <table>
         <thead><tr><th>想回答的问题</th><th>优先看</th><th>关键字段</th></tr></thead>
         <tbody>
           <tr><td>为什么没有成交？</td><td><code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
-          <tr><td>哪类 setup 有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code></td></tr>
-          <tr><td>哪类 setup 被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
+          <tr><td>哪类信号形态有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code></td></tr>
+          <tr><td>哪类信号形态被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
           <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at</code></td></tr>
           <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing</code></td></tr>
@@ -525,7 +630,7 @@ min_coverage_ratio = 0.95</code></pre>
     </section>
 
     <section id="checklist">
-      <h2>7. 每次回测前后检查清单</h2>
+      <h2>8. 每次回测前后检查清单</h2>
       <div class="two">
         <div class="card">
           <b>运行前</b>
@@ -533,7 +638,7 @@ min_coverage_ratio = 0.95</code></pre>
             <li>确认行情根目录选的是 <code>market/daily</code>。</li>
             <li>确认回测周期是分钟级，不把 <code>1d</code> 放进策略周期。</li>
             <li>确认日 K 存在，否则涨停开盘过滤无法严格执行。</li>
-            <li>确认覆盖率门禁不低于当前实验要求。</li>
+            <li>确认 K 线覆盖率不低于当前实验要求。</li>
             <li>先跑单策略，再跑组合策略。</li>
           </ul>
         </div>
@@ -543,12 +648,12 @@ min_coverage_ratio = 0.95</code></pre>
             <li>先看拒单和过滤，不先看收益。</li>
             <li>若 <code>no_fill</code> 多，说明信号 K 上下方挂单未触发。</li>
             <li>若 <code>actual_risk_too_high</code> 多，说明跳空成交或止损距离不合理。</li>
-            <li>若高周期过滤多，检查门控周期和过期分钟。</li>
+            <li>若大周期方向过滤多，检查方向周期和有效分钟。</li>
             <li>若月度最差收益差，先看样本量和数据覆盖。</li>
           </ul>
         </div>
       </div>
-      <div class="note">最终判断顺序：数据质量 → 信号数量 → 策略过滤 → 撮合拒单 → setup 绩效 → 月度稳定性 → 组合资金贡献。</div>
+      <div class="note">最终判断顺序：数据质量 → 信号数量 → 入场前过滤 → 撮合拒单 → 信号形态绩效 → 月度稳定性 → 组合资金贡献。</div>
     </section>
   </main>
 

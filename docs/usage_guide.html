@@ -190,7 +190,7 @@
       </div>
       <div class="hero-card">
         <strong>当前设计原则</strong>
-        <p>路径选择使用文件夹选择框；同一任务的周期、代码、日期放在同一行；趋势、通道、区间、反转 detector 彼此解耦。</p>
+        <p>路径选择使用文件夹选择框；同一任务的周期、代码、日期放在同一行；趋势、通道、区间、反转四类形态识别彼此解耦。</p>
       </div>
     </div>
   </header>
@@ -216,9 +216,9 @@
       <h2>能力总览</h2>
       <div class="grid">
         <div class="card"><b>TDX 数据</b><span>日 K <code>1d</code> 和分钟 K <code>5m / 15m / 30m / 60m</code>，不使用 akshare 通道；高分钟周期可由 TDX <code>5m</code> 聚合。</span></div>
-        <div class="card"><b>数据管理</b><span>本地缓存库存、parquet 审计、按需补齐、覆盖率门禁、最长连续缺口定位、日 K 锚定分钟交易日。</span></div>
+        <div class="card"><b>数据管理</b><span>本地缓存库存、parquet 审计、按需补齐、K 线覆盖率检查、最长连续缺口定位、日 K 锚定分钟交易日。</span></div>
         <div class="card"><b>过滤规则</b><span>按主板、科创、创业、北交所涨停开盘规则过滤污染交易日。</span></div>
-        <div class="card"><b>独立 detector</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
+        <div class="card"><b>独立形态识别</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
         <div class="card"><b>挂单触发</b><span>突破在信号 K 上方/下方挂单，撮合层按下一根 K 是否触发成交。</span></div>
         <div class="card"><b>回测统计</b><span>逐笔交易、净值曲线、现金占比、净暴露、回撤痛感、订单拒绝、策略过滤、策略/标的/方向拆分。</span></div>
       </div>
@@ -300,7 +300,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
 
     <section id="single">
       <h2>单策略回测</h2>
-      <p>单策略只绑定一个 detector，不进入组合仓位分配层。适合独立验证趋势、区间、通道或反转模块。</p>
+      <p>单策略只绑定一种形态识别模块，不进入组合仓位分配层。适合独立验证趋势、区间、通道或反转模块。</p>
       <pre><code>python -m trending_winning.cli single-backtest \
   --symbols 000001.SZ,600519.SH \
   --timeframe 30m \
@@ -319,15 +319,15 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
   --output-dir runs/single-trend-001</code></pre>
       <h3>推荐验证顺序</h3>
       <ol>
-        <li>先关闭高周期门控，只验证 detector 本身。</li>
-        <li>再开启 <code>higher_timeframe</code>，检查方向不一致和上下文过期的过滤日志。</li>
+        <li>先关闭大周期方向过滤，只验证形态本身。</li>
+        <li>再开启 <code>higher_timeframe</code>，检查方向不一致和大周期信号过旧的过滤日志。</li>
         <li>最后加入真实风险、追价、手续费和滑点参数。</li>
       </ol>
     </section>
 
     <section id="portfolio">
       <h2>组合策略回测</h2>
-      <p>组合回测把多个独立 detector 生成的订单统一进入组合层，组合层只负责排序、容量、资金、行业和重叠持仓约束。</p>
+      <p>组合回测把多个独立形态生成的订单统一进入组合层，组合层只负责排序、容量、资金、行业和重叠持仓约束。</p>
       <pre><code>python -m trending_winning.cli portfolio-backtest \
   --symbols 000001.SZ,600519.SH \
   --timeframe 30m \
@@ -364,11 +364,11 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>trades.csv</code></td><td>成交明细，含 <code>order_id / event_id / event_type</code>。</td></tr>
           <tr><td><code>order_decisions.csv</code></td><td>撮合层接受或拒绝原因。</td></tr>
           <tr><td><code>setup_order_decision_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总撮合层接受、拒绝和实际风险指标。</td></tr>
-          <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、高周期不一致。</td></tr>
-          <tr><td><code>setup_strategy_filter_stats.csv</code></td><td>按 setup 汇总策略层过滤原因，区分信号 K 无流动性、高周期不一致和中部过滤。</td></tr>
+          <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、大周期方向不一致。</td></tr>
+          <tr><td><code>setup_strategy_filter_stats.csv</code></td><td>按信号形态汇总策略层过滤原因，区分信号 K 无流动性、大周期方向不一致和中部过滤。</td></tr>
           <tr><td><code>equity_curve.csv</code></td><td>单策略交易净值带成交时间轴；组合为逐 K 盯市净值。</td></tr>
           <tr><td><code>detector_stats.csv</code></td><td>按 <code>detector_name</code> 汇总趋势、区间、通道、反转等识别模块的成交绩效。</td></tr>
-          <tr><td><code>setup_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总 setup 级别绩效，用于比较 H1/H2、失败突破、通道突破和反转信号。</td></tr>
+          <tr><td><code>setup_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总信号形态级别绩效，用于比较 H1/H2、失败突破、通道突破和反转信号。</td></tr>
           <tr><td><code>data_inventory.csv</code></td><td>本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含存在状态、行数、起止时间、文件大小、修改时间和路径。</td></tr>
           <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率，包含 <code>expected_rows</code>、<code>missing_rows</code>、<code>coverage_ratio</code>、<code>max_missing_gap_minutes</code>、<code>first_missing_at</code>、<code>last_missing_at</code>、<code>max_missing_gap_start_at</code> 和 <code>max_missing_gap_end_at</code>，用于定位需要补齐的 K 线区间和最长连续缺口。</td></tr>
           <tr><td><code>limit_filter_audit.csv</code></td><td>日 K 涨停开盘过滤是否真实执行。</td></tr>
@@ -376,10 +376,10 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>summary.json</code></td><td>参数遍历总览，包含 <code>grid_case_count</code>、<code>case_count</code>、<code>grid_value_counts</code>、<code>pareto_case_count</code>、<code>best_case_name</code>、<code>best_case_config_hash</code>、<code>order_cache_hit_rate</code>、<code>candidate_cache_hit_rate</code>、<code>data_coverage_below_min_count</code>、<code>data_max_missing_gap_minutes</code>、<code>data_max_missing_gap_start_at</code>、<code>data_max_missing_gap_end_at</code>、<code>limit_filter_filtered_days</code>、<code>case_setup_order_decision_count</code> 和 <code>case_setup_strategy_filter_decision_count</code>；其中 <code>grid_case_count</code> 是原始组合数，<code>case_count</code> 是重复 grid 值展开前去重后的实际运行数。</td></tr>
           <tr><td><code>pareto.csv</code></td><td>从 <code>sweep.csv</code> 抽出的第一层非支配候选集，只包含 <code>pareto_rank=1</code> 的参数组。</td></tr>
           <tr><td><code>parameter_summary.csv</code></td><td>按每个 grid 参数值聚合结果，包含 <code>case_count</code>、<code>pareto_case_count</code>、<code>best_sweep_rank</code>、<code>avg_total_return</code>、<code>avg_max_drawdown</code>、<code>avg_monthly_worst_return</code>、<code>avg_monthly_return_std</code>、<code>avg_acceptance_rate</code>、<code>avg_rejection_rate</code>、<code>avg_rejected_no_fill_count</code>、<code>avg_strategy_filter_acceptance_rate</code> 和 <code>avg_strategy_filter_rejection_rate</code>，用于快速判断哪些参数区间更稳、哪些参数更容易被撮合或策略过滤淘汰。</td></tr>
-          <tr><td><code>case_setup_stats.csv</code></td><td>参数遍历每个 case 的 setup 级绩效，包含 <code>sweep_rank / pareto_rank / case_config_hash / detector_name / event_type / side</code>。</td></tr>
-          <tr><td><code>case_setup_order_decision_stats.csv</code></td><td>参数遍历每个 case 的 setup 级撮合接受、拒绝和实际风险指标。</td></tr>
-          <tr><td><code>case_setup_strategy_filter_stats.csv</code></td><td>参数遍历每个 case 的 setup 级策略过滤原因，保留过滤器和高周期上下文维度。</td></tr>
-          <tr><td><code>sweep.csv</code></td><td>参数遍历结果，首列 <code>sweep_rank</code> 按收益、回撤、月度稳定性、交易数和 case 名稳定排序；固定启用 detector 的 sweep 只保留启用 detector、高周期 trend 上下文和通用撮合参数，未启用 detector 的参数不会生成额外 case，也不会改变 <code>case_config_hash</code>；<code>pareto_rank=1</code> 是收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数的第一层非支配候选集，底层用批量支配矩阵分层；行内包含 <code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_return_std</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code> 等周期稳定性字段。</td></tr>
+          <tr><td><code>case_setup_stats.csv</code></td><td>参数遍历每个 case 的信号形态级绩效，包含 <code>sweep_rank / pareto_rank / case_config_hash / detector_name / event_type / side</code>。</td></tr>
+          <tr><td><code>case_setup_order_decision_stats.csv</code></td><td>参数遍历每个 case 的信号形态级撮合接受、拒绝和实际风险指标。</td></tr>
+          <tr><td><code>case_setup_strategy_filter_stats.csv</code></td><td>参数遍历每个 case 的信号形态级策略过滤原因，保留过滤器和大周期方向维度。</td></tr>
+          <tr><td><code>sweep.csv</code></td><td>参数遍历结果，首列 <code>sweep_rank</code> 按收益、回撤、月度稳定性、交易数和 case 名稳定排序；固定启用形态的 sweep 只保留启用形态、大周期 trend 上下文和通用撮合参数，未启用形态的参数不会生成额外 case，也不会改变 <code>case_config_hash</code>；<code>pareto_rank=1</code> 是收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数的第一层非支配候选集，底层用批量支配矩阵分层；行内包含 <code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_return_std</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code> 等周期稳定性字段。</td></tr>
           <tr><td><code>case_configs.jsonl</code></td><td>参数遍历每个 case 的完整配置，顺序与 <code>sweep.csv</code> 一致，可按 <code>case_config_hash</code> 回放。</td></tr>
         </tbody>
       </table>

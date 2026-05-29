@@ -62,16 +62,16 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "回测模式" for item in app.radio)
     app.radio[0].set_value("组合策略回测").run(timeout=5)
     assert any(button.label == "运行组合回测" for button in app.button)
-    assert any(checkbox.label == "严格数据质量门禁" for checkbox in app.checkbox)
-    assert any(item.label == "最低覆盖率门禁" for item in app.number_input)
+    assert any(checkbox.label == "严格数据质量检查" for checkbox in app.checkbox)
+    assert any(item.label == "最低K线覆盖率" for item in app.number_input)
     assert any(item.label == "手续费率" for item in app.number_input)
     assert any(item.label == "滑点bps" for item in app.number_input)
     assert any(item.label == "初始资金" for item in app.number_input)
     assert any(checkbox.label == "组合要求旧极端失败测试" for checkbox in app.checkbox)
     assert any(checkbox.label == "组合要求结构确认" for checkbox in app.checkbox)
     assert any(item.label == "同K止盈止损冲突" for item in app.selectbox)
-    assert any(item.label == "高周期方向门控" for item in app.selectbox)
-    assert any(item.label == "高周期最大过期分钟" for item in app.number_input)
+    assert any(item.label == "大周期方向过滤" for item in app.selectbox)
+    assert any(item.label == "大周期信号有效分钟" for item in app.number_input)
     assert any(item.label == "组合反转旧极端容忍度" for item in app.number_input)
     assert any(item.label == "组合最大实际风险" for item in app.number_input)
     assert any(item.label == "组合最大追价距离" for item in app.number_input)
@@ -114,9 +114,9 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
 
     assert not app.exception
     app.radio[0].set_value("单策略回测").run(timeout=5)
-    assert any(item.label == "单策略 detector" for item in app.selectbox)
-    assert any(item.label == "高周期方向门控" for item in app.selectbox)
-    assert any(item.label == "高周期最大过期分钟" for item in app.number_input)
+    assert any(item.label == "单策略形态" for item in app.selectbox)
+    assert any(item.label == "大周期方向过滤" for item in app.selectbox)
+    assert any(item.label == "大周期信号有效分钟" for item in app.number_input)
     assert any(item.label == "最大实际风险" for item in app.number_input)
     assert any(item.label == "最大追价距离" for item in app.number_input)
     assert any(item.label == "趋势强收盘" for item in app.number_input)
@@ -205,8 +205,8 @@ def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None
     for title in [
         "1. 样本范围",
         "2. 基础风控与成本",
-        "3. 数据门禁",
-        "4. 高周期门控",
+        "3. 数据质量检查",
+        "4. 大周期方向过滤",
         "5. 单策略参数",
         "5. 组合仓位与资金",
         "6. 保存与运行",
@@ -237,15 +237,21 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
 
     assert "docs/backtest_kline_guide.html" in readme
     assert "回测界面 K 线使用说明" in html
+    assert "术语对照" in html
     assert "趋势回撤：H2 顺势做多" in html
-    assert "区间失败突破：只做极端" in html
-    assert "反转：第二次信号才切换" in html
-    assert html.count("<svg") >= 3
+    assert "下降趋势：L2 顺势做空" in html
+    assert "交易区间下沿：失败突破做多" in html
+    assert "交易区间上沿：失败突破做空" in html
+    assert "通道突破：顺势延续" in html
+    assert "主要反转：第二次信号才切换" in html
+    assert html.count("<svg") >= 6
+    assert "门禁" not in html
+    assert "高周期门控" not in html
     for title in [
         "1. 样本范围",
         "2. 基础风控与成本",
-        "3. 数据门禁",
-        "4. 高周期门控",
+        "3. 数据质量检查",
+        "4. 大周期方向过滤",
         "5. 单策略参数",
         "5. 组合仓位与资金",
         "6. 保存与运行",
