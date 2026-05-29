@@ -83,6 +83,20 @@ EQUITY_STAT_KEYS = [
     "max_open_positions",
 ]
 
+PERIOD_STAT_KEYS = [
+    "count",
+    "win_rate",
+    "positive_count",
+    "negative_count",
+    "avg_return",
+    "return_std",
+    "best_return",
+    "worst_return",
+    "avg_drawdown",
+    "worst_drawdown",
+    "avg_observation_count",
+]
+
 _PERIOD_RETURN_COLUMNS = pd.Index(
     ["period", "start", "end", "start_net_value", "end_net_value", "return", "max_drawdown", "observation_count"]
 )
@@ -442,6 +456,32 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
     return pd.DataFrame(rows, columns=_PERIOD_RETURN_COLUMNS)
 
 
+def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: str = "period") -> dict[str, float]:
+    """把月度/年度收益表压成稳定性摘要；只依赖周期收益表，和策略模块完全解耦。"""
+    if period_returns.empty:
+        return _empty_period_return_statistics(prefix)
+
+    returns = _numeric_column(period_returns, "return")
+    drawdown = _numeric_column(period_returns, "max_drawdown")
+    observation_count = _numeric_column(period_returns, "observation_count")
+    period_count = float(len(returns))
+    positive_count = float((returns > 0).sum())
+    negative_count = float((returns < 0).sum())
+    return {
+        f"{prefix}_count": period_count,
+        f"{prefix}_win_rate": _ratio_or_zero(positive_count, period_count),
+        f"{prefix}_positive_count": positive_count,
+        f"{prefix}_negative_count": negative_count,
+        f"{prefix}_avg_return": _mean_or_zero(returns),
+        f"{prefix}_return_std": _std_or_zero(returns),
+        f"{prefix}_best_return": _max_or_zero(returns),
+        f"{prefix}_worst_return": _min_or_zero(returns),
+        f"{prefix}_avg_drawdown": _mean_or_zero(drawdown),
+        f"{prefix}_worst_drawdown": _min_or_zero(drawdown),
+        f"{prefix}_avg_observation_count": _mean_or_zero(observation_count),
+    }
+
+
 def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]:
     """汇总订单接受和拒绝原因；用于解释信号为什么没有变成成交。"""
     keys = [
@@ -686,6 +726,16 @@ def _max_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.max())
+
+
+def _min_or_zero(values: pd.Series) -> float:
+    if values.empty:
+        return 0.0
+    return _round_float(values.min())
+
+
+def _empty_period_return_statistics(prefix: str) -> dict[str, float]:
+    return {f"{prefix}_{key}": 0.0 for key in PERIOD_STAT_KEYS}
 
 
 def _weighted_mean_or_zero(values: pd.Series, weights: pd.Series) -> float:

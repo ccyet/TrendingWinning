@@ -164,6 +164,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "inventory-data" in html
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
+    assert "monthly_win_rate" in html
+    assert "周期稳定性" in html
 
 
 def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
@@ -177,6 +179,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "Mac 端 TDX 接口测试以 Parallels/Windows 通达信为准" in guide
     assert "分钟 no_data" in readme
     assert "分钟 no_data" in guide
+    assert "monthly_worst_return" in readme
+    assert "monthly_worst_return" in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
     assert "pareto_rank" in readme

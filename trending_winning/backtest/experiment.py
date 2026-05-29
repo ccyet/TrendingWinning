@@ -25,6 +25,7 @@ from trending_winning.backtest.stats import (
     STAT_KEYS,
     compute_decision_reason_statistics,
     compute_grouped_trade_statistics,
+    compute_period_return_statistics,
     compute_period_returns,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
@@ -292,6 +293,8 @@ def run_single_strategy_experiment(
         timeframe=config.timeframe,
     )
     backtest = _with_data_management_statistics(backtest, data)
+    monthly_returns = compute_period_returns(_trade_dated_equity_curve(backtest), freq="M")
+    backtest = _with_period_return_statistics(backtest, monthly_returns)
     result = SingleStrategyExperimentResult(
         config=config,
         backtest=backtest,
@@ -311,7 +314,7 @@ def run_single_strategy_experiment(
             backtest.strategy_filter_decisions,
             group_fields=("strategy_name", "filter_name", "context_timeframe"),
         ),
-        monthly_returns=compute_period_returns(_trade_dated_equity_curve(backtest), freq="M"),
+        monthly_returns=monthly_returns,
     )
     if save:
         save_single_strategy_experiment(result)
@@ -349,6 +352,8 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         timeframe=config.timeframe,
     )
     backtest = _with_data_management_statistics(backtest, data)
+    monthly_returns = compute_period_returns(backtest.equity_curve, freq="M")
+    backtest = _with_period_return_statistics(backtest, monthly_returns)
     result = PortfolioExperimentResult(
         config=config,
         backtest=backtest,
@@ -367,7 +372,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
             backtest.strategy_filter_decisions,
             group_fields=("strategy_name", "filter_name", "context_timeframe"),
         ),
-        monthly_returns=compute_period_returns(backtest.equity_curve, freq="M"),
+        monthly_returns=monthly_returns,
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
     )
     if save:
@@ -831,6 +836,19 @@ def _with_data_management_statistics(result: BacktestResult, data: _LoadedExperi
     )
 
 
+def _with_period_return_statistics(result: BacktestResult, period_returns: pd.DataFrame) -> BacktestResult:
+    """运行态结果同步携带周期稳定性摘要，避免 Web/CLI 和落盘文件口径分裂。"""
+    stats = dict(result.stats)
+    stats.update(compute_period_return_statistics(period_returns, prefix="monthly"))
+    return BacktestResult(
+        trades=result.trades,
+        equity_curve=result.equity_curve,
+        stats=stats,
+        order_decisions=result.order_decisions,
+        strategy_filter_decisions=result.strategy_filter_decisions,
+    )
+
+
 def benchmark_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = False) -> PortfolioBenchmarkReport:
     result = run_portfolio_experiment(config, save=save)
     report = build_portfolio_benchmark_report(result)
@@ -918,6 +936,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
             data_inventory=result.data_inventory,
         )
     )
+    stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))
     stats["elapsed_seconds"] = float(result.elapsed_seconds)
     (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
     result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
@@ -951,6 +970,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
             data_inventory=result.data_inventory,
         )
     )
+    stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))
     stats["elapsed_seconds"] = float(result.elapsed_seconds)
     (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
     result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)

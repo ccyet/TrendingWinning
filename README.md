@@ -196,6 +196,7 @@ python -m trending_winning.cli single-backtest \
 保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
+`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown`，避免参数对比时再手工汇总月度收益。
 单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio`。
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个 detector 事件和哪类 setup。
@@ -248,6 +249,7 @@ python -m trending_winning.cli portfolio-backtest \
 保存目录会包含 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
+`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown`，用于比较不同 detector、仓位参数和高周期门控下的月度稳定性。
 组合仓位容量按实际 `entry_date` 分配，不按信号时间提前占用资金；风险预算按真实 `entry_price / risk_per_share` 计算，不用计划挂单价低估跳空成交风险。
 `--capital-per-trade` 是固定单笔名义仓位，`--risk-per-trade` 是按真实入场风险反推仓位；两者都为空时按最大持仓数均分。
 `--reserve-cash` 预留现金，`--allow-same-symbol-overlap` 允许同一股票多策略重叠持仓。

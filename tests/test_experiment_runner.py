@@ -130,6 +130,10 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert saved_stats["data_inventory_row_count"] == 2.0
     assert saved_stats["data_inventory_cached_count"] == 1.0
     assert saved_stats["data_inventory_missing_file_count"] == 1.0
+    assert saved_stats["monthly_count"] == float(len(result.monthly_returns))
+    assert saved_stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
+    assert result.backtest.stats["monthly_count"] == float(len(result.monthly_returns))
+    assert result.backtest.stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert saved_stats["limit_filter_failed_count"] == result.backtest.stats["limit_filter_failed_count"]
     assert result.data_coverage["status"].tolist() == ["ok"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
@@ -1508,6 +1512,10 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_stats["data_inventory_row_count"] == 2.0
     assert saved_stats["data_inventory_cached_count"] == 1.0
     assert saved_stats["data_inventory_missing_file_count"] == 1.0
+    assert saved_stats["monthly_count"] == float(len(result.monthly_returns))
+    assert saved_stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
+    assert result.backtest.stats["monthly_count"] == float(len(result.monthly_returns))
+    assert result.backtest.stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert saved_stats["limit_filter_audit_row_count"] == 1.0
     assert saved_stats["limit_filter_filtered_days"] == 0.0
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"

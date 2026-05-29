@@ -8,6 +8,7 @@ from trending_winning.backtest.stats import (
     compute_decision_reason_statistics,
     compute_equity_statistics,
     compute_grouped_trade_statistics,
+    compute_period_return_statistics,
     compute_period_returns,
     compute_trade_statistics,
     summarize_order_decisions,
@@ -245,6 +246,49 @@ def test_compute_period_returns_reports_period_drawdown_and_observation_count() 
     assert by_period.loc["2026-05", "max_drawdown"] == pytest.approx(1.1 / 1.2 - 1.0)
     assert by_period.loc["2026-06", "observation_count"] == 1
     assert by_period.loc["2026-06", "max_drawdown"] == 0.0
+
+
+def test_compute_period_return_statistics_reports_stability_summary() -> None:
+    period_returns = pd.DataFrame(
+        {
+            "period": ["2026-01", "2026-02", "2026-03", "2026-04"],
+            "return": [0.10, -0.05, 0.0, 0.20],
+            "max_drawdown": [-0.02, -0.08, 0.0, -0.01],
+            "observation_count": [2, 3, 1, 4],
+        }
+    )
+
+    stats = compute_period_return_statistics(period_returns, prefix="monthly")
+
+    assert stats["monthly_count"] == 4.0
+    assert stats["monthly_positive_count"] == 2.0
+    assert stats["monthly_negative_count"] == 1.0
+    assert stats["monthly_win_rate"] == pytest.approx(0.5)
+    assert stats["monthly_avg_return"] == pytest.approx(0.0625)
+    assert stats["monthly_return_std"] == pytest.approx(period_returns["return"].std(ddof=0))
+    assert stats["monthly_best_return"] == pytest.approx(0.20)
+    assert stats["monthly_worst_return"] == pytest.approx(-0.05)
+    assert stats["monthly_avg_drawdown"] == pytest.approx(-0.0275)
+    assert stats["monthly_worst_drawdown"] == pytest.approx(-0.08)
+    assert stats["monthly_avg_observation_count"] == pytest.approx(2.5)
+
+
+def test_compute_period_return_statistics_handles_empty_period_table() -> None:
+    stats = compute_period_return_statistics(pd.DataFrame(), prefix="monthly")
+
+    assert stats == {
+        "monthly_count": 0.0,
+        "monthly_win_rate": 0.0,
+        "monthly_positive_count": 0.0,
+        "monthly_negative_count": 0.0,
+        "monthly_avg_return": 0.0,
+        "monthly_return_std": 0.0,
+        "monthly_best_return": 0.0,
+        "monthly_worst_return": 0.0,
+        "monthly_avg_drawdown": 0.0,
+        "monthly_worst_drawdown": 0.0,
+        "monthly_avg_observation_count": 0.0,
+    }
 
 
 def test_compute_period_returns_includes_first_period_observation_against_prior_close() -> None:
