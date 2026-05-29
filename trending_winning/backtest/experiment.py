@@ -1074,6 +1074,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
+    _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1089,6 +1090,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     (output_dir / "config.json").write_text(_json_dump(config_payload))
     (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
+    _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
@@ -1129,6 +1131,14 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
         if column in table.columns:
             summary[column] = _numeric_column_sum(table, column)
     return summary
+
+
+def _pareto_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
+    """提取第一层 Pareto 候选，保持 sweep.csv 的列和排名顺序。"""
+    if table.empty or "pareto_rank" not in table.columns:
+        return table.iloc[0:0].copy()
+    ranks = pd.to_numeric(table["pareto_rank"], errors="coerce")
+    return table.loc[ranks.eq(1)].copy()
 
 
 def _grid_value_counts(grid: Mapping[str, Sequence[object]]) -> dict[str, int]:

@@ -858,6 +858,7 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
 
     out = capsys.readouterr().out
     assert "sweep.csv" in out
+    assert "pareto.csv" in out
     assert "summary.json" in out
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")
@@ -931,6 +932,7 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "sweep.csv" in out
+    assert "pareto.csv" in out
     assert "summary.json" in out
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")

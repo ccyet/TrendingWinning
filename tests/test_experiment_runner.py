@@ -702,6 +702,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
+    assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
@@ -710,6 +711,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_config["name"] == "sweep"
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
@@ -737,6 +739,10 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_sweep["monthly_count"].ge(1.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert saved_pareto["pareto_rank"].eq(1).all()
+    assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
+        saved_sweep["pareto_rank"].eq(1), "case_config_hash"
+    ].tolist()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert [item["case_name"] for item in saved_cases] == saved_sweep["case_name"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000002.SZ", "30m"), "status"] == "cached"
@@ -1204,6 +1210,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert (output_dir / "sweep.csv").exists()
+    assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "summary.json").exists()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
@@ -1212,6 +1219,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_config["name"] == "single-sweep"
     assert saved_config["sweep_grid"] == {"fee_rate": [0.0, 0.001], "slippage_bps": [0.0, 5.0]}
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
+    saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_cases = [json.loads(line) for line in (output_dir / "case_configs.jsonl").read_text().splitlines()]
     assert {
@@ -1233,6 +1241,10 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_sweep["monthly_count"].eq(0.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert saved_pareto["pareto_rank"].eq(1).all()
+    assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
+        saved_sweep["pareto_rank"].eq(1), "case_config_hash"
+    ].tolist()
     assert [item["case_config_hash"] for item in saved_cases] == saved_sweep["case_config_hash"].tolist()
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     saved_summary = json.loads((output_dir / "summary.json").read_text())
