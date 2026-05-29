@@ -277,6 +277,7 @@ def run_single_strategy_experiment(
         _backtest_config(config),
         timeframe=config.timeframe,
     )
+    backtest = _with_data_management_statistics(backtest, data)
     result = SingleStrategyExperimentResult(
         config=config,
         backtest=backtest,
@@ -332,6 +333,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         ),
         timeframe=config.timeframe,
     )
+    backtest = _with_data_management_statistics(backtest, data)
     result = PortfolioExperimentResult(
         config=config,
         backtest=backtest,
@@ -777,6 +779,25 @@ def _with_strategy_filter_decisions(result: BacktestResult, filter_decisions: pd
         stats=stats,
         order_decisions=result.order_decisions,
         strategy_filter_decisions=filter_decisions,
+    )
+
+
+def _with_data_management_statistics(result: BacktestResult, data: _LoadedExperimentData) -> BacktestResult:
+    """运行态结果也携带数据审计摘要，保证 Web/CLI 和保存产物统计口径一致。"""
+    stats = dict(result.stats)
+    stats.update(
+        _data_management_statistics(
+            data.data_audit,
+            data.limit_filter_audit,
+            filtered_limit_open_count=len(data.filtered_limit_open_days),
+        )
+    )
+    return BacktestResult(
+        trades=result.trades,
+        equity_curve=result.equity_curve,
+        stats=stats,
+        order_decisions=result.order_decisions,
+        strategy_filter_decisions=result.strategy_filter_decisions,
     )
 
 

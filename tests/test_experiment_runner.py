@@ -121,6 +121,11 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert saved_config["reversal_require_structure_confirmation"] is False
     assert saved_stats["trade_count"] == result.backtest.stats["trade_count"]
     assert saved_stats["strategy_signal_count"] == result.backtest.stats["strategy_signal_count"]
+    assert result.backtest.stats["data_audit_row_count"] == 1.0
+    assert result.backtest.stats["limit_filter_audit_row_count"] == 1.0
+    assert result.backtest.stats["limit_filter_failed_count"] == 1.0
+    assert saved_stats["data_audit_row_count"] == result.backtest.stats["data_audit_row_count"]
+    assert saved_stats["limit_filter_failed_count"] == result.backtest.stats["limit_filter_failed_count"]
     assert result.data_coverage["status"].tolist() == ["ok"]
     assert saved_coverage.loc[0, "stock_code"] == "000001.SZ"
     assert result.limit_filter_audit["status"].tolist() == ["daily_missing"]
@@ -1301,6 +1306,10 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert result.config.detector == "trend"
     assert result.elapsed_seconds > 0
     assert result.backtest.stats["trade_count"] >= 1
+    assert result.backtest.stats["data_audit_row_count"] == 1.0
+    assert result.backtest.stats["data_weighted_coverage_ratio"] == pytest.approx(1.0)
+    assert result.backtest.stats["limit_filter_audit_row_count"] == 1.0
+    assert result.backtest.stats["limit_filter_filtered_days"] == 0.0
     assert "date" in result.backtest.equity_curve.columns
     assert result.backtest.trades["detector_name"].eq("trend").all()
     assert result.backtest.trades["strategy_name"].eq("trend_signal_bar").all()
