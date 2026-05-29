@@ -1321,7 +1321,16 @@ def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
     assert ranked.columns[0] == "sweep_rank"
 
 
-def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path) -> None:
+def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path, monkeypatch) -> None:
+    hash_calls = 0
+    original_hash = experiment_module._case_config_hash
+
+    def spy_case_config_hash(config):
+        nonlocal hash_calls
+        hash_calls += 1
+        return original_hash(config)
+
+    monkeypatch.setattr(experiment_module, "_case_config_hash", spy_case_config_hash)
     config = SingleStrategyExperimentConfig(
         name="duplicate-grid",
         data_root=str(tmp_path),
@@ -1341,6 +1350,7 @@ def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path) -> None:
     )
 
     assert len(variants) == 1
+    assert hash_calls == 1
     assert variants[0].fee_rate == 0.0
     assert variants[0].slippage_bps == 0.0
 

@@ -1287,7 +1287,8 @@ def _sweep_variants(
     if data_scope_fields:
         raise ValueError(f"不能在同一次 sweep 中改变数据范围字段：{', '.join(sorted(data_scope_fields))}")
     keys = list(grid)
-    value_lists = [list(grid[key]) for key in keys]
+    raw_value_lists = [list(grid[key]) for key in keys]
+    value_lists = [_deduplicate_sweep_grid_values(values) for values in raw_value_lists]
     empty_keys = [key for key, values in zip(keys, value_lists, strict=False) if not values]
     if empty_keys:
         raise ValueError(f"grid 字段不能为空：{', '.join(empty_keys)}")
@@ -1296,6 +1297,23 @@ def _sweep_variants(
         for values in product(*value_lists)
     ]
     return _deduplicate_sweep_variants(variants)
+
+
+def _deduplicate_sweep_grid_values(values: Sequence[object]) -> list[object]:
+    """在笛卡尔积展开前去掉重复参数值，避免重复配置进入热路径。"""
+    seen: set[str] = set()
+    deduplicated: list[object] = []
+    for value in values:
+        fingerprint = _sweep_grid_value_fingerprint(value)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        deduplicated.append(value)
+    return deduplicated
+
+
+def _sweep_grid_value_fingerprint(value: object) -> str:
+    return json.dumps(_json_ready(value), ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
 
 
 def _deduplicate_sweep_variants(
