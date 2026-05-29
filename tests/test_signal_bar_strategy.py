@@ -6,7 +6,11 @@ import pandas as pd
 import pytest
 
 from trending_winning.detectors.base import DETECTOR_EVENT_COLUMNS
-from trending_winning.strategies.signal_bar import SignalBarStopStrategy, SignalBarStopStrategyConfig
+from trending_winning.strategies.signal_bar import (
+    SignalBarStopStrategy,
+    SignalBarStopStrategyConfig,
+    _signal_filter_decisions,
+)
 
 
 class FixedEventDetector:
@@ -173,3 +177,9 @@ def test_signal_bar_strategy_uses_vectorized_order_generation_not_dataframe_row_
     source = getsource(SignalBarStopStrategy.generate_orders)
 
     assert ".iterrows(" not in source
+
+
+def test_signal_filter_decisions_uses_vectorized_columns_not_record_loop() -> None:
+    source = getsource(_signal_filter_decisions)
+
+    assert ".to_dict(" not in source

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from trending_winning.data.schema import normalize_bars, normalize_symbol
@@ -154,51 +155,35 @@ def _signal_filter_decisions(
     strategy_name: str,
 ) -> pd.DataFrame:
     """记录信号层过滤结果；解释 detector 事件为什么没有变成订单。"""
-    rows: list[dict[str, object]] = []
-    for event, accepted, liquid, tradable in zip(
-        events.to_dict("records"),
-        accepted_mask.to_numpy(dtype=bool),
-        liquid_mask.to_numpy(dtype=bool),
-        tradable_mask.to_numpy(dtype=bool),
-        strict=True,
-    ):
-        event_id = str(event.get("event_id", ""))
-        rows.append(
-            {
-                "order_id": f"{strategy_name}:{event_id}",
-                "event_id": event_id,
-                "strategy_name": strategy_name,
-                "base_strategy_name": strategy_name,
-                "detector_name": event.get("detector_name", ""),
-                "event_type": event.get("event_type", ""),
-                "stock_code": event.get("stock_code", ""),
-                "timeframe": event.get("timeframe", ""),
-                "signal_date": event.get("date", pd.NaT),
-                "signal_bar_index": _safe_bar_index(event.get("bar_index", -1)),
-                "side": event.get("direction", ""),
-                "status": "accepted" if bool(accepted) else "rejected",
-                "reason": _signal_filter_reject_reason(bool(accepted), bool(liquid), bool(tradable)),
-                "filter_name": "signal_bar_adapter",
-                "context_timeframe": "",
-                "context_date": pd.NaT,
-                "context_state": "",
-            }
-        )
-    return pd.DataFrame(rows, columns=pd.Index(STRATEGY_FILTER_DECISION_COLUMNS))
-
-
-def _signal_filter_reject_reason(accepted: bool, liquid: bool, tradable: bool) -> str:
-    if accepted:
-        return ""
-    if not tradable:
-        return "non_tradable_direction"
-    if not liquid:
-        return "signal_bar_no_liquidity"
-    return "invalid_signal_order"
-
-
-def _safe_bar_index(value: object) -> int:
-    number = pd.to_numeric(value, errors="coerce")
-    if pd.isna(number):
-        return -1
-    return int(number)
+    event_id = events["event_id"].fillna("").astype(str)
+    accepted = accepted_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
+    liquid = liquid_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
+    tradable = tradable_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
+    reason = np.select(
+        [accepted, ~tradable, ~liquid],
+        ["", "non_tradable_direction", "signal_bar_no_liquidity"],
+        default="invalid_signal_order",
+    )
+    result = pd.DataFrame(
+        {
+            "order_id": strategy_name + ":" + event_id,
+            "event_id": event_id,
+            "strategy_name": strategy_name,
+            "base_strategy_name": strategy_name,
+            "detector_name": events["detector_name"].fillna("").astype(str).to_numpy(),
+            "event_type": events["event_type"].fillna("").astype(str).to_numpy(),
+            "stock_code": events["stock_code"].fillna("").astype(str).to_numpy(),
+            "timeframe": events["timeframe"].fillna("").astype(str).to_numpy(),
+            "signal_date": events["date"].to_numpy(),
+            "signal_bar_index": pd.to_numeric(events["bar_index"], errors="coerce").fillna(-1).astype(int).to_numpy(),
+            "side": events["direction"].fillna("").astype(str).to_numpy(),
+            "status": np.where(accepted, "accepted", "rejected"),
+            "reason": reason,
+            "filter_name": "signal_bar_adapter",
+            "context_timeframe": "",
+            "context_date": pd.NaT,
+            "context_state": "",
+        },
+        columns=pd.Index(STRATEGY_FILTER_DECISION_COLUMNS),
+    )
+    return result
