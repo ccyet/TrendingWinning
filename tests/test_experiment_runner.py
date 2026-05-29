@@ -660,6 +660,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "sweep_rank",
         "pareto_rank",
         "is_pareto_efficient",
+        "case_config_hash",
         "case_name",
         "risk_reward",
         "max_holding_bars",
@@ -675,9 +676,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "filtered_limit_open_count",
     }.issubset(result.table.columns)
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert result.table["case_config_hash"].is_unique
     assert result.table.columns[0] == "sweep_rank"
     assert result.table.columns[1] == "pareto_rank"
     assert result.table.columns[2] == "is_pareto_efficient"
+    assert result.table.columns[3] == "case_config_hash"
     assert result.table["total_return"].tolist() == sorted(result.table["total_return"].tolist(), reverse=True)
     assert result.data_coverage["status"].tolist() == ["ok", "ok"]
     assert (output_dir / "sweep.csv").exists()
@@ -690,6 +694,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "sweep_rank",
         "pareto_rank",
         "is_pareto_efficient",
+        "case_config_hash",
         "order_count",
         "accepted_order_count",
         "rejected_order_count",
@@ -704,6 +709,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "filtered_limit_open_count",
     }.issubset(saved_sweep.columns)
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
 
 
 def test_portfolio_parameter_sweep_rejects_data_scope_grid_fields(tmp_path: Path, monkeypatch) -> None:
@@ -1120,6 +1126,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "sweep_rank",
         "pareto_rank",
         "is_pareto_efficient",
+        "case_config_hash",
         "case_name",
         "fee_rate",
         "slippage_bps",
@@ -1134,9 +1141,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "filtered_limit_open_count",
     }.issubset(result.table.columns)
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert result.table["case_config_hash"].is_unique
     assert result.table.columns[0] == "sweep_rank"
     assert result.table.columns[1] == "pareto_rank"
     assert result.table.columns[2] == "is_pareto_efficient"
+    assert result.table.columns[3] == "case_config_hash"
     assert result.table["order_cache_status"].tolist() == ["miss", "hit", "hit", "hit"]
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "config.json").exists()
@@ -1148,6 +1158,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "sweep_rank",
         "pareto_rank",
         "is_pareto_efficient",
+        "case_config_hash",
         "fee_rate",
         "slippage_bps",
         "order_cache_status",
@@ -1156,6 +1167,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "filtered_limit_open_count",
     }.issubset(saved_sweep.columns)
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
+    assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
 
 
 def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
@@ -1196,6 +1208,40 @@ def test_sweep_table_ranking_reports_pareto_fronts() -> None:
     assert by_case.loc["case-d", "pareto_rank"] == 3
     assert bool(by_case.loc["case-a", "is_pareto_efficient"]) is True
     assert bool(by_case.loc["case-c", "is_pareto_efficient"]) is False
+
+
+def test_sweep_case_config_hash_is_stable_and_changes_with_config() -> None:
+    base = PortfolioExperimentConfig(
+        name="portfolio-sweep",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        strategy_priority={"b": 2, "a": 1},
+    )
+    same = PortfolioExperimentConfig(
+        name="portfolio-sweep",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        strategy_priority={"a": 1, "b": 2},
+    )
+    changed = PortfolioExperimentConfig(
+        name="portfolio-sweep",
+        data_root="/data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        risk_reward=2.5,
+        strategy_priority={"a": 1, "b": 2},
+    )
+
+    assert experiment_module._case_config_hash(base) == experiment_module._case_config_hash(same)
+    assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(changed)
 
 
 def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_params_change(

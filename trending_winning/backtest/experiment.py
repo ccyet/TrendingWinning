@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, fields, replace
+import hashlib
 from itertools import product
 import json
 import math
@@ -438,6 +439,7 @@ def run_portfolio_parameter_sweep(
         case_elapsed = max(perf_counter() - case_start, 1e-12)
         row: dict[str, object] = {
             "case_name": f"{config.name}-{case_index:03d}",
+            "case_config_hash": _case_config_hash(variant),
             "bar_count": int(len(data.bars)),
             "trade_count": int(len(backtest.trades)),
             "equity_points": int(len(backtest.equity_curve)),
@@ -516,6 +518,7 @@ def run_single_strategy_parameter_sweep(
         case_elapsed = max(perf_counter() - case_start, 1e-12)
         row: dict[str, object] = {
             "case_name": f"{config.name}-{case_index:03d}",
+            "case_config_hash": _case_config_hash(variant),
             "bar_count": int(len(data.bars)),
             "trade_count": int(len(backtest.trades)),
             "equity_points": int(len(backtest.equity_curve)),
@@ -997,7 +1000,16 @@ def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
     pareto_rank = _pareto_front_ranks(ranked)
     ranked.insert(1, "pareto_rank", pareto_rank)
     ranked.insert(2, "is_pareto_efficient", [rank == 1 for rank in pareto_rank])
+    if "case_config_hash" in ranked.columns:
+        values = ranked.pop("case_config_hash")
+        ranked.insert(3, "case_config_hash", values)
     return ranked
+
+
+def _case_config_hash(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> str:
+    """给完整实验配置生成稳定指纹，用于 sweep 行跨机器复现和对照。"""
+    payload = json.dumps(_json_ready(asdict(config)), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _pareto_front_ranks(table: pd.DataFrame) -> list[int]:
