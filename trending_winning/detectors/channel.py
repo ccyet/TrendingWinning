@@ -312,36 +312,30 @@ def _attach_group_swing_channel(group: pd.DataFrame, cfg: ChannelDetectorConfig)
                 low_anchors.append(int(confirmed_index))
             if pivot_high[confirmed_index]:
                 high_anchors.append(int(confirmed_index))
-        if len(low_anchors) >= 2:
-            first, second = low_anchors[-2], low_anchors[-1]
-            beta = (low[second] - low[first]) / (second - first)
-            start = max(0, index - cfg.lookback + 1)
-            window_indexes = np.arange(start, index + 1, dtype=float)
+        selected_anchor = _select_swing_channel_anchor(low_anchors, high_anchors, low, high)
+        if selected_anchor is None:
+            continue
+        anchor_kind, first, second = selected_anchor
+        beta = _anchor_slope(low if anchor_kind == "support" else high, first, second)
+        start = max(0, index - cfg.lookback + 1)
+        window_indexes = np.arange(start, index + 1, dtype=float)
+        if anchor_kind == "support":
             support_window = low[first] + beta * (window_indexes - first)
             support_value = float(low[first] + beta * (index - first))
             width = max(float(np.nanmax(high[start : index + 1] - support_window)), 1e-9)
             lower[index] = support_value
             upper[index] = support_value + width
-            mid[index] = (upper[index] + lower[index]) / 2.0
-            slope[index] = beta
-            sigma[index] = width / 2.0
-            anchor_one[index] = first
-            anchor_two[index] = second
-        elif len(high_anchors) >= 2:
-            first, second = high_anchors[-2], high_anchors[-1]
-            beta = (high[second] - high[first]) / (second - first)
-            start = max(0, index - cfg.lookback + 1)
-            window_indexes = np.arange(start, index + 1, dtype=float)
+        else:
             resistance_window = high[first] + beta * (window_indexes - first)
             resistance_value = float(high[first] + beta * (index - first))
             width = max(float(np.nanmax(resistance_window - low[start : index + 1])), 1e-9)
             upper[index] = resistance_value
             lower[index] = resistance_value - width
-            mid[index] = (upper[index] + lower[index]) / 2.0
-            slope[index] = beta
-            sigma[index] = width / 2.0
-            anchor_one[index] = first
-            anchor_two[index] = second
+        mid[index] = (upper[index] + lower[index]) / 2.0
+        slope[index] = beta
+        sigma[index] = width / 2.0
+        anchor_one[index] = first
+        anchor_two[index] = second
 
     result["channel_mid"] = mid
     result["channel_upper"] = upper
@@ -356,6 +350,31 @@ def _attach_group_swing_channel(group: pd.DataFrame, cfg: ChannelDetectorConfig)
     result["channel_anchor_index_1"] = anchor_one
     result["channel_anchor_index_2"] = anchor_two
     return result
+
+
+def _select_swing_channel_anchor(
+    low_anchors: list[int],
+    high_anchors: list[int],
+    low: np.ndarray,
+    high: np.ndarray,
+) -> tuple[str, int, int] | None:
+    """按趋势方向选择摆动通道锚点：上升用低点支撑，下降用高点压力。"""
+    low_pair = tuple(low_anchors[-2:]) if len(low_anchors) >= 2 else ()
+    high_pair = tuple(high_anchors[-2:]) if len(high_anchors) >= 2 else ()
+    low_slope = _anchor_slope(low, *low_pair) if low_pair else np.nan
+    high_slope = _anchor_slope(high, *high_pair) if high_pair else np.nan
+
+    if high_pair and high_slope < 0 and (not low_pair or low_slope <= 0):
+        return "resistance", int(high_pair[0]), int(high_pair[1])
+    if low_pair:
+        return "support", int(low_pair[0]), int(low_pair[1])
+    if high_pair:
+        return "resistance", int(high_pair[0]), int(high_pair[1])
+    return None
+
+
+def _anchor_slope(values: np.ndarray, first: int, second: int) -> float:
+    return float((values[second] - values[first]) / (second - first))
 
 
 def _metadata_float(value: object) -> float | None:

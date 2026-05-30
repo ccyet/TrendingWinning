@@ -656,10 +656,12 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "avg_accepted_actual_risk_pct" in readme
     assert "参数遍历成交质量" in readme
     assert "确认 K 线完成后" in readme
+    assert "下降压力线" in readme
     assert "回测界面 K 线使用说明" in html
     assert "盈利通道回撤止盈" in html
     assert "术语对照" in html
     assert "确认 K 线完成后" in html
+    assert "下降压力线" in html
     assert "趋势回撤：H2 顺势做多" in html
     assert "下降趋势：L2 顺势做空" in html
     assert "H1/H2/L1/L2" in html

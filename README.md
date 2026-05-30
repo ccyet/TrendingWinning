@@ -11,7 +11,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 本地 parquet 落地：兼容 `trend-backtest/data/market/<timeframe>/<adjust>/<symbol>.parquet`，其中 `1d` 写入既有 `market/daily/<adjust>` 目录
 - 本地缓存库存：按 `1d / 5m / 15m / 30m / 60m` 列出 parquet 是否存在、行数、起止时间、文件大小和状态
 - 标志K识别：振幅、量能、实体比例参数化
-- 趋势通道识别：支持批量滚动 log 回归通道和摆动点趋势通道，上下轨、斜率、R²、方向和锚点可追溯
+- 趋势通道识别：支持批量滚动 log 回归通道和摆动点趋势通道；上升通道优先用确认低点画上升支撑线，下降通道优先用确认高点画下降压力线，上下轨、斜率、R²、方向和锚点可追溯
 - 市场结构识别：pivot 标在实际摆动 K 上，但 `last_swing_high / last_swing_low / structure_score / BOS / CHoCH` 通过向量化延迟确认，只在右侧确认 K 线完成后才更新，避免结构字段提前暴露未来信息
 - 突破 trigger：基于上一根已完成通道上轨，避免把当前突破 K 纳入边界
 - 多周期扫描：一次聚合 `5m / 15m / 30m / 60m` 的最新通道和突破状态

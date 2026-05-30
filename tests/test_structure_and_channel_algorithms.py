@@ -174,6 +174,23 @@ def test_swing_channel_uses_confirmed_pivots_as_trendline_anchors() -> None:
     assert last["channel_anchor_index_1"] < last["channel_anchor_index_2"] < last.name
 
 
+def test_swing_channel_uses_falling_swing_highs_for_downtrend_resistance() -> None:
+    bars = _bars([14.0, 13.0, 13.6, 12.4, 13.0, 11.8, 12.4, 11.2, 10.8])
+
+    channeled = attach_swing_trend_channel(
+        bars,
+        ChannelDetectorConfig(channel_method="swing", swing_left_bars=1, swing_right_bars=1),
+    )
+    last = channeled.iloc[-1]
+    expected_slope = (bars.loc[6, "high"] - bars.loc[4, "high"]) / (6 - 4)
+    expected_resistance = bars.loc[4, "high"] + expected_slope * (last.name - 4)
+
+    assert last["channel_anchor_index_1"] == 4
+    assert last["channel_anchor_index_2"] == 6
+    assert last["channel_slope"] == pytest.approx(expected_slope)
+    assert last["channel_upper"] == pytest.approx(expected_resistance)
+
+
 def test_channel_detector_can_emit_events_from_swing_channel() -> None:
     bars = _bars([10.0, 11.0, 10.4, 12.2, 11.2, 13.1, 12.0, 13.8, 15.2])
 
