@@ -232,6 +232,8 @@ class PortfolioExperimentConfig:
     fee_rate: float = 0.0
     slippage_bps: float = 0.0
     initial_equity: float = 1.0
+    trailing_take_profit_activation_pct: float = 0.0
+    trailing_take_profit_drawdown_pct: float = 0.0
     strict_data_quality: bool = True
     min_coverage_ratio: float | None = None
     output_dir: str = ""
@@ -284,6 +286,8 @@ class SingleStrategyExperimentConfig:
     fee_rate: float = 0.0
     slippage_bps: float = 0.0
     initial_equity: float = 1.0
+    trailing_take_profit_activation_pct: float = 0.0
+    trailing_take_profit_drawdown_pct: float = 0.0
     strict_data_quality: bool = True
     min_coverage_ratio: float | None = None
     output_dir: str = ""
@@ -963,6 +967,8 @@ def _backtest_config(config: PortfolioExperimentConfig | SingleStrategyExperimen
         slippage_bps=config.slippage_bps,
         initial_equity=config.initial_equity,
         intrabar_exit_policy=config.intrabar_exit_policy,
+        trailing_take_profit_activation_pct=config.trailing_take_profit_activation_pct,
+        trailing_take_profit_drawdown_pct=config.trailing_take_profit_drawdown_pct,
     )
 
 
@@ -973,6 +979,8 @@ def _candidate_cache_key(config: PortfolioExperimentConfig) -> tuple[object, ...
         float(config.fee_rate),
         float(config.slippage_bps),
         str(config.intrabar_exit_policy),
+        float(config.trailing_take_profit_activation_pct),
+        float(config.trailing_take_profit_drawdown_pct),
     )
 
 

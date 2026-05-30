@@ -36,6 +36,10 @@ def validate_backtest_config(cfg: Any) -> None:
         raise ValueError("initial_equity 必须大于 0。")
     if getattr(cfg, "intrabar_exit_policy", "conservative") not in {"conservative", "optimistic"}:
         raise ValueError("intrabar_exit_policy 仅支持 conservative 或 optimistic。")
+    activation_pct = float(getattr(cfg, "trailing_take_profit_activation_pct", 0.0))
+    drawdown_pct = float(getattr(cfg, "trailing_take_profit_drawdown_pct", 0.0))
+    if activation_pct < 0 or not 0 <= drawdown_pct < 1:
+        raise ValueError("trailing_take_profit 参数必须非负，且回撤幅度必须小于 1。")
 
 
 def simulate_order_trade(
@@ -56,6 +60,7 @@ def simulate_order_trade_with_rejection(
     cfg: Any,
 ) -> OrderExecutionResult:
     """撮合订单并返回拒绝原因和真实成交诊断；供订单决策日志使用。"""
+    validate_backtest_config(cfg)
     side = normalize_order_side(order["side"])
     if side not in {"long", "short"}:
         return OrderExecutionResult(reject_reason="invalid_order")
@@ -98,9 +103,12 @@ def simulate_order_trade_with_rejection(
         side=side,
         entry_index=entry_index,
         last_exit_index=last_exit_index,
+        entry_price=slipped_entry,
         stop_price=stop_price,
         target_price=target_price,
         policy=str(getattr(cfg, "intrabar_exit_policy", "conservative")),
+        trailing_activation_pct=float(getattr(cfg, "trailing_take_profit_activation_pct", 0.0)),
+        trailing_drawdown_pct=float(getattr(cfg, "trailing_take_profit_drawdown_pct", 0.0)),
     )
     slipped_exit = apply_slippage(exit_price, -direction, cfg)
     gross_return = direction * (slipped_exit / slipped_entry - 1.0)
@@ -216,9 +224,12 @@ def _first_exit_after_entry(
     side: str,
     entry_index: int,
     last_exit_index: int,
+    entry_price: float,
     stop_price: float,
     target_price: float,
     policy: str,
+    trailing_activation_pct: float,
+    trailing_drawdown_pct: float,
 ) -> tuple[int, float, str]:
     """向量化查找首个退出 K；优先级保持 gap、同 K 冲突、普通 stop/target。"""
     path = group.loc[entry_index:last_exit_index]
@@ -239,9 +250,20 @@ def _first_exit_after_entry(
         gap_target = liquid & (opens <= target_price)
         hit_stop = liquid & (highs >= stop_price)
         hit_target = liquid & (lows <= target_price)
+    gap_trailing, hit_trailing, trailing_prices = _trailing_take_profit_masks(
+        opens,
+        highs,
+        lows,
+        liquid,
+        side=side,
+        entry_price=entry_price,
+        activation_pct=trailing_activation_pct,
+        drawdown_pct=trailing_drawdown_pct,
+    )
 
     _set_exit_values(reasons, prices, gap_stop, opens, "stop_loss")
     _set_exit_values(reasons, prices, (reasons == "") & gap_target, opens, "take_profit")
+    _set_exit_values(reasons, prices, (reasons == "") & gap_trailing, opens, "trailing_take_profit")
 
     conflict = (reasons == "") & hit_stop & hit_target
     if policy == "optimistic":
@@ -249,8 +271,15 @@ def _first_exit_after_entry(
     else:
         _set_exit_values(reasons, prices, conflict, stop_price, "stop_loss")
 
-    _set_exit_values(reasons, prices, (reasons == "") & hit_stop, stop_price, "stop_loss")
     _set_exit_values(reasons, prices, (reasons == "") & hit_target, target_price, "take_profit")
+    _set_exit_values(
+        reasons,
+        prices,
+        (reasons == "") & hit_trailing,
+        trailing_prices,
+        "trailing_take_profit",
+    )
+    _set_exit_values(reasons, prices, (reasons == "") & hit_stop, stop_price, "stop_loss")
 
     hit_positions = np.flatnonzero(reasons != "")
     if len(hit_positions) == 0:
@@ -262,6 +291,49 @@ def _first_exit_after_entry(
         return last_liquid_index, float(group.loc[last_liquid_index, "close"]), "max_holding"
     first = int(hit_positions[0])
     return int(path.index[first]), float(prices[first]), str(reasons[first])
+
+
+def _trailing_take_profit_masks(
+    opens: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    liquid: np.ndarray,
+    *,
+    side: str,
+    entry_price: float,
+    activation_pct: float,
+    drawdown_pct: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """计算回撤止盈触发点；先达到浮盈阈值，再按峰值/谷值回撤退出。"""
+    empty_mask = np.full(len(opens), False)
+    empty_prices = np.full(len(opens), np.nan)
+    if len(opens) == 0 or entry_price <= 0 or activation_pct <= 0 or drawdown_pct <= 0:
+        return empty_mask, empty_mask, empty_prices
+
+    if side == "long":
+        peak = np.maximum.accumulate(highs)
+        trailing_prices = peak * (1.0 - drawdown_pct)
+        armed = peak >= entry_price * (1.0 + activation_pct)
+        previous_peak = np.concatenate(([entry_price], peak[:-1]))
+        previous_prices = previous_peak * (1.0 - drawdown_pct)
+        previous_armed = previous_peak >= entry_price * (1.0 + activation_pct)
+        profitable = trailing_prices > entry_price
+        previous_profitable = previous_prices > entry_price
+        gap_trailing = liquid & previous_armed & previous_profitable & (opens <= previous_prices)
+        hit_trailing = liquid & armed & profitable & (lows <= trailing_prices)
+        return gap_trailing, hit_trailing, trailing_prices
+
+    trough = np.minimum.accumulate(lows)
+    trailing_prices = trough * (1.0 + drawdown_pct)
+    armed = trough <= entry_price * (1.0 - activation_pct)
+    previous_trough = np.concatenate(([entry_price], trough[:-1]))
+    previous_prices = previous_trough * (1.0 + drawdown_pct)
+    previous_armed = previous_trough <= entry_price * (1.0 - activation_pct)
+    profitable = trailing_prices < entry_price
+    previous_profitable = previous_prices < entry_price
+    gap_trailing = liquid & previous_armed & previous_profitable & (opens >= previous_prices)
+    hit_trailing = liquid & armed & profitable & (highs >= trailing_prices)
+    return gap_trailing, hit_trailing, trailing_prices
 
 
 def _set_exit_values(

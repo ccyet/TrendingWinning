@@ -1003,6 +1003,73 @@ def test_order_execution_ignores_zero_liquidity_exit_bar() -> None:
     assert trade["mae_pct"] == pytest.approx(-2.0)
 
 
+@pytest.mark.parametrize(
+    ("side", "target_price", "expected_exit"),
+    [
+        ("long", 12.0, 10.67),
+        ("short", 8.0, 9.27),
+    ],
+)
+def test_order_execution_trailing_take_profit_exits_after_profit_pullback(
+    side: str,
+    target_price: float,
+    expected_exit: float,
+) -> None:
+    if side == "long":
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+                {"open": 10.8, "high": 11.0, "low": 10.7, "close": 10.9},
+                {"open": 10.8, "high": 10.9, "low": 10.6, "close": 10.6},
+            ]
+        )
+        stop_price = 9.5
+    else:
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.1, "low": 9.8, "close": 9.9},
+                {"open": 9.2, "high": 9.3, "low": 9.0, "close": 9.1},
+                {"open": 9.2, "high": 9.35, "low": 9.1, "close": 9.3},
+            ]
+        )
+        stop_price = 10.5
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side=side, entry_price=10.0, stop_price=stop_price, target_price=target_price),
+        signal_index=0,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx(expected_exit)
+    assert trade["return_pct"] > 0.0
+
+
+def test_backtest_config_rejects_invalid_trailing_take_profit_parameters() -> None:
+    bars = _bars(
+        [
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+        ]
+    )
+
+    with pytest.raises(ValueError, match="trailing_take_profit"):
+        simulate_order_trade(
+            bars,
+            _order(side="long", entry_price=10.0, stop_price=9.5, target_price=11.5),
+            signal_index=0,
+            cfg=BacktestConfig(max_holding_bars=1, trailing_take_profit_activation_pct=-0.01),
+        )
+
+
 def test_order_execution_uses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(simulate_order_trade)
 

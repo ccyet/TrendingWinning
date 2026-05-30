@@ -42,6 +42,8 @@ class BacktestConfig:
     slippage_bps: float = 0.0
     initial_equity: float = 1.0
     intrabar_exit_policy: str = "conservative"
+    trailing_take_profit_activation_pct: float = 0.0
+    trailing_take_profit_drawdown_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -305,8 +307,10 @@ def _simulate_trade(
         group,
         first_exit_index=entry_index + 1,
         last_exit_index=last_exit_index,
+        entry_price=entry_price,
         stop_price=stop_price,
         target_price=target_price,
+        cfg=cfg,
     )
     exit_price = apply_slippage(raw_exit_price, -1.0, cfg)
 
@@ -359,8 +363,10 @@ def _first_legacy_long_exit(
     *,
     first_exit_index: int,
     last_exit_index: int,
+    entry_price: float,
     stop_price: float,
     target_price: float,
+    cfg: BacktestConfig,
 ) -> tuple[int, float, str]:
     """旧版突破回测的长仓退出；保持 stop 优先于 target 的原始语义。"""
     path = group.loc[first_exit_index:last_exit_index]
@@ -368,6 +374,7 @@ def _first_legacy_long_exit(
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
     hit_stop = lows <= stop_price
     hit_target = highs >= target_price
+    hit_trailing, trailing_prices = _legacy_long_trailing_take_profit(path, entry_price, cfg)
     reasons = np.full(len(path), "", dtype=object)
     prices = np.full(len(path), np.nan)
     reasons[hit_stop] = "stop_loss"
@@ -375,11 +382,35 @@ def _first_legacy_long_exit(
     target_only = (reasons == "") & hit_target
     reasons[target_only] = "take_profit"
     prices[target_only] = target_price
+    trailing_only = (reasons == "") & hit_trailing
+    reasons[trailing_only] = "trailing_take_profit"
+    prices[trailing_only] = trailing_prices[trailing_only]
     hit_positions = np.flatnonzero(reasons != "")
     if len(hit_positions) == 0:
         return last_exit_index, float(group.loc[last_exit_index, "close"]), "max_holding"
     first = int(hit_positions[0])
     return int(path.index[first]), float(prices[first]), str(reasons[first])
+
+
+def _legacy_long_trailing_take_profit(
+    path: pd.DataFrame,
+    entry_price: float,
+    cfg: BacktestConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    """旧版长仓复用回撤止盈口径；只在浮盈达到阈值后启用。"""
+    if not _trailing_take_profit_enabled(cfg) or path.empty or entry_price <= 0:
+        return np.full(len(path), False), np.full(len(path), np.nan)
+    highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
+    lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
+    peak = np.maximum.accumulate(highs)
+    trailing_prices = peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
+    armed = peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
+    profitable = trailing_prices > entry_price
+    return armed & profitable & (lows <= trailing_prices), trailing_prices
+
+
+def _trailing_take_profit_enabled(cfg: BacktestConfig) -> bool:
+    return bool(cfg.trailing_take_profit_activation_pct > 0 and cfg.trailing_take_profit_drawdown_pct > 0)
 
 
 def run_single_strategy_backtest(

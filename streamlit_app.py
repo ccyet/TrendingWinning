@@ -39,6 +39,8 @@ BACKTEST_HELP_TEXT = {
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
     "take_profit": "单笔交易达到该收益率后止盈，例如 0.060 表示 6%。",
     "stop_loss": "单笔交易触及该亏损率后止损，例如 0.030 表示 3%。",
+    "trailing_take_profit_activation_pct": "回撤止盈启动条件。持仓实际成交后，浮盈先达到该比例才开始跟踪最高价或最低价；0 表示关闭。",
+    "trailing_take_profit_drawdown_pct": "回撤止盈触发幅度。启动后，多头从最高价回撤、空头从最低价反弹达到该比例时平仓。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
@@ -225,6 +227,7 @@ DISPLAY_VALUE_MAP = {
     },
     "exit_reason": {
         "take_profit": "止盈",
+        "trailing_take_profit": "回撤止盈",
         "stop_loss": "止损",
         "max_holding": "持有到期",
         "end_of_data": "样本结束",
@@ -267,6 +270,7 @@ DISPLAY_VALUE_MAP = {
         "capital_limit": "资金上限",
         "sector_limit": "行业上限",
         "side_mode_filtered": "交易方向过滤",
+        "trailing_take_profit": "回撤止盈",
     },
     "side_mode": {"both": "多/空", "long_only": "仅多", "short_only": "仅空"},
 }
@@ -294,6 +298,8 @@ class BacktestRiskInputs:
     slippage_bps: float
     initial_equity: float
     intrabar_exit_policy: str
+    trailing_take_profit_activation_pct: float
+    trailing_take_profit_drawdown_pct: float
 
 
 @dataclass(frozen=True)
@@ -1031,12 +1037,35 @@ def _trade_entry_label(side: str) -> str:
 def _trade_exit_label(side: str, exit_reason: str) -> str:
     if exit_reason == "stop_loss":
         return "止损"
+    if exit_reason == "trailing_take_profit":
+        return "回撤止盈"
     return "平空" if side == "short" else "平多"
+
+
+def _trade_entry_reason(row: Mapping[str, object]) -> str:
+    event_type = str(row.get("event_type", "")).strip()
+    if not event_type:
+        return "开仓"
+    return DISPLAY_VALUE_MAP.get("event_type", {}).get(event_type, event_type)
+
+
+def _trade_exit_reason(row: Mapping[str, object]) -> str:
+    exit_reason = str(row.get("exit_reason", "")).strip()
+    if not exit_reason:
+        return "平仓"
+    return DISPLAY_VALUE_MAP.get("exit_reason", {}).get(exit_reason, exit_reason)
+
+
+def _marker_time_text(value: object) -> str:
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return ""
+    return timestamp.strftime("%Y-%m-%d %H:%M")
 
 
 def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
     """把成交表转成连续 K 线图上的开仓、平仓和止损标注。"""
-    columns = ["K序号", "时间", "价格", "标注", "方向", "订单ID"]
+    columns = ["K序号", "时间", "时间文本", "价格", "标注", "方向", "原因"]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "entry_price", "exit_date", "exit_price", "exit_reason"}
     if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
@@ -1055,10 +1084,11 @@ def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: 
                 {
                     "K序号": entry_index,
                     "时间": entry_date,
+                    "时间文本": _marker_time_text(entry_date),
                     "价格": float(entry_price),
                     "标注": _trade_entry_label(side),
                     "方向": direction,
-                    "订单ID": str(row.get("order_id", "")),
+                    "原因": _trade_entry_reason(row),
                     "_priority": 1,
                 }
             )
@@ -1070,10 +1100,11 @@ def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: 
                 {
                     "K序号": exit_index,
                     "时间": exit_date,
+                    "时间文本": _marker_time_text(exit_date),
                     "价格": float(exit_price),
                     "标注": _trade_exit_label(side, str(row.get("exit_reason", ""))),
                     "方向": direction,
-                    "订单ID": str(row.get("order_id", "")),
+                    "原因": _trade_exit_reason(row),
                     "_priority": 0,
                 }
             )
@@ -1085,7 +1116,7 @@ def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: 
 
 def _strategy_stop_segment_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
     """每笔交易的止损价横线，从入场延伸到退出，辅助检查策略风险边界。"""
-    columns = ["开始K序号", "结束K序号", "开始时间", "结束时间", "止损价", "方向", "订单ID"]
+    columns = ["开始K序号", "结束K序号", "开始时间", "结束时间", "止损价", "方向", "开仓原因", "平仓原因"]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "exit_date", "stop_price"}
     if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
@@ -1110,7 +1141,8 @@ def _strategy_stop_segment_frame(trades: pd.DataFrame, symbol: str, chart_data: 
                 "结束时间": end,
                 "止损价": float(stop_price),
                 "方向": _trade_direction_label(side),
-                "订单ID": str(row.get("order_id", "")),
+                "开仓原因": _trade_entry_reason(row),
+                "平仓原因": _trade_exit_reason(row),
             }
         )
     if not records:
@@ -1130,7 +1162,8 @@ def _strategy_holding_interval_frame(trades: pd.DataFrame, symbol: str, chart_da
         "区间低价",
         "区间高价",
         "方向",
-        "订单ID",
+        "开仓原因",
+        "平仓原因",
     ]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "exit_date"}
@@ -1167,7 +1200,8 @@ def _strategy_holding_interval_frame(trades: pd.DataFrame, symbol: str, chart_da
                 "区间低价": y_low,
                 "区间高价": y_high,
                 "方向": _trade_direction_label(side),
-                "订单ID": str(row.get("order_id", "")),
+                "开仓原因": _trade_entry_reason(row),
+                "平仓原因": _trade_exit_reason(row),
             }
         )
     if not records:
@@ -1228,10 +1262,11 @@ def _build_strategy_kline_altair_chart(
                     scale=alt.Scale(domain=["多头", "空头"], range=["#ef4444", "#2563eb"]),
                 ),
                 tooltip=[
-                    alt.Tooltip("订单ID:N", title="订单"),
                     alt.Tooltip("方向:N", title="方向"),
-                    alt.Tooltip("开始时间:T", title="开仓"),
-                    alt.Tooltip("结束时间:T", title="平仓"),
+                    alt.Tooltip("开始时间:T", title="开仓时间"),
+                    alt.Tooltip("结束时间:T", title="平仓时间"),
+                    alt.Tooltip("开仓原因:N", title="开仓原因"),
+                    alt.Tooltip("平仓原因:N", title="平仓原因"),
                 ],
             )
         )
@@ -1246,11 +1281,12 @@ def _build_strategy_kline_altair_chart(
                 x2="结束K序号:Q",
                 y=alt.Y("止损价:Q", title="价格", scale=alt.Scale(zero=False)),
                 tooltip=[
-                    alt.Tooltip("订单ID:N", title="订单"),
                     alt.Tooltip("方向:N", title="方向"),
                     alt.Tooltip("止损价:Q", title="止损价", format=".3f"),
-                    alt.Tooltip("开始时间:T", title="入场"),
-                    alt.Tooltip("结束时间:T", title="退出"),
+                    alt.Tooltip("开始时间:T", title="开仓时间"),
+                    alt.Tooltip("结束时间:T", title="平仓时间"),
+                    alt.Tooltip("开仓原因:N", title="开仓原因"),
+                    alt.Tooltip("平仓原因:N", title="平仓原因"),
                 ],
             )
         )
@@ -1263,24 +1299,24 @@ def _build_strategy_kline_altair_chart(
                 "标注:N",
                 title="标注",
                 scale=alt.Scale(
-                    domain=["开多", "开空", "止损", "平多", "平空"],
-                    range=["triangle-up", "triangle-down", "cross", "circle", "circle"],
+                    domain=["开多", "开空", "止损", "回撤止盈", "平多", "平空"],
+                    range=["triangle-up", "triangle-down", "cross", "diamond", "circle", "circle"],
                 ),
             ),
             color=alt.Color(
                 "标注:N",
                 title="标注",
                 scale=alt.Scale(
-                    domain=["开多", "开空", "止损", "平多", "平空"],
-                    range=["#dc2626", "#2563eb", "#ea580c", "#991b1b", "#1d4ed8"],
+                    domain=["开多", "开空", "止损", "回撤止盈", "平多", "平空"],
+                    range=["#dc2626", "#2563eb", "#ea580c", "#f59e0b", "#991b1b", "#1d4ed8"],
                 ),
             ),
             tooltip=[
                 alt.Tooltip("标注:N"),
                 alt.Tooltip("方向:N"),
                 alt.Tooltip("价格:Q", format=".3f"),
-                alt.Tooltip("时间:T"),
-                alt.Tooltip("订单ID:N", title="订单"),
+                alt.Tooltip("时间文本:N", title="开仓/平仓时间"),
+                alt.Tooltip("原因:N", title="开仓/平仓原因"),
             ],
         )
         layers.append(
@@ -1305,14 +1341,21 @@ def _build_strategy_kline_altair_chart(
                     "标注:N",
                     title="标注",
                     scale=alt.Scale(
-                        domain=["开多", "开空", "止损", "平多", "平空"],
-                        range=["#dc2626", "#2563eb", "#ea580c", "#991b1b", "#1d4ed8"],
+                        domain=["开多", "开空", "止损", "回撤止盈", "平多", "平空"],
+                        range=["#dc2626", "#2563eb", "#ea580c", "#f59e0b", "#991b1b", "#1d4ed8"],
                     ),
                 ),
             )
         )
 
-    return alt.layer(*layers).resolve_scale(y="shared").properties(height=420)
+    return (
+        alt.layer(*layers)
+        .resolve_scale(y="shared")
+        .properties(height=420)
+        .interactive()
+        .configure_axis(labelFontSize=11, titleFontSize=12)
+        .configure_view(strokeWidth=0)
+    )
 
 
 def _render_strategy_kline_chart(
@@ -1892,6 +1935,29 @@ def _backtest_risk_module() -> BacktestRiskInputs:
             )
         with c3:
             max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
+        trailing1, trailing2 = st.columns(2)
+        with trailing1:
+            trailing_take_profit_activation_pct = st.number_input(
+                "回撤止盈启动浮盈",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.0,
+                step=0.005,
+                format="%.3f",
+                key="bt_trailing_take_profit_activation_pct",
+                help=BACKTEST_HELP_TEXT["trailing_take_profit_activation_pct"],
+            )
+        with trailing2:
+            trailing_take_profit_drawdown_pct = st.number_input(
+                "回撤止盈回撤幅度",
+                min_value=0.0,
+                max_value=0.99,
+                value=0.0,
+                step=0.005,
+                format="%.3f",
+                key="bt_trailing_take_profit_drawdown_pct",
+                help=BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"],
+            )
         cost1, cost2, cost3 = st.columns(3)
         with cost1:
             fee_rate = st.number_input(
@@ -1938,6 +2004,8 @@ def _backtest_risk_module() -> BacktestRiskInputs:
         slippage_bps=float(slippage_bps),
         initial_equity=float(initial_equity),
         intrabar_exit_policy=str(intrabar_exit_policy),
+        trailing_take_profit_activation_pct=float(trailing_take_profit_activation_pct),
+        trailing_take_profit_drawdown_pct=float(trailing_take_profit_drawdown_pct),
     )
 
 
@@ -2027,6 +2095,8 @@ def _legacy_backtest_module(
             slippage_bps=risk.slippage_bps,
             initial_equity=risk.initial_equity,
             intrabar_exit_policy=risk.intrabar_exit_policy,
+            trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
+            trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
         ),
     )
     _render_backtest_result(result, bundle, stock_names=_backtest_stock_names(data_root, scope.symbols))
@@ -2516,6 +2586,8 @@ def _execute_single_strategy_experiment(
             slippage_bps=risk.slippage_bps,
             initial_equity=risk.initial_equity,
             intrabar_exit_policy=risk.intrabar_exit_policy,
+            trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
+            trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",
@@ -2603,6 +2675,8 @@ def _execute_portfolio_strategy_experiment(
             slippage_bps=risk.slippage_bps,
             initial_equity=risk.initial_equity,
             intrabar_exit_policy=risk.intrabar_exit_policy,
+            trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
+            trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",

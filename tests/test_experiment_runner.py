@@ -549,6 +549,8 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         captured["fee_rate"] = cfg.fee_rate
         captured["slippage_bps"] = cfg.slippage_bps
         captured["initial_equity"] = cfg.initial_equity
+        captured["trailing_take_profit_activation_pct"] = cfg.trailing_take_profit_activation_pct
+        captured["trailing_take_profit_drawdown_pct"] = cfg.trailing_take_profit_drawdown_pct
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
@@ -571,12 +573,20 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         fee_rate=0.0003,
         slippage_bps=5.0,
         initial_equity=2.0,
+        trailing_take_profit_activation_pct=0.05,
+        trailing_take_profit_drawdown_pct=0.02,
         strict_data_quality=False,
     )
 
     run_single_strategy_experiment(config)
 
-    assert captured == {"fee_rate": 0.0003, "slippage_bps": 5.0, "initial_equity": 2.0}
+    assert captured == {
+        "fee_rate": 0.0003,
+        "slippage_bps": 5.0,
+        "initial_equity": 2.0,
+        "trailing_take_profit_activation_pct": 0.05,
+        "trailing_take_profit_drawdown_pct": 0.02,
+    }
 
 
 def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Path, monkeypatch) -> None:
@@ -604,6 +614,8 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         captured["fee_rate"] = cfg.fee_rate
         captured["slippage_bps"] = cfg.slippage_bps
         captured["initial_equity"] = cfg.initial_equity
+        captured["trailing_take_profit_activation_pct"] = cfg.trailing_take_profit_activation_pct
+        captured["trailing_take_profit_drawdown_pct"] = cfg.trailing_take_profit_drawdown_pct
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
@@ -624,12 +636,20 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         fee_rate=0.0003,
         slippage_bps=5.0,
         initial_equity=2.0,
+        trailing_take_profit_activation_pct=0.06,
+        trailing_take_profit_drawdown_pct=0.025,
         strict_data_quality=False,
     )
 
     run_portfolio_experiment(config)
 
-    assert captured == {"fee_rate": 0.0003, "slippage_bps": 5.0, "initial_equity": 2.0}
+    assert captured == {
+        "fee_rate": 0.0003,
+        "slippage_bps": 5.0,
+        "initial_equity": 2.0,
+        "trailing_take_profit_activation_pct": 0.06,
+        "trailing_take_profit_drawdown_pct": 0.025,
+    }
 
 
 def test_portfolio_experiment_passes_allocation_limits_to_portfolio_config(tmp_path: Path, monkeypatch) -> None:

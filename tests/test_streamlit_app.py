@@ -79,6 +79,8 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "手续费率" for item in app.number_input)
     assert any(item.label == "滑点bps" for item in app.number_input)
     assert any(item.label == "初始资金" for item in app.number_input)
+    assert any(item.label == "回撤止盈启动浮盈" for item in app.number_input)
+    assert any(item.label == "回撤止盈回撤幅度" for item in app.number_input)
     direction = next(item for item in app.selectbox if item.label == "组合交易方向")
     assert direction.options == ["多/空", "仅多", "仅空"]
     assert any(checkbox.label == "组合要求旧极端失败测试" for checkbox in app.checkbox)
@@ -236,6 +238,8 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     for help_key in [
         "scope_mode",
         "take_profit",
+        "trailing_take_profit_activation_pct",
+        "trailing_take_profit_drawdown_pct",
         "strict_data_quality",
         "higher_timeframe",
         "side_mode",
@@ -378,6 +382,7 @@ def test_strategy_trade_markers_include_entries_exits_and_stop_loss_on_continuou
         {
             "stock_code": ["000001.SZ", "000001.SZ"],
             "side": ["long", "short"],
+            "event_type": ["bull_h2_setup", "bear_l2_setup"],
             "entry_date": pd.to_datetime(["2026-05-25 10:30", "2026-05-25 11:00"]),
             "entry_price": [10.5, 10.1],
             "stop_price": [10.0, 10.6],
@@ -393,6 +398,8 @@ def test_strategy_trade_markers_include_entries_exits_and_stop_loss_on_continuou
 
     assert markers["标注"].tolist() == ["开多", "止损", "开空", "平空"]
     assert markers["K序号"].tolist() == [1, 2, 2, 3]
+    assert markers["原因"].tolist() == ["H2 多头二次入场", "止损", "L2 空头二次入场", "止盈"]
+    assert "订单ID" not in markers.columns
     assert stops["止损价"].tolist() == [10.0, 10.6]
     assert stops["开始K序号"].tolist() == [1, 2]
     assert stops["结束K序号"].tolist() == [2, 3]
@@ -417,6 +424,7 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
         {
             "stock_code": ["000001.SZ"],
             "side": ["long"],
+            "event_type": ["bull_h2_setup"],
             "entry_date": pd.to_datetime(["2026-05-25 10:30"]),
             "entry_price": [10.5],
             "stop_price": [10.0],
@@ -436,11 +444,14 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
 
     assert spec["height"] == 420
     assert len(spec["layer"]) == 8
+    assert "params" in spec
     assert "K序号" in str(spec)
     assert spec["layer"][0]["encoding"]["x"]["field"] == "K序号"
     assert spec["layer"][0]["encoding"]["x"]["type"] == "quantitative"
     assert "开多" in str(spec)
     assert "止损" in str(spec)
+    assert "开仓/平仓原因" in str(spec)
+    assert "订单" not in str(spec)
 
 
 def test_strategy_kline_symbol_options_prioritize_symbols_with_trades() -> None:
