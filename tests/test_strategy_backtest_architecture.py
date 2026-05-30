@@ -314,6 +314,28 @@ def test_single_strategy_backtest_equity_statistics_start_from_initial_capital()
     assert result.stats["total_return"] == pytest.approx(expected_total_return)
 
 
+def test_single_strategy_backtest_reports_exposure_ratio_from_market_timeline() -> None:
+    strategy = FixedOrderStrategy(
+        [
+            _fixed_order(
+                order_id="timeline-exposure",
+                symbol="000002.SZ",
+                signal_date="2026-05-25 09:30:00",
+                signal_bar_index=0,
+                entry_price=20.5,
+                stop_price=19.5,
+                target_price=22.0,
+            )
+        ]
+    )
+
+    result = run_single_strategy_backtest(_two_symbol_bars(), strategy, BacktestConfig(max_holding_bars=2))
+
+    assert result.stats["market_bar_count"] == 3.0
+    assert result.stats["exposure_bars"] == 1.0
+    assert result.stats["exposure_bar_ratio"] == pytest.approx(1 / 3)
+
+
 def test_single_strategy_backtest_records_trade_r_multiple_and_excursions() -> None:
     strategy = FixedOrderStrategy(
         [

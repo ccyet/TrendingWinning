@@ -268,6 +268,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "avg_return_standard_error": [0.0123, 0.0],
             "win_rate_ci_lower": [0.0432, 0.9],
             "avg_holding_bars": [2.45, 3.2],
+            "market_bar_count": [120, 80],
+            "exposure_bars": [30, 20],
+            "exposure_bar_ratio": [0.25, 0.25],
             "data_inventory_unavailable_count": [1, 0],
             "data_inventory_missing_columns_count": [1, 0],
             "data_inventory_no_valid_rows_count": [0, 0],
@@ -295,6 +298,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["平均收益标准误"].tolist() == ["1.23%", "0.00%"]
     assert display["胜率95%下限"].tolist() == ["4.32%", "90.00%"]
     assert display["平均持有K数"].tolist() == ["2.45", "3.20"]
+    assert display["市场K数"].tolist() == ["120", "80"]
+    assert display["场内K数"].tolist() == ["30", "20"]
+    assert display["场内时间比例"].tolist() == ["25.00%", "25.00%"]
     assert display["缓存不可用数"].tolist() == ["1", "0"]
     assert display["缓存缺字段数"].tolist() == ["1", "0"]
     assert display["缓存无有效K线数"].tolist() == ["0", "0"]
@@ -555,6 +561,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "不含本机绝对路径和文件修改时间" in readme
     assert "不含本机绝对路径和文件修改时间" in guide
     for field in [
+        "market_bar_count",
+        "exposure_bar_ratio",
         "data_inventory_unavailable_count",
         "data_inventory_missing_columns_count",
         "data_inventory_no_valid_rows_count",

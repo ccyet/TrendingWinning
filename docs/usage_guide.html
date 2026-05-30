@@ -353,6 +353,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
         <li><code>risk_per_trade</code> 按真实入场风险反推仓位。</li>
         <li><code>allow_same_symbol_overlap</code> 控制同一股票能否多策略重叠持仓。</li>
         <li><code>side_mode</code> 控制所有启用形态的交易方向：多/空、仅多或仅空。</li>
+        <li>单策略按满仓进出，统计 <code>market_bar_count</code> 和 <code>exposure_bar_ratio</code>，用于判断策略在样本时间轴内实际占用资金多久。</li>
         <li>组合净值按逐 K 盯市，统计现金占比、净暴露、真实总暴露、持仓数和资金贡献。</li>
       </ul>
     </section>

@@ -182,7 +182,12 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
         return BacktestResult(
             trades=trades_df,
             equity_curve=equity,
-            stats=_order_statistics(trades_df, equity, decisions_df),
+            stats=_order_statistics(
+                trades_df,
+                equity,
+                decisions_df,
+                market_bar_count=_market_bar_count(scanned_bars),
+            ),
             order_decisions=decisions_df,
         )
 
@@ -192,7 +197,12 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
     return BacktestResult(
         trades=trades_df,
         equity_curve=equity,
-        stats=_order_statistics(trades_df, equity, decisions_df),
+        stats=_order_statistics(
+            trades_df,
+            equity,
+            decisions_df,
+            market_bar_count=_market_bar_count(scanned_bars),
+        ),
         order_decisions=decisions_df,
     )
 
@@ -399,7 +409,12 @@ def run_order_backtest(
         return BacktestResult(
             trades=trades,
             equity_curve=equity,
-            stats=_order_statistics(trades, equity, decisions),
+            stats=_order_statistics(
+                trades,
+                equity,
+                decisions,
+                market_bar_count=_market_bar_count(normalized),
+            ),
             order_decisions=decisions,
         )
 
@@ -422,7 +437,12 @@ def run_order_backtest(
         return BacktestResult(
             trades=trades,
             equity_curve=equity,
-            stats=_order_statistics(trades, equity, pd.DataFrame(empty_decisions, columns=ORDER_DECISION_COLUMNS)),
+            stats=_order_statistics(
+                trades,
+                equity,
+                pd.DataFrame(empty_decisions, columns=ORDER_DECISION_COLUMNS),
+                market_bar_count=_market_bar_count(normalized),
+            ),
             order_decisions=pd.DataFrame(empty_decisions, columns=ORDER_DECISION_COLUMNS),
         )
 
@@ -512,7 +532,12 @@ def run_order_backtest(
         return BacktestResult(
             trades=trades_df,
             equity_curve=equity,
-            stats=_order_statistics(trades_df, equity, decisions_df),
+            stats=_order_statistics(
+                trades_df,
+                equity,
+                decisions_df,
+                market_bar_count=_market_bar_count(normalized),
+            ),
             order_decisions=decisions_df,
         )
 
@@ -522,7 +547,12 @@ def run_order_backtest(
     return BacktestResult(
         trades=trades_df,
         equity_curve=equity,
-        stats=_order_statistics(trades_df, equity, decisions_df),
+        stats=_order_statistics(
+            trades_df,
+            equity,
+            decisions_df,
+            market_bar_count=_market_bar_count(normalized),
+        ),
         order_decisions=decisions_df,
     )
 
@@ -534,11 +564,36 @@ def _trade_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame) -> dict[
     return stats
 
 
-def _order_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame, decisions: pd.DataFrame) -> dict[str, object]:
+def _order_statistics(
+    trades: pd.DataFrame,
+    equity_curve: pd.DataFrame,
+    decisions: pd.DataFrame,
+    *,
+    market_bar_count: int = 0,
+) -> dict[str, object]:
     stats = _trade_statistics(trades, equity_curve)
+    stats.update(_single_position_exposure_statistics(stats, market_bar_count=market_bar_count))
     stats.update(summarize_order_decisions(decisions))
     stats.update(summarize_strategy_filter_decisions(empty_strategy_filter_decisions()))
     return stats
+
+
+def _single_position_exposure_statistics(stats: Mapping[str, object], *, market_bar_count: int) -> dict[str, float]:
+    """单策略是满仓进出，场内比例应按全市场时间轴计算，不能沿用逐 K 组合净值默认值。"""
+    market_count = max(int(market_bar_count), 0)
+    exposure_bars = max(_as_float(stats.get("exposure_bars", 0.0)), 0.0)
+    ratio = min(1.0, exposure_bars / market_count) if market_count > 0 else 0.0
+    return {
+        "market_bar_count": float(market_count),
+        "exposure_bar_ratio": float(ratio),
+    }
+
+
+def _market_bar_count(bars: pd.DataFrame) -> int:
+    if bars.empty or "date" not in bars.columns:
+        return 0
+    dates = pd.to_datetime(bars["date"], errors="coerce")
+    return int(dates.dropna().nunique())
 
 
 def _with_strategy_filter_decisions(result: BacktestResult, filter_decisions: pd.DataFrame) -> BacktestResult:
