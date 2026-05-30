@@ -8,6 +8,7 @@ import pandas as pd
 
 from trending_winning.backtest.execution import (
     OrderExecutionResult,
+    apply_slippage,
     coerce_order_execution_result,
     compute_order_execution_metrics,
     simulate_order_trade_with_rejection,
@@ -162,24 +163,26 @@ def _simulate_trade(
     cfg: BacktestConfig,
 ) -> dict[str, object] | None:
     entry = group.loc[entry_index]
-    entry_price = float(entry["trigger_price"] if pd.notna(entry["trigger_price"]) else entry["close"])
-    if entry_price <= 0:
+    planned_entry_price = float(entry["trigger_price"] if pd.notna(entry["trigger_price"]) else entry["close"])
+    if planned_entry_price <= 0:
         return None
+    entry_price = apply_slippage(planned_entry_price, 1.0, cfg)
     target_price = entry_price * (1.0 + cfg.take_profit_pct)
     stop_price = entry_price * (1.0 - cfg.stop_loss_pct)
     last_exit_index = min(len(group) - 1, entry_index + cfg.max_holding_bars)
     if last_exit_index <= entry_index:
         return None
 
-    exit_index, exit_price, exit_reason = _first_legacy_long_exit(
+    exit_index, raw_exit_price, exit_reason = _first_legacy_long_exit(
         group,
         first_exit_index=entry_index + 1,
         last_exit_index=last_exit_index,
         stop_price=stop_price,
         target_price=target_price,
     )
+    exit_price = apply_slippage(raw_exit_price, -1.0, cfg)
 
-    return_pct = (exit_price / entry_price - 1.0) * 100.0
+    return_pct = ((exit_price / entry_price - 1.0) - 2.0 * cfg.fee_rate) * 100.0
     path_metrics = trade_path_metrics(
         group,
         side="long",
@@ -200,7 +203,7 @@ def _simulate_trade(
         "signal_date": entry["date"],
         "signal_bar_index": int(entry_index),
         "side": "long",
-        "planned_entry_price": entry_price,
+        "planned_entry_price": planned_entry_price,
         "entry_date": entry["date"],
         "entry_price": entry_price,
         "stop_price": stop_price,
