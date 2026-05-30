@@ -58,19 +58,9 @@ def _attach_group_structure(group: pd.DataFrame, cfg: StructureConfig) -> pd.Dat
     high = result["high"].astype(float).to_numpy()
     low = result["low"].astype(float).to_numpy()
     close = result["close"].astype(float).to_numpy()
-    length = len(result)
     pivot_high, pivot_low = confirmed_pivots(high, low, cfg.left_bars, cfg.right_bars)
 
-    labels = np.full(length, "", dtype=object)
-    previous_pivot_high = np.nan
-    previous_pivot_low = np.nan
-    for index in range(length):
-        if pivot_high[index]:
-            labels[index] = "HH" if np.isfinite(previous_pivot_high) and high[index] > previous_pivot_high else "LH"
-            previous_pivot_high = high[index]
-        if pivot_low[index]:
-            labels[index] = "HL" if np.isfinite(previous_pivot_low) and low[index] > previous_pivot_low else "LL"
-            previous_pivot_low = low[index]
+    labels = _structure_labels(high, low, pivot_high, pivot_low)
     last_high, last_low, structure_score = _confirmed_structure_state(
         high,
         low,
@@ -95,6 +85,28 @@ def _attach_group_structure(group: pd.DataFrame, cfg: StructureConfig) -> pd.Dat
     return result
 
 
+def _structure_labels(
+    high: np.ndarray,
+    low: np.ndarray,
+    pivot_high: np.ndarray,
+    pivot_low: np.ndarray,
+) -> np.ndarray:
+    """按已确认 pivot 序列批量标记 HH/HL/LH/LL。"""
+    labels = np.full(len(high), "", dtype=object)
+    high_indexes = np.flatnonzero(pivot_high)
+    if len(high_indexes) > 0:
+        high_values = high[high_indexes]
+        previous_high = np.concatenate(([np.nan], high_values[:-1]))
+        labels[high_indexes] = np.where(np.isfinite(previous_high) & (high_values > previous_high), "HH", "LH")
+
+    low_indexes = np.flatnonzero(pivot_low)
+    if len(low_indexes) > 0:
+        low_values = low[low_indexes]
+        previous_low = np.concatenate(([np.nan], low_values[:-1]))
+        labels[low_indexes] = np.where(np.isfinite(previous_low) & (low_values > previous_low), "HL", "LL")
+    return labels
+
+
 def _confirmed_structure_state(
     high: np.ndarray,
     low: np.ndarray,
@@ -106,25 +118,34 @@ def _confirmed_structure_state(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """把原始 pivot 延迟到确认 K 线完成后，避免结构字段提前暴露未来信息。"""
     length = len(high)
-    last_high = np.full(length, np.nan)
-    last_low = np.full(length, np.nan)
-    structure_score = np.zeros(length, dtype=float)
-    current_last_high = np.nan
-    current_last_low = np.nan
-    score = 0.0
+    score_delta = np.zeros(length, dtype=float)
+    high_updates = np.full(length, np.nan)
+    low_updates = np.full(length, np.nan)
 
-    for index in range(length):
-        confirmed_index = index - right_bars
-        if confirmed_index >= 0:
-            if pivot_high[confirmed_index]:
-                label = str(labels[confirmed_index])
-                score += 1.0 if label == "HH" else -1.0
-                current_last_high = high[confirmed_index]
-            if pivot_low[confirmed_index]:
-                label = str(labels[confirmed_index])
-                score += 1.0 if label == "HL" else -1.0
-                current_last_low = low[confirmed_index]
-        structure_score[index] = score
-        last_high[index] = current_last_high
-        last_low[index] = current_last_low
-    return last_high, last_low, structure_score
+    high_pivot_indexes = np.flatnonzero(pivot_high)
+    high_confirm_indexes = high_pivot_indexes + right_bars
+    high_valid = high_confirm_indexes < length
+    high_pivot_indexes = high_pivot_indexes[high_valid]
+    high_confirm_indexes = high_confirm_indexes[high_valid]
+    if len(high_confirm_indexes) > 0:
+        high_labels = labels[high_pivot_indexes]
+        high_delta = np.where(high_labels == "HH", 1.0, -1.0)
+        np.add.at(score_delta, high_confirm_indexes, high_delta)
+        high_updates[high_confirm_indexes] = high[high_pivot_indexes]
+
+    low_pivot_indexes = np.flatnonzero(pivot_low)
+    low_confirm_indexes = low_pivot_indexes + right_bars
+    low_valid = low_confirm_indexes < length
+    low_pivot_indexes = low_pivot_indexes[low_valid]
+    low_confirm_indexes = low_confirm_indexes[low_valid]
+    if len(low_confirm_indexes) > 0:
+        low_labels = labels[low_pivot_indexes]
+        low_delta = np.where(low_labels == "HL", 1.0, -1.0)
+        np.add.at(score_delta, low_confirm_indexes, low_delta)
+        low_updates[low_confirm_indexes] = low[low_pivot_indexes]
+
+    return _forward_fill_float(high_updates), _forward_fill_float(low_updates), np.cumsum(score_delta)
+
+
+def _forward_fill_float(values: np.ndarray) -> np.ndarray:
+    return pd.Series(values, dtype="float64").ffill().to_numpy(dtype=float)

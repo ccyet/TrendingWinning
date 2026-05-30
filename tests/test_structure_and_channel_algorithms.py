@@ -15,6 +15,8 @@ from trending_winning.detectors.channel import (
 )
 from trending_winning.detectors.structure import (
     StructureConfig,
+    _attach_group_structure,
+    _confirmed_structure_state,
     attach_market_structure,
 )
 from trending_winning.detectors.pivots import confirmed_pivots
@@ -93,6 +95,14 @@ def test_market_structure_exposes_swings_only_after_right_side_confirmation() ->
     assert pd.isna(structured.loc[2, "last_swing_high"])
     assert structured.loc[2, "structure_score"] == 0.0
     assert structured.loc[3, "last_swing_high"] == pytest.approx(bars.loc[1, "high"])
+
+
+def test_market_structure_state_is_vectorized_after_pivot_detection() -> None:
+    attach_source = getsource(_attach_group_structure)
+    state_source = getsource(_confirmed_structure_state)
+
+    assert "for index in range" not in attach_source
+    assert "for index in range" not in state_source
 
 
 def test_channel_detector_uses_log_regression_channel_and_emits_standard_events() -> None:
