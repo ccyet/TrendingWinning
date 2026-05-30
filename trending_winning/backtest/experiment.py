@@ -30,6 +30,7 @@ from trending_winning.backtest.stats import (
     summarize_strategy_filter_decisions,
 )
 from trending_winning.data.repository import (
+    DATA_INVENTORY_SUMMARY_KEYS,
     MarketDataRepository,
     summarize_data_management,
 )
@@ -106,13 +107,7 @@ DETECTOR_PARAMETER_FIELDS = {
 ALL_DETECTOR_PARAMETER_FIELDS = frozenset().union(*DETECTOR_PARAMETER_FIELDS.values())
 
 SWEEP_SUMMARY_CONTEXT_COLUMNS = (
-    "data_inventory_row_count",
-    "data_inventory_cached_count",
-    "data_inventory_missing_file_count",
-    "data_inventory_read_error_count",
-    "data_inventory_total_rows",
-    "data_inventory_total_file_size_bytes",
-    "data_inventory_signature",
+    *DATA_INVENTORY_SUMMARY_KEYS,
     "data_audit_row_count",
     "data_audit_ok_count",
     "data_audit_failed_count",

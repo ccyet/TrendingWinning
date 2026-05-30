@@ -29,6 +29,7 @@ from trending_winning.data.symbols import load_symbol_metadata, resolve_symbol_n
 
 __all__ = [
     "BacktestDataBundle",
+    "DATA_INVENTORY_SUMMARY_KEYS",
     "MultiTimeframeBacktestDataBundle",
     "MarketDataRepository",
     "audit_local_data",

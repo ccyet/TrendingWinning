@@ -994,6 +994,9 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
     assert saved_summary["data_inventory_signature"] == saved_sweep.loc[0, "data_inventory_signature"]
+    assert saved_summary["data_inventory_unavailable_count"] == saved_sweep.loc[0, "data_inventory_unavailable_count"]
+    assert saved_summary["data_inventory_missing_columns_count"] == saved_sweep.loc[0, "data_inventory_missing_columns_count"]
+    assert saved_summary["data_inventory_no_valid_rows_count"] == saved_sweep.loc[0, "data_inventory_no_valid_rows_count"]
     assert saved_summary["input_bar_count"] == 24
     assert saved_summary["filtered_limit_open_count"] == 0
     assert saved_summary["order_cache_miss_count"] == 4
@@ -1740,6 +1743,9 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
     assert saved_summary["data_inventory_signature"] == saved_sweep.loc[0, "data_inventory_signature"]
+    assert saved_summary["data_inventory_unavailable_count"] == saved_sweep.loc[0, "data_inventory_unavailable_count"]
+    assert saved_summary["data_inventory_missing_columns_count"] == saved_sweep.loc[0, "data_inventory_missing_columns_count"]
+    assert saved_summary["data_inventory_no_valid_rows_count"] == saved_sweep.loc[0, "data_inventory_no_valid_rows_count"]
     assert saved_summary["input_bar_count"] == 2
     assert saved_summary["filtered_limit_open_count"] == 0
     assert saved_summary["order_cache_hit_count"] == 3
