@@ -21,6 +21,7 @@ from trending_winning.backtest import experiment as experiment_module
 from trending_winning.backtest import portfolio as portfolio_module
 from trending_winning.data.repository import summarize_data_inventory, write_local_bars
 from trending_winning.strategies.base import ORDER_COLUMNS
+from trending_winning.strategies.runtime import StrategyRunResult
 
 _PARAMETER_DECISION_SUMMARY_COLUMNS = {
     "avg_acceptance_rate",
@@ -1076,6 +1077,77 @@ def test_portfolio_parameter_sweep_reuses_orders_when_only_portfolio_params_chan
     assert by_case["generated_order_count"].tolist() == [0, 0, 0, 0, 0, 0]
 
 
+def test_portfolio_parameter_sweep_prefers_explicit_strategy_run_result(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.3, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.2, 10.4],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11440.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    plan_calls = 0
+
+    class ExplicitPortfolioStrategy:
+        name = "explicit_portfolio_signal_bar"
+
+        def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+            nonlocal plan_calls
+            plan_calls += 1
+            return StrategyRunResult(
+                filter_decisions=pd.DataFrame(
+                    [
+                        {
+                            "order_id": "explicit-filter",
+                            "event_id": "event:explicit-filter",
+                            "strategy_name": self.name,
+                            "detector_name": "trend",
+                            "stock_code": "000001.SZ",
+                            "timeframe": timeframe,
+                            "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                            "signal_bar_index": 0,
+                            "side": "long",
+                            "status": "rejected",
+                            "reason": "custom_filter",
+                            "filter_name": "explicit_strategy",
+                        }
+                    ]
+                )
+            )
+
+        def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+            raise AssertionError("参数遍历应通过显式 StrategyRunResult 获取订单和过滤日志")
+
+    monkeypatch.setattr(experiment_module, "create_default_strategy_suite", lambda cfg: [ExplicitPortfolioStrategy()])
+    config = PortfolioExperimentConfig(
+        name="sweep-explicit-runtime",
+        data_root=str(data_root),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        strict_data_quality=False,
+    )
+
+    result = run_portfolio_parameter_sweep(config, grid={"reserve_cash": [0.0, 0.1]})
+
+    assert plan_calls == 1
+    by_case = result.table.sort_values("case_name")
+    assert by_case["order_cache_status"].tolist() == ["miss", "hit"]
+    assert by_case["generated_order_count"].tolist() == [0, 0]
+    assert by_case["strategy_signal_count"].tolist() == [1.0, 1.0]
+    assert by_case["strategy_rejected_custom_filter_count"].tolist() == [1.0, 1.0]
+
+
 def test_portfolio_parameter_sweep_ignores_disabled_detector_params(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -2081,6 +2153,78 @@ def test_single_strategy_parameter_sweep_reuses_orders_when_disabled_detector_pa
     assert by_case["order_cache_status"].tolist() == ["miss"]
     assert "channel_method" not in by_case.columns
     assert "range_min_score" not in by_case.columns
+
+
+def test_single_strategy_parameter_sweep_prefers_explicit_strategy_run_result(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.3, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.2, 10.4],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11440.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    plan_calls = 0
+
+    class ExplicitSingleStrategy:
+        name = "explicit_single_signal_bar"
+
+        def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+            nonlocal plan_calls
+            plan_calls += 1
+            return StrategyRunResult(
+                filter_decisions=pd.DataFrame(
+                    [
+                        {
+                            "order_id": "explicit-single-filter",
+                            "event_id": "event:explicit-single-filter",
+                            "strategy_name": self.name,
+                            "detector_name": "trend",
+                            "stock_code": "000001.SZ",
+                            "timeframe": timeframe,
+                            "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                            "signal_bar_index": 0,
+                            "side": "long",
+                            "status": "accepted",
+                            "reason": "",
+                            "filter_name": "explicit_strategy",
+                        }
+                    ]
+                )
+            )
+
+        def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+            raise AssertionError("单策略参数遍历应通过显式 StrategyRunResult 获取订单和过滤日志")
+
+    monkeypatch.setattr(experiment_module, "create_strategy_for_detector", lambda detector, cfg: ExplicitSingleStrategy())
+    config = SingleStrategyExperimentConfig(
+        name="single-sweep-explicit-runtime",
+        data_root=str(data_root),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        strict_data_quality=False,
+    )
+
+    result = run_single_strategy_parameter_sweep(config, grid={"fee_rate": [0.0, 0.001]})
+
+    assert plan_calls == 1
+    by_case = result.table.sort_values("case_name")
+    assert by_case["order_cache_status"].tolist() == ["miss", "hit"]
+    assert by_case["generated_order_count"].tolist() == [0, 0]
+    assert by_case["strategy_signal_count"].tolist() == [1.0, 1.0]
+    assert by_case["strategy_filter_acceptance_rate"].tolist() == [1.0, 1.0]
 
 
 def test_single_strategy_parameter_sweep_does_not_reuse_orders_when_higher_context_changes(

@@ -16,7 +16,6 @@ from trending_winning.backtest.engine import BacktestConfig, BacktestResult, run
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,
     PortfolioCandidateSet,
-    collect_strategy_orders_from_normalized,
     prepare_portfolio_candidates_from_normalized,
     run_portfolio_candidate_backtest_from_normalized,
     run_portfolio_backtest,
@@ -36,8 +35,8 @@ from trending_winning.data.repository import (
 )
 from trending_winning.data.schema import unique_symbols
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
-from trending_winning.strategies.diagnostics import collect_strategy_filter_decisions
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
+from trending_winning.strategies.runtime import execute_strategy, execute_strategies
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
 
 DATA_SCOPE_SWEEP_FIELDS = {
@@ -587,13 +586,10 @@ def run_portfolio_parameter_sweep(
                 variant,
                 data.higher_bars,
             )
-            orders = collect_strategy_orders_from_normalized(
-                data.bars,
-                strategies,
-                timeframe=variant.timeframe,
-            )
+            strategy_runs = execute_strategies(strategies, data.bars, timeframe=variant.timeframe)
+            orders = strategy_runs.orders
             orders_by_config[order_key] = orders
-            filter_decisions_by_config[order_key] = collect_strategy_filter_decisions(strategies)
+            filter_decisions_by_config[order_key] = strategy_runs.filter_decisions
         backtest_config = _backtest_config(variant)
         candidate_key = (order_key, _candidate_cache_key(variant))
         candidate_set = candidates_by_execution.get(candidate_key)
@@ -735,9 +731,10 @@ def run_single_strategy_parameter_sweep(
                 variant,
                 data.higher_bars,
             )[0]
-            orders = strategy.generate_orders(data.bars, timeframe=variant.timeframe)
+            strategy_run = execute_strategy(strategy, data.bars, timeframe=variant.timeframe)
+            orders = strategy_run.orders
             orders_by_config[order_key] = orders
-            filter_decisions_by_config[order_key] = collect_strategy_filter_decisions([strategy])
+            filter_decisions_by_config[order_key] = strategy_run.filter_decisions
         filter_decisions = filter_decisions_by_config.get(order_key, pd.DataFrame())
         backtest = _with_strategy_filter_decisions(
             run_order_backtest(data.bars, orders, _backtest_config(variant)),
