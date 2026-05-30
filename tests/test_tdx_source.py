@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pandas as pd
 import pytest
 
@@ -226,6 +228,13 @@ def test_fetch_tdx_bars_derives_symbol_omitted_by_direct_payload_from_5m_fallbac
     by_symbol = out.groupby("stock_code")["close"].apply(list).to_dict()
     assert by_symbol["000001.SZ"] == [20.5]
     assert by_symbol["000002.SZ"] == pytest.approx([10.55, 11.15])
+
+
+def test_aggregate_5m_bars_uses_vectorized_bucket_assignment() -> None:
+    source = inspect.getsource(tdx_module._aggregate_5m_bars)
+
+    assert ".map(lambda" not in source
+    assert ".apply(" not in source
 
 
 def test_fetch_tdx_bars_initializes_new_client_even_when_python_reuses_id(monkeypatch) -> None:

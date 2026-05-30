@@ -275,7 +275,7 @@ def _aggregate_5m_bars(bars: pd.DataFrame, *, timeframe: str, start: str, end: s
         raise ValueError("5m 聚合只支持 15m、30m、60m。")
     data = bars.copy()
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
-    data["_bucket_end"] = data["date"].map(lambda value: _intraday_bucket_end(value, minutes))
+    data["_bucket_end"] = _intraday_bucket_ends(data["date"], minutes)
     data = data.dropna(subset=["date", "_bucket_end"])
     if data.empty:
         return empty_bars()
@@ -305,19 +305,23 @@ def _aggregate_5m_bars(bars: pd.DataFrame, *, timeframe: str, start: str, end: s
     return grouped[CANONICAL_COLUMNS].sort_values(["stock_code", "date"]).reset_index(drop=True)
 
 
-def _intraday_bucket_end(value: pd.Timestamp, minutes: int) -> pd.Timestamp | pd.NaT:
-    timestamp = pd.Timestamp(value)
-    if pd.isna(timestamp):
-        return pd.NaT
+def _intraday_bucket_ends(values: pd.Series, minutes: int) -> pd.Series:
+    timestamps = pd.to_datetime(values, errors="coerce")
+    result = pd.Series(pd.NaT, index=values.index, dtype="datetime64[ns]")
+    normalized_dates = timestamps.dt.normalize()
     for session_start_text, session_end_text in (("09:30", "11:30"), ("13:00", "15:00")):
-        session_start = pd.Timestamp(f"{timestamp.date()} {session_start_text}")
-        session_end = pd.Timestamp(f"{timestamp.date()} {session_end_text}")
-        if session_start < timestamp <= session_end:
-            elapsed_minutes = int((timestamp - session_start).total_seconds() // 60)
-            bucket_minutes = ((elapsed_minutes + minutes - 1) // minutes) * minutes
-            bucket_end = session_start + pd.Timedelta(minutes=bucket_minutes)
-            return bucket_end if bucket_end <= session_end else pd.NaT
-    return pd.NaT
+        start_hour, start_minute = (int(part) for part in session_start_text.split(":"))
+        end_hour, end_minute = (int(part) for part in session_end_text.split(":"))
+        session_start = normalized_dates + pd.Timedelta(hours=start_hour, minutes=start_minute)
+        session_end = normalized_dates + pd.Timedelta(hours=end_hour, minutes=end_minute)
+        in_session = timestamps.gt(session_start) & timestamps.le(session_end)
+        if not bool(in_session.any()):
+            continue
+        elapsed_minutes = ((timestamps.loc[in_session] - session_start.loc[in_session]).dt.total_seconds() // 60).astype(int)
+        bucket_minutes = ((elapsed_minutes + minutes - 1) // minutes) * minutes
+        bucket_end = session_start.loc[in_session] + pd.to_timedelta(bucket_minutes, unit="m")
+        result.loc[in_session] = bucket_end.where(bucket_end.le(session_end.loc[in_session]), pd.NaT)
+    return result
 
 
 def _diagnosis_row(
