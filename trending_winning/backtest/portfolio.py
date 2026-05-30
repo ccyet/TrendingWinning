@@ -25,6 +25,7 @@ from trending_winning.backtest.execution import (
 from trending_winning.backtest.stats import (
     compute_equity_statistics,
     compute_trade_statistics,
+    summarize_exit_reasons,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
@@ -268,6 +269,7 @@ def _portfolio_statistics(
     filter_decisions: pd.DataFrame,
 ) -> dict[str, object]:
     stats = compute_trade_statistics(trades)
+    stats.update(summarize_exit_reasons(trades))
     stats.update(compute_equity_statistics(equity_curve))
     stats.update(summarize_order_decisions(decisions))
     stats.update(summarize_strategy_filter_decisions(filter_decisions))

@@ -1052,6 +1052,42 @@ def test_order_execution_trailing_take_profit_exits_after_profit_pullback(
     assert trade["exit_price"] == pytest.approx(expected_exit)
     assert trade["return_pct"] > 0.0
 
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": f"trailing-{side}",
+                "event_id": f"event-trailing-{side}",
+                "strategy_name": "execution_case",
+                "detector_name": "trend",
+                "event_type": "trend_signal_bar",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": bars.loc[0, "date"],
+                "signal_bar_index": 0,
+                "side": side,
+                "entry_price": 10.0,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "max_holding_bars": 3,
+                "metadata": {},
+            }
+        ]
+    )
+    result = run_order_backtest(
+        bars,
+        orders,
+        BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    assert result.stats["trailing_take_profit_exit_count"] == 1.0
+    assert result.stats["trailing_take_profit_exit_rate"] == 1.0
+    assert result.stats["take_profit_exit_count"] == 0.0
+    assert result.stats["stop_loss_exit_count"] == 0.0
+
 
 def test_backtest_config_rejects_invalid_trailing_take_profit_parameters() -> None:
     bars = _bars(

@@ -275,6 +275,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "market_bar_count": [120, 80],
             "exposure_bars": [30, 20],
             "exposure_bar_ratio": [0.25, 0.25],
+            "take_profit_exit_count": [2, 0],
+            "trailing_take_profit_exit_rate": [0.25, 0.0],
+            "stop_loss_exit_rate": [0.5, 1.0],
             "data_inventory_unavailable_count": [1, 0],
             "data_inventory_missing_columns_count": [1, 0],
             "data_inventory_no_valid_rows_count": [0, 0],
@@ -305,6 +308,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["市场K数"].tolist() == ["120", "80"]
     assert display["场内K数"].tolist() == ["30", "20"]
     assert display["场内时间比例"].tolist() == ["25.00%", "25.00%"]
+    assert display["止盈退出次数"].tolist() == ["2", "0"]
+    assert display["回撤止盈退出比例"].tolist() == ["25.00%", "0.00%"]
+    assert display["止损退出比例"].tolist() == ["50.00%", "100.00%"]
     assert display["缓存不可用数"].tolist() == ["1", "0"]
     assert display["缓存缺字段数"].tolist() == ["1", "0"]
     assert display["缓存无有效K线数"].tolist() == ["0", "0"]

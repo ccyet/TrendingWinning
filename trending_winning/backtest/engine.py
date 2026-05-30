@@ -22,6 +22,7 @@ from trending_winning.backtest.stats import (
     build_equity_curve,
     compute_equity_statistics,
     compute_trade_statistics,
+    summarize_exit_reasons,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
@@ -627,6 +628,7 @@ def _run_order_backtest_from_normalized(
 def _trade_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame) -> dict[str, object]:
     """合并逐笔统计和净值曲线统计；净值指标以初始资金点为基准。"""
     stats = compute_trade_statistics(trades)
+    stats.update(summarize_exit_reasons(trades))
     stats.update(compute_equity_statistics(equity_curve))
     return stats
 

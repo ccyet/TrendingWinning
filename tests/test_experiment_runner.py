@@ -35,6 +35,12 @@ _PARAMETER_EFFICIENCY_SUMMARY_COLUMNS = {
     "avg_return_per_capital_exposure_bar",
     "avg_return_per_margin_exposure_bar",
 }
+_PARAMETER_EXIT_SUMMARY_COLUMNS = {
+    "avg_take_profit_exit_rate",
+    "avg_trailing_take_profit_exit_rate",
+    "avg_stop_loss_exit_rate",
+    "avg_max_holding_exit_rate",
+}
 _PARAMETER_ROBUSTNESS_SUMMARY_COLUMNS = {
     "pareto_hit_rate",
     "positive_return_case_count",
@@ -55,6 +61,12 @@ _PARAMETER_EFFICIENCY_METRIC_PAIRS = (
     ("avg_return_per_exposure_bar", "return_per_exposure_bar"),
     ("avg_return_per_capital_exposure_bar", "return_per_capital_exposure_bar"),
     ("avg_return_per_margin_exposure_bar", "return_per_margin_exposure_bar"),
+)
+_PARAMETER_EXIT_METRIC_PAIRS = (
+    ("avg_take_profit_exit_rate", "take_profit_exit_rate"),
+    ("avg_trailing_take_profit_exit_rate", "trailing_take_profit_exit_rate"),
+    ("avg_stop_loss_exit_rate", "stop_loss_exit_rate"),
+    ("avg_max_holding_exit_rate", "max_holding_exit_rate"),
 )
 
 
@@ -107,6 +119,21 @@ def _assert_parameter_summary_efficiency_metrics(
     ].iloc[0]
     cases = saved_sweep.loc[saved_sweep[parameter].astype(str).eq(value)]
     for summary_column, sweep_column in _PARAMETER_EFFICIENCY_METRIC_PAIRS:
+        assert summary[summary_column] == pytest.approx(cases[sweep_column].mean())
+
+
+def _assert_parameter_summary_exit_metrics(
+    saved_parameter_summary: pd.DataFrame,
+    saved_sweep: pd.DataFrame,
+    *,
+    parameter: str,
+) -> None:
+    value = str(saved_sweep.loc[0, parameter])
+    summary = saved_parameter_summary.loc[
+        saved_parameter_summary["parameter"].eq(parameter) & saved_parameter_summary["value"].astype(str).eq(value)
+    ].iloc[0]
+    cases = saved_sweep.loc[saved_sweep[parameter].astype(str).eq(value)]
+    for summary_column, sweep_column in _PARAMETER_EXIT_METRIC_PAIRS:
         assert summary[summary_column] == pytest.approx(cases[sweep_column].mean())
 
 
@@ -982,11 +1009,19 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "case_config_hash",
         "order_count",
         "accepted_order_count",
-        "rejected_order_count",
-        "acceptance_rate",
-        "rejected_no_fill_count",
-        "order_cache_status",
-        "candidate_cache_status",
+            "rejected_order_count",
+            "acceptance_rate",
+            "rejected_no_fill_count",
+            "take_profit_exit_count",
+            "take_profit_exit_rate",
+            "trailing_take_profit_exit_count",
+            "trailing_take_profit_exit_rate",
+            "stop_loss_exit_count",
+            "stop_loss_exit_rate",
+            "max_holding_exit_count",
+            "max_holding_exit_rate",
+            "order_cache_status",
+            "candidate_cache_status",
         "generated_order_count",
         "candidate_count",
         "candidate_rejection_count",
@@ -1021,6 +1056,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         *_PARAMETER_ROBUSTNESS_SUMMARY_COLUMNS,
         *_PARAMETER_DECISION_SUMMARY_COLUMNS,
         *_PARAMETER_EFFICIENCY_SUMMARY_COLUMNS,
+        *_PARAMETER_EXIT_SUMMARY_COLUMNS,
     }.issubset(saved_parameter_summary.columns)
     assert set(saved_parameter_summary["parameter"]) == {"risk_reward", "max_holding_bars"}
     assert saved_parameter_summary["case_count"].sum() == 8
@@ -1028,6 +1064,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     _assert_parameter_summary_efficiency_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
+    _assert_parameter_summary_exit_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -1745,10 +1782,18 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "sweep_rank",
         "pareto_rank",
         "is_pareto_efficient",
-        "case_config_hash",
-        "fee_rate",
-        "slippage_bps",
-        "order_cache_status",
+            "case_config_hash",
+            "fee_rate",
+            "slippage_bps",
+            "take_profit_exit_count",
+            "take_profit_exit_rate",
+            "trailing_take_profit_exit_count",
+            "trailing_take_profit_exit_rate",
+            "stop_loss_exit_count",
+            "stop_loss_exit_rate",
+            "max_holding_exit_count",
+            "max_holding_exit_rate",
+            "order_cache_status",
         "generated_order_count",
         "data_inventory_signature",
         "data_weighted_coverage_ratio",
@@ -1781,6 +1826,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         *_PARAMETER_ROBUSTNESS_SUMMARY_COLUMNS,
         *_PARAMETER_DECISION_SUMMARY_COLUMNS,
         *_PARAMETER_EFFICIENCY_SUMMARY_COLUMNS,
+        *_PARAMETER_EXIT_SUMMARY_COLUMNS,
     }.issubset(saved_parameter_summary.columns)
     assert set(saved_parameter_summary["parameter"]) == {"fee_rate", "slippage_bps"}
     assert saved_parameter_summary["case_count"].sum() == 8
@@ -1788,6 +1834,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     _assert_parameter_summary_efficiency_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
+    _assert_parameter_summary_exit_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     assert {
         "sweep_rank",
         "pareto_rank",
