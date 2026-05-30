@@ -514,6 +514,41 @@ def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> 
     assert data_stats["data_inventory_signature"] == inventory_stats["data_inventory_signature"]
 
 
+def test_summarize_data_inventory_reports_all_unavailable_cache_statuses() -> None:
+    inventory = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000002.SZ", "000003.SZ", "000004.SZ", "000005.SZ"],
+            "timeframe": ["30m", "30m", "30m", "30m", "30m"],
+            "adjust": ["qfq", "qfq", "qfq", "qfq", "qfq"],
+            "status": ["cached", "missing_file", "read_error", "missing_columns", "no_valid_rows"],
+            "exists": [True, False, True, True, True],
+            "rows": [120, 0, 0, 0, 0],
+            "start": [pd.Timestamp("2026-05-25 10:00:00"), None, None, None, None],
+            "end": [pd.Timestamp("2026-05-25 15:00:00"), None, None, None, None],
+            "file_size_bytes": [4096, 0, 128, 256, 512],
+            "modified_at": [pd.Timestamp("2026-05-30 09:00:00"), None, None, None, None],
+            "path": [
+                "/market/30m/000001.SZ.parquet",
+                "/market/30m/000002.SZ.parquet",
+                "/market/30m/000003.SZ.parquet",
+                "/market/30m/000004.SZ.parquet",
+                "/market/30m/000005.SZ.parquet",
+            ],
+            "message": ["", "文件不存在", "读取失败", "缺少字段", "无有效行"],
+        }
+    )
+
+    stats = summarize_data_inventory(inventory)
+
+    assert stats["data_inventory_row_count"] == 5.0
+    assert stats["data_inventory_cached_count"] == 1.0
+    assert stats["data_inventory_unavailable_count"] == 4.0
+    assert stats["data_inventory_missing_file_count"] == 1.0
+    assert stats["data_inventory_read_error_count"] == 1.0
+    assert stats["data_inventory_missing_columns_count"] == 1.0
+    assert stats["data_inventory_no_valid_rows_count"] == 1.0
+
+
 def test_daily_repository_uses_existing_market_daily_layout(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     daily_root = data_root / "qfq"

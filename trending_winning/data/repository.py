@@ -205,8 +205,11 @@ LIMIT_FILTER_SUMMARY_KEYS = [
 DATA_INVENTORY_SUMMARY_KEYS = [
     "data_inventory_row_count",
     "data_inventory_cached_count",
+    "data_inventory_unavailable_count",
     "data_inventory_missing_file_count",
     "data_inventory_read_error_count",
+    "data_inventory_missing_columns_count",
+    "data_inventory_no_valid_rows_count",
     "data_inventory_total_rows",
     "data_inventory_total_file_size_bytes",
     "data_inventory_signature",
@@ -1124,11 +1127,15 @@ def summarize_data_inventory(data_inventory: pd.DataFrame | None) -> dict[str, o
     )
     rows = _audit_numeric_column(data_inventory, "rows")
     file_size = _audit_numeric_column(data_inventory, "file_size_bytes")
+    cached = status.eq("cached")
     return {
         "data_inventory_row_count": float(len(data_inventory)),
-        "data_inventory_cached_count": float(status.eq("cached").sum()),
+        "data_inventory_cached_count": float(cached.sum()),
+        "data_inventory_unavailable_count": float((~cached).sum()),
         "data_inventory_missing_file_count": float(status.eq("missing_file").sum()),
         "data_inventory_read_error_count": float(status.eq("read_error").sum()),
+        "data_inventory_missing_columns_count": float(status.eq("missing_columns").sum()),
+        "data_inventory_no_valid_rows_count": float(status.eq("no_valid_rows").sum()),
         "data_inventory_total_rows": float(rows.sum()),
         "data_inventory_total_file_size_bytes": float(file_size.sum()),
         "data_inventory_signature": _data_inventory_signature(data_inventory),
