@@ -735,6 +735,39 @@ def test_portfolio_order_backtest_prefers_invalid_order_over_no_bars_when_market
     assert result.stats["rejected_no_bars_count"] == 0.0
 
 
+def test_portfolio_order_backtest_prefers_target_direction_rejection_over_no_bars_when_market_data_is_empty() -> None:
+    orders = pd.DataFrame(
+        [
+            {
+                **_order(
+                    strategy_name="trend_strategy",
+                    symbol="000001.SZ",
+                    entry_price=10.4,
+                    stop_price=9.8,
+                    target_price=10.0,
+                ),
+                "order_id": "bad-target-empty-market",
+            }
+        ],
+        columns=ORDER_COLUMNS,
+    )
+    empty_bars = pd.DataFrame(columns=["date", "stock_code", "open", "high", "low", "close", "volume", "amount"])
+
+    result = run_portfolio_order_backtest(
+        empty_bars,
+        orders,
+        BacktestConfig(max_holding_bars=3),
+        PortfolioConfig(max_open_positions=1),
+    )
+
+    assert result.trades.empty
+    decision = result.order_decisions.iloc[0]
+    assert decision["status"] == "rejected"
+    assert decision["reason"] == "target_not_favorable"
+    assert result.stats["rejected_target_not_favorable_count"] == 1.0
+    assert result.stats["rejected_no_bars_count"] == 0.0
+
+
 @pytest.mark.parametrize("order_id", ["", "   ", None])
 def test_portfolio_order_backtest_rejects_orders_without_traceable_order_id(order_id: object) -> None:
     orders = pd.DataFrame(

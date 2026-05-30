@@ -434,6 +434,54 @@ def test_order_backtest_prefers_invalid_order_over_no_bars_when_market_data_is_e
     assert result.stats["rejected_no_bars_count"] == 0.0
 
 
+@pytest.mark.parametrize(
+    ("side", "entry_price", "stop_price", "target_price"),
+    [
+        ("long", 10.2, 9.8, 10.0),
+        ("short", 9.8, 10.2, 10.0),
+    ],
+)
+def test_order_backtest_prefers_target_direction_rejection_over_no_bars_when_market_data_is_empty(
+    side: str,
+    entry_price: float,
+    stop_price: float,
+    target_price: float,
+) -> None:
+    bars = pd.DataFrame(columns=["date", "stock_code", "open", "high", "low", "close", "volume", "amount"])
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": "bad-target-empty-market",
+                "strategy_name": "execution_case",
+                "detector_name": "trend",
+                "event_id": "event-bad-target-empty-market",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                "signal_bar_index": 0,
+                "side": side,
+                "signal_price": 10.0,
+                "entry_price": entry_price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "max_holding_bars": 1,
+                "max_actual_risk_pct": None,
+                "max_chase_pct": None,
+                "metadata": {},
+            }
+        ]
+    )
+
+    result = run_order_backtest(bars, orders, BacktestConfig(max_holding_bars=1))
+
+    assert result.trades.empty
+    decision = result.order_decisions.iloc[0]
+    assert decision["status"] == "rejected"
+    assert decision["reason"] == "target_not_favorable"
+    assert result.stats["rejected_target_not_favorable_count"] == 1.0
+    assert result.stats["rejected_no_bars_count"] == 0.0
+
+
 def test_order_backtest_reports_missing_required_order_columns_clearly() -> None:
     bars = _bars(
         [

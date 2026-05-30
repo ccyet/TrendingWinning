@@ -67,6 +67,8 @@ def simulate_order_trade_with_rejection(
         return OrderExecutionResult(reject_reason="invalid_order")
     if not is_protective_stop(side, entry_price, stop_price):
         return OrderExecutionResult(reject_reason="invalid_order")
+    if not is_favorable_target(side, entry_price, target_price):
+        return OrderExecutionResult(reject_reason="target_not_favorable")
     if signal_index < 0:
         return OrderExecutionResult(reject_reason="invalid_order")
     if signal_index >= len(group):
@@ -367,12 +369,13 @@ def _entry_constraint_rejection(
         chase_pct = abs(entry_price - signal_price) / signal_price
         if chase_pct > max_chase_pct:
             return "chase_too_far"
-    if not _target_is_favorable(side, entry_price, target_price):
+    if not is_favorable_target(side, entry_price, target_price):
         return "target_not_favorable"
     return ""
 
 
-def _target_is_favorable(side: str, entry_price: float, target_price: float) -> bool:
+def is_favorable_target(side: str, entry_price: float, target_price: float) -> bool:
+    """校验目标价方向：多头目标在入场上方，空头目标在入场下方。"""
     side = normalize_order_side(side)
     if side == "long":
         return target_price > entry_price

@@ -11,6 +11,7 @@ from trending_winning.backtest.execution import (
     apply_slippage,
     coerce_order_execution_result,
     compute_order_execution_metrics,
+    is_favorable_target,
     is_protective_stop,
     normalize_order_side,
     simulate_order_trade_with_rejection,
@@ -622,8 +623,11 @@ def order_preflight_reject_reason(order: Mapping[str, object]) -> str:
         return "invalid_order"
     entry_price = _as_float(order.get("entry_price", 0.0))
     stop_price = _as_float(order.get("stop_price", 0.0))
+    target_price = _as_float(order.get("target_price", 0.0))
     if not is_protective_stop(side, entry_price, stop_price):
         return "invalid_order"
+    if not is_favorable_target(side, entry_price, target_price):
+        return "target_not_favorable"
     max_holding = order.get("max_holding_bars", 1)
     if not pd.isna(max_holding) and _as_int(max_holding, default=0) < 1:
         return "invalid_order"
