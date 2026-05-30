@@ -32,8 +32,7 @@ from trending_winning.backtest.stats import (
 )
 from trending_winning.data.repository import (
     MarketDataRepository,
-    summarize_data_audit,
-    summarize_limit_filter_audit,
+    summarize_data_management,
 )
 from trending_winning.data.schema import unique_symbols
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
@@ -565,7 +564,7 @@ def run_portfolio_parameter_sweep(
     setup_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
     setup_strategy_filter_frames: list[pd.DataFrame] = []
-    data_stats = _data_management_statistics(
+    data_stats = summarize_data_management(
         data.data_audit,
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
@@ -714,7 +713,7 @@ def run_single_strategy_parameter_sweep(
     setup_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
     setup_strategy_filter_frames: list[pd.DataFrame] = []
-    data_stats = _data_management_statistics(
+    data_stats = summarize_data_management(
         data.data_audit,
         data.limit_filter_audit,
         filtered_limit_open_count=len(data.filtered_limit_open_days),
@@ -1075,7 +1074,7 @@ def _with_data_management_statistics(
     """运行态结果也携带数据审计摘要，保证 Web/CLI 和保存产物统计口径一致。"""
     stats = dict(result.stats)
     stats.update(
-        _data_management_statistics(
+        summarize_data_management(
             data.data_audit,
             data.limit_filter_audit,
             filtered_limit_open_count=len(data.filtered_limit_open_days),
@@ -1136,108 +1135,6 @@ def build_portfolio_benchmark_report(result: PortfolioExperimentResult) -> Portf
     )
 
 
-def _data_management_statistics(
-    data_audit: pd.DataFrame,
-    limit_filter_audit: pd.DataFrame,
-    *,
-    filtered_limit_open_count: int,
-    data_inventory: pd.DataFrame | None = None,
-    min_coverage_ratio: float | None = None,
-) -> dict[str, float]:
-    """把数据审计和日 K 过滤审计并入实验统计，避免结果脱离数据质量语境。"""
-    stats = summarize_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
-    stats.update(_data_inventory_statistics(data_inventory))
-    stats.update(summarize_limit_filter_audit(limit_filter_audit))
-    stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
-    return stats
-
-
-def _data_inventory_statistics(data_inventory: pd.DataFrame | None) -> dict[str, object]:
-    """把本地缓存库存压成统计字段；用于快速判断结果是否基于完整缓存快照。"""
-    keys: dict[str, object] = {
-        "data_inventory_row_count": 0.0,
-        "data_inventory_cached_count": 0.0,
-        "data_inventory_missing_file_count": 0.0,
-        "data_inventory_read_error_count": 0.0,
-        "data_inventory_total_rows": 0.0,
-        "data_inventory_total_file_size_bytes": 0.0,
-        "data_inventory_signature": "",
-    }
-    if data_inventory is None or data_inventory.empty:
-        return keys
-    status = (
-        data_inventory["status"].fillna("").astype(str)
-        if "status" in data_inventory.columns
-        else pd.Series([""] * len(data_inventory), index=data_inventory.index)
-    )
-    rows = _inventory_numeric_column(data_inventory, "rows")
-    file_size = _inventory_numeric_column(data_inventory, "file_size_bytes")
-    return {
-        "data_inventory_row_count": float(len(data_inventory)),
-        "data_inventory_cached_count": float(status.eq("cached").sum()),
-        "data_inventory_missing_file_count": float(status.eq("missing_file").sum()),
-        "data_inventory_read_error_count": float(status.eq("read_error").sum()),
-        "data_inventory_total_rows": float(rows.sum()),
-        "data_inventory_total_file_size_bytes": float(file_size.sum()),
-        "data_inventory_signature": _data_inventory_signature(data_inventory),
-    }
-
-
-def _data_inventory_signature(data_inventory: pd.DataFrame) -> str:
-    """按缓存元数据生成跨机器稳定签名；不包含本机绝对路径。"""
-    signature_columns = (
-        "stock_code",
-        "timeframe",
-        "adjust",
-        "status",
-        "exists",
-        "rows",
-        "start",
-        "end",
-        "file_size_bytes",
-        "modified_at",
-    )
-    records = [
-        {
-            column: _inventory_signature_value(row.get(column))
-            for column in signature_columns
-        }
-        for row in _sorted_inventory_records(data_inventory, signature_columns)
-    ]
-    payload = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _sorted_inventory_records(data_inventory: pd.DataFrame, columns: tuple[str, ...]) -> list[dict[str, object]]:
-    available = [column for column in columns if column in data_inventory.columns]
-    if not available:
-        return []
-    frame = data_inventory.loc[:, available].copy()
-    sort_columns = [column for column in ("stock_code", "timeframe", "adjust") if column in frame.columns]
-    if sort_columns:
-        frame = frame.sort_values(sort_columns, kind="mergesort")
-    return frame.to_dict("records")
-
-
-def _inventory_signature_value(value: object) -> object:
-    if pd.isna(value):
-        return ""
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        numeric = float(value)
-        return int(numeric) if numeric.is_integer() else numeric
-    return str(value)
-
-
-def _inventory_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
-    if column not in frame.columns:
-        return pd.Series([0.0] * len(frame), index=frame.index, dtype=float)
-    return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float)
-
-
 def _symbol_metadata_for_config(
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
 ) -> pd.DataFrame:
@@ -1269,7 +1166,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
     stats = dict(result.backtest.stats)
     stats.update(
-        _data_management_statistics(
+        summarize_data_management(
             result.data_coverage,
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,
@@ -1309,7 +1206,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
     stats = dict(result.backtest.stats)
     stats.update(
-        _data_management_statistics(
+        summarize_data_management(
             result.data_coverage,
             result.limit_filter_audit,
             filtered_limit_open_count=result.filtered_limit_open_count,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,8 @@ __all__ = [
     "resolve_symbol_names",
     "resolve_timeframe_root",
     "summarize_data_audit",
+    "summarize_data_inventory",
+    "summarize_data_management",
     "summarize_limit_filter_audit",
     "update_from_tdx",
     "write_local_bars",
@@ -196,6 +200,16 @@ LIMIT_FILTER_SUMMARY_KEYS = [
     "limit_filter_daily_missing_columns_count",
     "limit_filter_daily_quality_error_count",
     "limit_filter_filtered_days",
+]
+
+DATA_INVENTORY_SUMMARY_KEYS = [
+    "data_inventory_row_count",
+    "data_inventory_cached_count",
+    "data_inventory_missing_file_count",
+    "data_inventory_read_error_count",
+    "data_inventory_total_rows",
+    "data_inventory_total_file_size_bytes",
+    "data_inventory_signature",
 ]
 
 UNLOADABLE_AUDIT_STATUSES = frozenset({"read_error", "missing_columns"})
@@ -1092,6 +1106,95 @@ def summarize_limit_filter_audit(filter_audit: pd.DataFrame) -> dict[str, float]
         "limit_filter_daily_quality_error_count": float(status.eq("daily_quality_error").sum()),
         "limit_filter_filtered_days": float(_audit_numeric_column(filter_audit, "filtered_days").sum()),
     }
+
+
+def summarize_data_inventory(data_inventory: pd.DataFrame | None) -> dict[str, object]:
+    """把本地 parquet 库存压成稳定摘要；签名排除绝对路径，便于跨机器复现。"""
+    keys: dict[str, object] = {key: 0.0 for key in DATA_INVENTORY_SUMMARY_KEYS}
+    keys["data_inventory_signature"] = ""
+    if data_inventory is None or data_inventory.empty:
+        return keys
+    status = (
+        data_inventory["status"].fillna("").astype(str)
+        if "status" in data_inventory.columns
+        else pd.Series([""] * len(data_inventory), index=data_inventory.index)
+    )
+    rows = _audit_numeric_column(data_inventory, "rows")
+    file_size = _audit_numeric_column(data_inventory, "file_size_bytes")
+    return {
+        "data_inventory_row_count": float(len(data_inventory)),
+        "data_inventory_cached_count": float(status.eq("cached").sum()),
+        "data_inventory_missing_file_count": float(status.eq("missing_file").sum()),
+        "data_inventory_read_error_count": float(status.eq("read_error").sum()),
+        "data_inventory_total_rows": float(rows.sum()),
+        "data_inventory_total_file_size_bytes": float(file_size.sum()),
+        "data_inventory_signature": _data_inventory_signature(data_inventory),
+    }
+
+
+def summarize_data_management(
+    data_audit: pd.DataFrame,
+    limit_filter_audit: pd.DataFrame,
+    *,
+    filtered_limit_open_count: int,
+    data_inventory: pd.DataFrame | None = None,
+    min_coverage_ratio: float | None = None,
+) -> dict[str, object]:
+    """汇总回测数据健康度；实验层、CLI 和 Web 都应复用这一组数据管理指标。"""
+    stats = summarize_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
+    stats.update(summarize_data_inventory(data_inventory))
+    stats.update(summarize_limit_filter_audit(limit_filter_audit))
+    stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
+    return stats
+
+
+def _data_inventory_signature(data_inventory: pd.DataFrame) -> str:
+    """按缓存元数据生成跨机器稳定签名；不包含本机绝对路径。"""
+    signature_columns = (
+        "stock_code",
+        "timeframe",
+        "adjust",
+        "status",
+        "exists",
+        "rows",
+        "start",
+        "end",
+        "file_size_bytes",
+        "modified_at",
+    )
+    records = [
+        {
+            column: _inventory_signature_value(row.get(column))
+            for column in signature_columns
+        }
+        for row in _sorted_inventory_records(data_inventory, signature_columns)
+    ]
+    payload = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sorted_inventory_records(data_inventory: pd.DataFrame, columns: tuple[str, ...]) -> list[dict[str, object]]:
+    available = [column for column in columns if column in data_inventory.columns]
+    if not available:
+        return []
+    frame = data_inventory.loc[:, available].copy()
+    sort_columns = [column for column in ("stock_code", "timeframe", "adjust") if column in frame.columns]
+    if sort_columns:
+        frame = frame.sort_values(sort_columns, kind="mergesort")
+    return frame.to_dict("records")
+
+
+def _inventory_signature_value(value: object) -> object:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        return int(numeric) if numeric.is_integer() else numeric
+    return str(value)
 
 
 def _audit_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:

@@ -19,7 +19,7 @@ from trending_winning.backtest.experiment import (
 from trending_winning.backtest.engine import BacktestResult
 from trending_winning.backtest import experiment as experiment_module
 from trending_winning.backtest import portfolio as portfolio_module
-from trending_winning.data.repository import write_local_bars
+from trending_winning.data.repository import summarize_data_inventory, write_local_bars
 from trending_winning.strategies.base import ORDER_COLUMNS
 
 _PARAMETER_DECISION_SUMMARY_COLUMNS = {
@@ -135,9 +135,9 @@ def test_data_inventory_statistics_reports_stable_snapshot_signature() -> None:
     )
     changed_snapshot = inventory.assign(file_size_bytes=[1024, 4097])
 
-    stats = experiment_module._data_inventory_statistics(inventory)
-    same_stats = experiment_module._data_inventory_statistics(same_snapshot_different_path)
-    changed_stats = experiment_module._data_inventory_statistics(changed_snapshot)
+    stats = summarize_data_inventory(inventory)
+    same_stats = summarize_data_inventory(same_snapshot_different_path)
+    changed_stats = summarize_data_inventory(changed_snapshot)
 
     assert len(stats["data_inventory_signature"]) == 64
     assert stats["data_inventory_signature"] == same_stats["data_inventory_signature"]

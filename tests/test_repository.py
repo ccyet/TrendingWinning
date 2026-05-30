@@ -20,6 +20,8 @@ from trending_winning.data.repository import (
     resolve_daily_root,
     resolve_timeframe_root,
     summarize_data_audit,
+    summarize_data_inventory,
+    summarize_data_management,
     summarize_limit_filter_audit,
     update_from_tdx,
     write_local_bars,
@@ -408,6 +410,68 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
         "limit_filter_daily_quality_error_count": 0.0,
         "limit_filter_filtered_days": 2.0,
     }
+
+
+def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> None:
+    data_audit = pd.DataFrame(
+        {
+            "status": ["ok", "quality_error"],
+            "expected_rows": [8, 8],
+            "missing_rows": [1, 4],
+            "coverage_ratio": [0.875, 0.5],
+            "max_missing_gap_minutes": [30, 90],
+            "zero_volume_amount_rows": [2, 0],
+            "non_positive_price_rows": [0, 1],
+            "negative_volume_amount_rows": [0, 1],
+        }
+    )
+    filter_audit = pd.DataFrame(
+        {
+            "status": ["ok", "daily_missing"],
+            "filter_enabled": [True, True],
+            "filtered_days": [2, 0],
+        }
+    )
+    inventory = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "timeframe": ["1d", "30m"],
+            "adjust": ["qfq", "qfq"],
+            "status": ["cached", "cached"],
+            "exists": [True, True],
+            "rows": [2, 8],
+            "start": [pd.Timestamp("2026-05-24"), pd.Timestamp("2026-05-25 10:00:00")],
+            "end": [pd.Timestamp("2026-05-25"), pd.Timestamp("2026-05-25 15:00:00")],
+            "file_size_bytes": [1024, 4096],
+            "modified_at": [pd.Timestamp("2026-05-30 09:00:00"), pd.Timestamp("2026-05-30 09:01:00")],
+            "path": ["/mac/path/000001.SZ.parquet", "/mac/path/30m/000001.SZ.parquet"],
+            "message": ["", ""],
+        }
+    )
+    same_snapshot_different_path = inventory.assign(
+        path=["D:/market/1d/000001.SZ.parquet", "D:/market/30m/000001.SZ.parquet"]
+    )
+    changed_snapshot = inventory.assign(file_size_bytes=[1024, 4097])
+
+    inventory_stats = summarize_data_inventory(inventory)
+    same_inventory_stats = summarize_data_inventory(same_snapshot_different_path)
+    changed_inventory_stats = summarize_data_inventory(changed_snapshot)
+    data_stats = summarize_data_management(
+        data_audit,
+        filter_audit,
+        filtered_limit_open_count=2,
+        data_inventory=inventory,
+        min_coverage_ratio=0.8,
+    )
+
+    assert len(inventory_stats["data_inventory_signature"]) == 64
+    assert inventory_stats["data_inventory_signature"] == same_inventory_stats["data_inventory_signature"]
+    assert inventory_stats["data_inventory_signature"] != changed_inventory_stats["data_inventory_signature"]
+    assert data_stats["data_audit_row_count"] == 2.0
+    assert data_stats["data_inventory_cached_count"] == 2.0
+    assert data_stats["limit_filter_filtered_days"] == 2.0
+    assert data_stats["filtered_limit_open_count"] == 2.0
+    assert data_stats["data_inventory_signature"] == inventory_stats["data_inventory_signature"]
 
 
 def test_daily_repository_uses_existing_market_daily_layout(tmp_path: Path) -> None:
