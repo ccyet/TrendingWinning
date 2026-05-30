@@ -171,6 +171,8 @@ python -m trending_winning.cli single-backtest \
   --fee-rate 0.0003 \
   --slippage-bps 5 \
   --initial-equity 1 \
+  --trailing-take-profit-activation-pct 0.04 \
+  --trailing-take-profit-drawdown-pct 0.015 \
   --trend-lookback 20 \
   --trend-min-score 1.0 \
   --trend-strong-close-pos 0.65 \
@@ -202,6 +204,7 @@ python -m trending_winning.cli single-backtest \
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，避免参数对比时再手工汇总月度收益、最差月份和连续亏损风险。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动。
 单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio / market_bar_count / exposure_bars / exposure_bar_ratio / max_drawdown_start_at / max_drawdown_trough_at / max_drawdown_recovery_at / current_drawdown / current_underwater_bars`。单策略按满仓进出，`market_bar_count` 是样本内唯一 K 线时间点数量，`exposure_bar_ratio` 是持仓 K 数占市场时间轴的比例，可直接定位最大回撤和场内时间压力。
+`--trailing-take-profit-activation-pct` 和 `--trailing-take-profit-drawdown-pct` 是回撤止盈参数：前者表示实际入场后达到多少浮盈才启动，后者表示从持仓峰值或谷值回撤多少退出；任一为 `0` 时关闭。
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个形态识别事件和哪类信号形态。
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
@@ -247,6 +250,8 @@ python -m trending_winning.cli portfolio-backtest \
   --sector-capital-limit 银行=0.5,新能源=0.4 \
   --symbol-sector-map 000001.SZ=银行,300750.SZ=新能源 \
   --intrabar-exit-policy conservative \
+  --trailing-take-profit-activation-pct 0.04 \
+  --trailing-take-profit-drawdown-pct 0.015 \
   --output-dir runs/case-001 \
   --benchmark
 ```
@@ -265,6 +270,7 @@ python -m trending_winning.cli portfolio-backtest \
 `limit_filter_audit.csv` 记录日线过滤状态；严格模式下 `daily_missing / daily_read_error / daily_missing_columns / daily_quality_error` 会中止回测，关闭严格数据质量检查排查时重点看这些状态和 `filtered_days`。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 分别汇总撮合层与策略门控层的决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 用同一口径按 setup 继续拆分拒绝结构；`decision_rate` 是全局占比，`group_decision_rate` 是当前策略、setup 或过滤器组内占比，撮合层聚合表包含实际风险、追价和实际盈亏比摘要。
 手续费率、滑点 bps 和初始资金会写入 `config.json`，并直接传给单策略、组合策略和参数遍历撮合层。
+组合回测同样支持 `--trailing-take-profit-activation-pct / --trailing-take-profit-drawdown-pct`；退出原因会在 `trades.csv` 和 `exit_reason_stats.csv` 中显示为 `trailing_take_profit`。
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、
 `annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_drawdown`、`ulcer_index`、`time_under_water_ratio`、`avg_gross_exposure`、`max_gross_exposure`、
@@ -294,6 +300,8 @@ python -m trending_winning.cli single-sweep \
   --fee-rate 0.0003 \
   --slippage-bps 5 \
   --initial-equity 1 \
+  --trailing-take-profit-activation-pct 0.04 \
+  --trailing-take-profit-drawdown-pct 0.015 \
   --output-dir runs/single-sweep-001
 ```
 
@@ -323,6 +331,8 @@ python -m trending_winning.cli portfolio-sweep \
   --slippage-bps 5 \
   --initial-equity 1 \
   --max-open-positions-list 3,5 \
+  --trailing-take-profit-activation-pct 0.04 \
+  --trailing-take-profit-drawdown-pct 0.015 \
   --trend-lookback 20 \
   --trend-min-score 1.0 \
   --trend-h2-min-pullback-legs 2 \
@@ -343,6 +353,7 @@ python -m trending_winning.cli portfolio-sweep \
 mapping 参数用分号分隔多个方案，用 `+` 分隔同一方案内多个键值，例如
 `--grid strategy_capital_limit=trend_signal_bar=0.4+range_signal_bar=0.3;trend_signal_bar=0.7+range_signal_bar=0.2`，
 也可用于 `symbol_sector_map` 这类映射参数。
+固定参数可直接用 `--trailing-take-profit-activation-pct / --trailing-take-profit-drawdown-pct`，需要遍历时也可用通用 `--grid trailing_take_profit_activation_pct=0,0.03 --grid trailing_take_profit_drawdown_pct=0,0.01`。
 重复的 grid 值会在展开前去重，未启用 detector 的参数也会被过滤，避免同一组合重复生成订单、候选成交或组合分配结果。
 参数笛卡尔积结果会按收益、回撤、月度稳定性、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是参数排名；`pareto_rank` 用收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数标记非支配层级；`case_config_hash` 记录完整 case 配置指纹，`data_inventory_signature` 记录本次 K 线缓存快照指纹。
 保存目录同时包含 `config.json`、`summary.json`、`pareto.csv`、`parameter_summary.csv`、`case_setup_stats.csv`、`case_symbol_stats.csv`、`case_setup_order_decision_stats.csv`、`case_setup_strategy_filter_stats.csv`、`case_configs.jsonl`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv` 和 `limit_filter_audit.csv`；`config.json` 写入基础配置和 `sweep_grid`，`summary.json` 写入原始组合数、去重后实际 case 数、最佳 case、数据快照指纹、Pareto 候选数量、订单/候选缓存命中率、数据覆盖率、缓存不可用数、最长连续数据缺口、日 K 涨停开盘过滤摘要和信号形态决策摘要，`pareto.csv` 写入 `pareto_rank=1` 的候选集合，`parameter_summary.csv` 按每个 grid 参数值聚合 `case_count / pareto_case_count / pareto_hit_rate / positive_return_case_count / positive_return_rate / std_total_return / best_total_return / worst_total_return / best_sweep_rank / avg_total_return / avg_max_drawdown / avg_monthly_worst_return / avg_monthly_return_std / avg_acceptance_rate / avg_rejection_rate / avg_rejected_no_fill_count / avg_strategy_filter_acceptance_rate / avg_strategy_filter_rejection_rate`，`case_setup_stats.csv` 按 case 排名保留信号形态级绩效，`case_symbol_stats.csv` 按 case 排名保留股票名称、代码和标的级绩效，两张 `case_setup_*_decision_stats.csv` 按 case 排名保留信号形态级撮合拒绝和策略过滤拒绝。`case_configs.jsonl` 写入每个参数组的完整配置。`sweep.csv` 会附带 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_max_consecutive_losses / monthly_max_recovery_periods`、`order_cache_status / candidate_cache_status / generated_order_count / candidate_count / candidate_rejection_count`、`order_count / acceptance_rate / rejected_no_fill_count`、`data_inventory_signature / data_inventory_cached_count / data_inventory_unavailable_count / data_inventory_missing_columns_count / data_inventory_no_valid_rows_count / data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_max_missing_gap_minutes / data_max_missing_gap_start_at / data_max_missing_gap_end_at / data_missing_rows / data_audit_failed_count / limit_filter_filtered_days` 等周期稳定性、性能、订单决策和数据质量摘要，方便解释参数组表现；如果只改变 `higher_timeframe_max_age_minutes`，会重新生成大周期方向过滤后的订单，不复用旧订单。

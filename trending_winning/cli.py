@@ -61,6 +61,21 @@ def _add_side_mode_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--trailing-take-profit-activation-pct",
+        type=float,
+        default=0.0,
+        help="回撤止盈启动浮盈，小数比例；0 表示关闭。",
+    )
+    parser.add_argument(
+        "--trailing-take-profit-drawdown-pct",
+        type=float,
+        default=0.0,
+        help="回撤止盈回撤幅度，小数比例；0 表示关闭。",
+    )
+
+
 def _parse_generic_sweep_grid(items: list[str], config: object) -> dict[str, list[object]]:
     """解析通用参数网格；字段合法性由实验配置 dataclass 决定。"""
     if not items:
@@ -256,6 +271,7 @@ def main() -> None:
     single_parser.add_argument("--slippage-bps", type=float, default=0.0)
     single_parser.add_argument("--initial-equity", type=float, default=1.0)
     single_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    _add_trailing_take_profit_args(single_parser)
     single_parser.add_argument("--allow-bad-data", action="store_true")
     single_parser.add_argument("--output-dir", default="")
     single_parser.add_argument("--trend-lookback", type=int, default=20)
@@ -305,6 +321,7 @@ def main() -> None:
     single_sweep_parser.add_argument("--slippage-bps", type=float, default=0.0)
     single_sweep_parser.add_argument("--initial-equity", type=float, default=1.0)
     single_sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    _add_trailing_take_profit_args(single_sweep_parser)
     single_sweep_parser.add_argument("--allow-bad-data", action="store_true")
     single_sweep_parser.add_argument("--output-dir", default="")
     single_sweep_parser.add_argument("--trend-lookback", type=int, default=20)
@@ -365,6 +382,7 @@ def main() -> None:
     portfolio_parser.add_argument("--sector-metadata-key", default="sector")
     portfolio_parser.add_argument("--default-sector", default="UNKNOWN")
     portfolio_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    _add_trailing_take_profit_args(portfolio_parser)
     portfolio_parser.add_argument("--trend-lookback", type=int, default=20)
     portfolio_parser.add_argument("--trend-min-score", type=float, default=1.0)
     portfolio_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
@@ -427,6 +445,7 @@ def main() -> None:
     sweep_parser.add_argument("--sector-metadata-key", default="sector")
     sweep_parser.add_argument("--default-sector", default="UNKNOWN")
     sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
+    _add_trailing_take_profit_args(sweep_parser)
     sweep_parser.add_argument("--trend-lookback", type=int, default=20)
     sweep_parser.add_argument("--trend-min-score", type=float, default=1.0)
     sweep_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
@@ -582,6 +601,8 @@ def main() -> None:
             slippage_bps=float(args.slippage_bps),
             initial_equity=float(args.initial_equity),
             intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
+            trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -638,6 +659,8 @@ def main() -> None:
             slippage_bps=float(args.slippage_bps),
             initial_equity=float(args.initial_equity),
             intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
+            trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -720,6 +743,8 @@ def main() -> None:
             sector_metadata_key=str(args.sector_metadata_key),
             default_sector=str(args.default_sector),
             intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
+            trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),
@@ -799,6 +824,8 @@ def main() -> None:
             sector_metadata_key=str(args.sector_metadata_key),
             default_sector=str(args.default_sector),
             intrabar_exit_policy=str(args.intrabar_exit_policy),
+            trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
+            trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),
