@@ -451,7 +451,7 @@ def run_single_strategy_experiment(
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
-        symbol_stats=_grouped_trade_statistics(backtest.trades, by="stock_code"),
+        symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
@@ -520,7 +520,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
-        symbol_stats=_grouped_trade_statistics(backtest.trades, by="stock_code"),
+        symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
@@ -1155,6 +1155,36 @@ def _symbol_metadata_for_config(
         if name:
             rows.append({"stock_code": symbol, "stock_name": name, "source": "default_builtin", "path": ""})
     return pd.DataFrame(rows, columns=pd.Index(SYMBOL_METADATA_COLUMNS))
+
+
+def _symbol_grouped_trade_statistics(
+    trades: pd.DataFrame,
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+) -> pd.DataFrame:
+    """标的维度统计优先带股票名称；代码保留为复核键，不再让用户只看 stock_code。"""
+    stats = _grouped_trade_statistics(trades, by="stock_code")
+    if "stock_name" in stats.columns:
+        return stats
+    if "stock_code" not in stats.columns:
+        return stats
+    name_by_symbol = {
+        str(row.stock_code): str(row.stock_name)
+        for row in _symbol_metadata_for_config(config).itertuples(index=False)
+    }
+    if stats.empty:
+        rows = [
+            {
+                "stock_name": name_by_symbol.get(symbol, symbol),
+                "stock_code": symbol,
+                **{key: 0.0 for key in STAT_KEYS},
+            }
+            for symbol in unique_symbols(tuple(config.symbols))
+        ]
+        return pd.DataFrame(rows, columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
+    result = stats.copy()
+    names = result["stock_code"].astype(str).map(lambda symbol: name_by_symbol.get(symbol, symbol))
+    result.insert(0, "stock_name", names)
+    return result
 
 
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:

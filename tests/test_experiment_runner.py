@@ -221,6 +221,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     saved_filter_stats = pd.read_csv(output_dir / "strategy_filter_stats.csv")
     saved_setup_decision_stats = pd.read_csv(output_dir / "setup_order_decision_stats.csv")
     saved_setup_filter_stats = pd.read_csv(output_dir / "setup_strategy_filter_stats.csv")
+    saved_symbol_stats = pd.read_csv(output_dir / "symbol_stats.csv")
     assert saved_config["detectors"] == ["trend", "range"]
     assert saved_config["short_margin_rate"] == 1.5
     assert saved_config["intrabar_exit_policy"] == "optimistic"
@@ -276,7 +277,9 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert "strategy_name" in result.strategy_stats.columns
     assert "detector_name" in result.detector_stats.columns
     assert {"detector_name", "event_type", "side"}.issubset(result.setup_stats.columns)
-    assert "stock_code" in result.symbol_stats.columns
+    assert {"stock_name", "stock_code"}.issubset(result.symbol_stats.columns)
+    assert result.symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
+    assert saved_symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
     assert "side" in result.side_stats.columns
     assert "exit_reason" in result.exit_reason_stats.columns
     assert "event_type" in result.event_type_stats.columns
@@ -2382,6 +2385,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     saved_config = json.loads((output_dir / "config.json").read_text())
     saved_stats = json.loads((output_dir / "stats.json").read_text())
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
+    saved_symbol_stats = pd.read_csv(output_dir / "symbol_stats.csv")
     assert saved_config["detector"] == "trend"
     assert saved_config["max_actual_risk_pct"] == 0.08
     assert saved_config["max_chase_pct"] == 0.08
@@ -2409,6 +2413,8 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert result.backtest.stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert saved_stats["limit_filter_audit_row_count"] == 1.0
     assert saved_stats["limit_filter_filtered_days"] == 0.0
+    assert result.symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
+    assert saved_symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
 

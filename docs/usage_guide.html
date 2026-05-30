@@ -373,6 +373,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>equity_curve.csv</code></td><td>单策略交易净值带成交时间轴；组合为逐 K 盯市净值。</td></tr>
           <tr><td><code>detector_stats.csv</code></td><td>按 <code>detector_name</code> 汇总趋势、区间、通道、反转等识别模块的成交绩效。</td></tr>
           <tr><td><code>setup_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总信号形态级别绩效，用于比较 H1/H2、失败突破、通道突破和反转信号；同时带胜率区间、平均收益标准误和正期望概率，避免小样本误判。</td></tr>
+          <tr><td><code>symbol_stats.csv</code></td><td>按股票汇总绩效，优先显示 <code>stock_name</code>，同时保留 <code>stock_code</code> 作为复核键；没有成交的样本股票也会保留零值行，便于区分“参与回测但无交易”和“未进入样本”。</td></tr>
           <tr><td><code>data_inventory.csv</code></td><td>本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含存在状态、行数、起止时间、文件大小、修改时间和路径；库存扫描只读取 parquet 元数据和 <code>date/stock_code</code> 两列，不加载完整 OHLCV。</td></tr>
           <tr><td><code>symbol_metadata.csv</code></td><td>本次实验涉及股票的代码、名称和名称来源。优先读取行情目录 <code>symbols.csv / stock_names.csv</code>，其次读取 TDX <code>hq_cache</code> 的 <code>shm/szm/bjm.tnf</code>。</td></tr>
           <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率，包含 <code>expected_rows</code>、<code>missing_rows</code>、<code>coverage_ratio</code>、<code>max_missing_gap_minutes</code>、<code>first_missing_at</code>、<code>last_missing_at</code>、<code>max_missing_gap_start_at</code> 和 <code>max_missing_gap_end_at</code>，用于定位需要补齐的 K 线区间和最长连续缺口。关闭严格数据质量检查时，<code>read_error</code> 或 <code>missing_columns</code> 的 parquet 会保留审计记录并从回测数据包跳过，不会当成有效 K 线交易。</td></tr>
