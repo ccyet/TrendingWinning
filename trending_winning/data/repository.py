@@ -195,6 +195,8 @@ LIMIT_FILTER_SUMMARY_KEYS = [
     "limit_filter_filtered_days",
 ]
 
+UNLOADABLE_AUDIT_STATUSES = frozenset({"read_error", "missing_columns"})
+
 
 @dataclass(frozen=True)
 class BacktestDataBundle:
@@ -682,11 +684,17 @@ def load_backtest_data(
     if strict_data_quality:
         _raise_for_failed_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
 
+    intraday_symbols = _symbols_safe_for_backtest_load(
+        symbols=symbols,
+        audit=data_audit,
+        timeframe=timeframe,
+        strict_data_quality=strict_data_quality,
+    )
     intraday = load_local_bars(
         data_root=data_root,
         timeframe=timeframe,
         adjust=adjust,
-        symbols=symbols,
+        symbols=intraday_symbols,
         start=start,
         end=end,
     )
@@ -780,11 +788,17 @@ def load_multi_timeframe_backtest_data(
         _raise_for_failed_limit_filter_audit(filter_audit)
     bars_by_timeframe: dict[str, pd.DataFrame] = {}
     for timeframe in normalized_timeframes:
+        timeframe_symbols = _symbols_safe_for_backtest_load(
+            symbols=symbols,
+            audit=data_audit,
+            timeframe=timeframe,
+            strict_data_quality=strict_data_quality,
+        )
         bars = load_local_bars(
             data_root=data_root,
             timeframe=timeframe,
             adjust=adjust,
-            symbols=symbols,
+            symbols=timeframe_symbols,
             start=start,
             end=end,
         )
@@ -820,6 +834,26 @@ def _drop_zero_liquidity_bars(bars: pd.DataFrame) -> pd.DataFrame:
         return bars
     tradable = bars["volume"].gt(0) & bars["amount"].gt(0)
     return bars.loc[tradable].reset_index(drop=True)
+
+
+def _symbols_safe_for_backtest_load(
+    *,
+    symbols: tuple[str, ...] | list[str],
+    audit: pd.DataFrame,
+    timeframe: str,
+    strict_data_quality: bool,
+) -> list[str]:
+    """非严格回测只跳过无法读取的文件；质量问题仍交给 normalize_bars 暴露到结果中。"""
+    normalized_symbols = unique_symbols(tuple(symbols))
+    if strict_data_quality or audit.empty or not {"stock_code", "timeframe", "status"}.issubset(audit.columns):
+        return normalized_symbols
+    unsafe_rows = audit.loc[
+        audit["timeframe"].astype(str).eq(timeframe)
+        & audit["status"].astype(str).isin(UNLOADABLE_AUDIT_STATUSES),
+        "stock_code",
+    ]
+    unsafe_symbols = {normalize_symbol(symbol) for symbol in unsafe_rows}
+    return [symbol for symbol in normalized_symbols if symbol not in unsafe_symbols]
 
 
 def _normalize_min_coverage_ratio(value: float | None) -> float | None:

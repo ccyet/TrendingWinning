@@ -1736,6 +1736,40 @@ def test_load_backtest_data_can_explicitly_disable_quality_gate(tmp_path: Path) 
     assert len(bundle.bars) == 1
 
 
+def test_load_backtest_data_skips_unreadable_intraday_file_when_quality_gate_disabled(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    daily_root = data_root / "qfq"
+    daily_root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-24", "2026-05-25"]),
+            "stock_code": ["000003.SZ", "000003.SZ"],
+            "open": [9.8, 10.0],
+            "high": [10.0, 10.2],
+            "low": [9.6, 9.9],
+            "close": [9.9, 10.1],
+            "volume": [1000.0, 1200.0],
+            "amount": [9900.0, 12120.0],
+        }
+    ).to_parquet(daily_root / "000003.SZ.parquet", index=False)
+    intraday_root = resolve_timeframe_root(data_root, "30m") / "qfq"
+    intraday_root.mkdir(parents=True)
+    (intraday_root / "000003.SZ.parquet").write_text("not a parquet file", encoding="utf-8")
+
+    bundle = load_backtest_data(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000003.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+        strict_data_quality=False,
+    )
+
+    assert bundle.data_audit.loc[0, "status"] == "read_error"
+    assert bundle.bars.empty
+
+
 def test_load_multi_timeframe_backtest_data_audits_and_filters_each_timeframe(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     daily = pd.DataFrame(
@@ -1788,6 +1822,62 @@ def test_load_multi_timeframe_backtest_data_audits_and_filters_each_timeframe(tm
     assert bundle.filtered_limit_open_days["session_date"].tolist() == [pd.Timestamp("2026-05-25")]
     for bars in bundle.bars_by_timeframe.values():
         assert bars["date"].dt.normalize().unique().tolist() == [pd.Timestamp("2026-05-26")]
+
+
+def test_load_multi_timeframe_backtest_data_skips_unreadable_timeframe_when_quality_gate_disabled(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    daily_root = data_root / "qfq"
+    daily_root.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-24", "2026-05-25"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [9.8, 10.0],
+            "high": [10.0, 10.4],
+            "low": [9.7, 9.9],
+            "close": [9.9, 10.3],
+            "volume": [1000.0, 1100.0],
+            "amount": [9900.0, 11330.0],
+        }
+    ).to_parquet(daily_root / "000001.SZ.parquet", index=False)
+    corrupt_root = resolve_timeframe_root(data_root, "30m") / "qfq"
+    corrupt_root.mkdir(parents=True)
+    (corrupt_root / "000001.SZ.parquet").write_text("not a parquet file", encoding="utf-8")
+    write_local_bars(
+        data_root=data_root,
+        timeframe="60m",
+        adjust="qfq",
+        bars=pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-05-25 10:30:00", "2026-05-25 11:30:00"]),
+                "stock_code": ["000001.SZ", "000001.SZ"],
+                "open": [10.0, 10.2],
+                "high": [10.3, 10.5],
+                "low": [9.9, 10.1],
+                "close": [10.2, 10.4],
+                "volume": [1000.0, 1100.0],
+                "amount": [10200.0, 11440.0],
+            }
+        ),
+    )
+
+    bundle = load_multi_timeframe_backtest_data(
+        data_root=data_root,
+        timeframes=("30m", "60m"),
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+        filter_limit_open=False,
+        strict_data_quality=False,
+    )
+
+    audit = bundle.data_audit.set_index(["timeframe", "stock_code"])
+    assert audit.loc[("30m", "000001.SZ"), "status"] == "read_error"
+    assert bundle.bars_by_timeframe["30m"].empty
+    assert bundle.bars_by_timeframe["60m"]["close"].tolist() == [10.2, 10.4]
 
 
 def test_load_multi_timeframe_backtest_data_fails_when_daily_filter_cannot_run(tmp_path: Path) -> None:

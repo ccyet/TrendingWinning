@@ -132,7 +132,7 @@ python -m trending_winning.cli audit-data \
 ```
 
 组合回测默认启用严格数据质量检查：本地 parquet 缺失、请求窗口无可交易数据、缺字段、日期无法解析、标的代码为空或无法规范化、重复 K、OHLC 为空、价格非正、high/low 与 open/close 不一致、volume/amount 为空或负数，以及日 K 缺失导致一字涨停过滤无法执行，都会直接失败。`volume` 或 `amount` 为 0 会记录为 `zero_volume_amount_rows`，不直接记为字段质量错误，但覆盖率按剔除这些 K 后的可交易 K 计算，回测数据包也会先剔除这些 K；裸策略/撮合入口仍不会用这类 K 入场、止盈止损或统计路径波动。
-临时排查时可以在 CLI 里加 `--allow-bad-data`，页面里取消“严格数据质量检查”。
+临时排查时可以在 CLI 里加 `--allow-bad-data`，页面里取消“严格数据质量检查”；此时 `read_error / missing_columns` 等无法装载的 parquet 会保留在审计表里并从回测数据包跳过，不会被当成有效 K 线参与交易。
 多周期扫描会复用同一套数据质量检查和涨停开盘过滤，不再直接绕过本地行情审计。
 `audit-data` 会同时输出 `invalid_date_rows / invalid_symbol_rows / zero_volume_amount_rows / expected_rows / missing_rows / coverage_ratio / max_missing_gap_minutes / first_missing_at / last_missing_at / max_missing_gap_start_at / max_missing_gap_end_at`；其中 `rows_in_window / missing_rows / coverage_ratio` 按剔除零流动性后的可交易 K 计算，`zero_volume_amount_rows` 单独保留原始零流动性数量。
 直接审计和回测加载都会优先用本地日 K 作为交易日锚点计算分钟线覆盖度，可暴露整天分钟 K 缺失；日 K 不存在时才退回按已观测分钟交易日计算。

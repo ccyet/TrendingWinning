@@ -41,7 +41,7 @@ BACKTEST_HELP_TEXT = {
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
     "initial_equity": "净值曲线起始资金，默认 1.0，便于比较不同策略。",
     "intrabar_exit_policy": "同一根 K 线同时打到止盈和止损时的处理方式。",
-    "strict_data_quality": "开启后会拒绝明显缺失、重复或异常的本地 K 线样本。",
+    "strict_data_quality": "开启后会拒绝明显缺失、重复或异常的本地 K 线样本；关闭后仍会记录审计，无法读取或缺字段的文件会被跳过。",
     "min_coverage_ratio": "样本窗口内实际 K 线数量占理论数量的最低比例，0 表示不额外限制。",
     "higher_timeframe": "用更大周期判断主方向，只过滤逆大周期方向的订单，不改形态识别结果。",
     "higher_timeframe_max_age": "大周期信号允许滞后的最长分钟数，0 表示不限制信号年龄。",
