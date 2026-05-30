@@ -134,6 +134,44 @@ def test_legacy_backtest_uses_single_full_position_across_symbols() -> None:
     assert result.stats["trade_count"] == 1.0
 
 
+def test_legacy_backtest_records_decisions_for_global_position_gate() -> None:
+    scanned = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2026-05-25 09:30:00",
+                    "2026-05-25 10:00:00",
+                    "2026-05-25 09:30:00",
+                    "2026-05-25 10:00:00",
+                ]
+            ),
+            "stock_code": ["000001.SZ", "000001.SZ", "000002.SZ", "000002.SZ"],
+            "open": [10.0, 10.2, 20.0, 20.2],
+            "high": [10.2, 10.5, 20.2, 20.5],
+            "low": [9.8, 10.0, 19.8, 20.0],
+            "close": [10.0, 10.3, 20.0, 20.3],
+            "volume": [1000.0, 1000.0, 1000.0, 1000.0],
+            "amount": [10000.0, 10300.0, 20000.0, 20300.0],
+            "breakout_trigger": [True, False, True, False],
+            "trigger_price": [10.0, pd.NA, 20.0, pd.NA],
+        }
+    )
+
+    result = run_backtest(
+        scanned,
+        BacktestConfig(take_profit_pct=0.20, stop_loss_pct=0.05, max_holding_bars=1),
+    )
+
+    decisions = result.order_decisions.set_index("stock_code")
+    assert decisions.loc["000001.SZ", "status"] == "accepted"
+    assert decisions.loc["000001.SZ", "reason"] == ""
+    assert decisions.loc["000002.SZ", "status"] == "rejected"
+    assert decisions.loc["000002.SZ", "reason"] == "already_open"
+    assert result.stats["order_count"] == 2.0
+    assert result.stats["accepted_order_count"] == 1.0
+    assert result.stats["rejected_already_open_count"] == 1.0
+
+
 def test_legacy_backtest_reuses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(_simulate_trade)
 

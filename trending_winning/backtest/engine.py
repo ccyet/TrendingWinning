@@ -138,32 +138,63 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
             trade = _simulate_trade(group, index, str(symbol), cfg)
             if trade is None:
                 continue
-            candidates.append({"trade": trade})
+            candidates.append({"trade": trade, "order_sequence": len(candidates)})
 
     trades: list[dict[str, object]] = []
+    decisions: list[tuple[int, dict[str, object]]] = []
     open_until_date: pd.Timestamp | None = None
     # 旧版突破回测也按单策略满仓处理：任意股票有持仓时，全局不再开第二笔。
     for candidate in sorted(candidates, key=_single_position_candidate_sort_key):
         trade = candidate["trade"]
         if not isinstance(trade, Mapping):
             continue
+        order_sequence = int(candidate.get("order_sequence", 0))
+        trade_record = dict(trade)
         entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
         if open_until_date is not None and pd.notna(entry_date) and entry_date <= open_until_date:
+            decisions.append((order_sequence, _legacy_order_decision_record(trade_record, "rejected", "already_open")))
             continue
-        trades.append(dict(trade))
+        trades.append(trade_record)
+        decisions.append((order_sequence, _legacy_order_decision_record(trade_record, "accepted", "")))
         exit_date = pd.to_datetime(trade.get("exit_date", pd.NaT), errors="coerce")
         open_until_date = pd.Timestamp(exit_date) if pd.notna(exit_date) else None
 
+    decision_records = [record for _, record in sorted(decisions, key=lambda item: item[0])]
+    decisions_df = pd.DataFrame(decision_records, columns=ORDER_DECISION_COLUMNS)
     trades_df = pd.DataFrame(trades)
     if trades_df.empty:
         trades_df = pd.DataFrame(columns=TRADE_COLUMNS)
         equity = build_equity_curve(trades_df, cfg.initial_equity)
-        return BacktestResult(trades=trades_df, equity_curve=equity, stats=_trade_statistics(trades_df, equity))
+        return BacktestResult(
+            trades=trades_df,
+            equity_curve=equity,
+            stats=_order_statistics(trades_df, equity, decisions_df),
+            order_decisions=decisions_df,
+        )
 
     trades_df = _sort_trades_for_statistics(trades_df.drop(columns=["_exit_index"]))
     trades_df = trades_df[TRADE_COLUMNS]
     equity = build_equity_curve(trades_df, cfg.initial_equity)
-    return BacktestResult(trades=trades_df, equity_curve=equity, stats=_trade_statistics(trades_df, equity))
+    return BacktestResult(
+        trades=trades_df,
+        equity_curve=equity,
+        stats=_order_statistics(trades_df, equity, decisions_df),
+        order_decisions=decisions_df,
+    )
+
+
+def _legacy_order_decision_record(trade: dict[str, object], status: str, reason: str) -> dict[str, object]:
+    """旧版突破信号也落到统一决策日志，便于统计被满仓门控过滤的触发。"""
+    capital_fraction = 1.0 if status == "accepted" else 0.0
+    return order_decision_record(
+        trade,
+        status,
+        reason,
+        trade=trade,
+        capital_fraction=capital_fraction,
+        risk_fraction=_trade_risk_fraction(trade) if status == "accepted" else 0.0,
+        margin_fraction=capital_fraction,
+    )
 
 
 def _simulate_trade(
