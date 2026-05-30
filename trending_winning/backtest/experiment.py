@@ -176,6 +176,12 @@ PARAMETER_SUMMARY_METRICS = (
     ("acceptance_rate", "avg_acceptance_rate", "mean"),
     ("rejection_rate", "avg_rejection_rate", "mean"),
     ("rejected_no_fill_count", "avg_rejected_no_fill_count", "mean"),
+    ("avg_accepted_actual_risk_pct", "avg_accepted_actual_risk_pct", "mean"),
+    ("avg_accepted_actual_chase_pct", "avg_accepted_actual_chase_pct", "mean"),
+    ("avg_accepted_actual_reward_to_risk", "avg_accepted_actual_reward_to_risk", "mean"),
+    ("avg_executed_actual_risk_pct", "avg_executed_actual_risk_pct", "mean"),
+    ("avg_executed_actual_chase_pct", "avg_executed_actual_chase_pct", "mean"),
+    ("avg_executed_actual_reward_to_risk", "avg_executed_actual_reward_to_risk", "mean"),
     ("strategy_filter_acceptance_rate", "avg_strategy_filter_acceptance_rate", "mean"),
     ("strategy_filter_rejection_rate", "avg_strategy_filter_rejection_rate", "mean"),
 )

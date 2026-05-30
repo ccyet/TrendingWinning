@@ -641,6 +641,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "策略K线运行区间" in html
     assert "avg_accepted_actual_risk_pct" in html
     assert "最终成交订单" in html
+    assert "参数遍历成交质量" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
     assert "没有成交但出现过信号或拒单" in html
 
@@ -653,6 +654,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "docs/backtest_kline_guide.html" in readme
     assert "盈利通道回撤止盈" in readme
     assert "avg_accepted_actual_risk_pct" in readme
+    assert "参数遍历成交质量" in readme
     assert "回测界面 K 线使用说明" in html
     assert "盈利通道回撤止盈" in html
     assert "术语对照" in html
