@@ -10,6 +10,7 @@ from trending_winning.data.repository import (
     MultiTimeframeBacktestDataBundle,
     MarketDataRepository,
     audit_local_data,
+    available_symbols,
     inventory_local_data,
     load_daily_bars,
     load_backtest_data,
@@ -267,6 +268,15 @@ def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: P
     assert inventory["stock_code"].tolist() == ["600519.SH"]
     assert inventory["timeframe"].tolist() == ["1d"]
     assert inventory["status"].tolist() == ["cached"]
+
+
+def test_available_symbols_filters_invalid_and_duplicate_cache_names(tmp_path: Path) -> None:
+    root = tmp_path / "market" / "30m" / "qfq"
+    root.mkdir(parents=True)
+    for name in ("000001.SZ.parquet", "000001_SZ.parquet", "not-a-symbol.parquet"):
+        (root / name).write_text("placeholder", encoding="utf-8")
+
+    assert available_symbols(tmp_path / "market" / "daily", "30m", "qfq") == ["000001.SZ"]
 
 
 def test_market_data_repository_exposes_symbol_names_from_metadata(tmp_path: Path) -> None:
