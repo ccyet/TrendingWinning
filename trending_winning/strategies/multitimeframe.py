@@ -10,9 +10,9 @@ from trending_winning.data.schema import normalize_symbol
 from trending_winning.strategies.base import ORDER_COLUMNS, Strategy, empty_orders
 from trending_winning.strategies.diagnostics import (
     STRATEGY_FILTER_DECISION_COLUMNS,
-    collect_strategy_filter_decisions,
     empty_strategy_filter_decisions,
 )
+from trending_winning.strategies.runtime import StrategyRunResult, execute_strategy
 
 
 @dataclass(frozen=True)
@@ -49,17 +49,29 @@ class HigherTimeframeAlignmentStrategy:
         self.last_filter_decisions = empty_strategy_filter_decisions()
 
     def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        return self.generate_order_plan(bars, timeframe=timeframe).orders
+
+    def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
         self.last_filter_decisions = empty_strategy_filter_decisions()
-        orders = self.base_strategy.generate_orders(bars, timeframe=timeframe)
-        base_filter_decisions = collect_strategy_filter_decisions([self.base_strategy])
+        base_run = execute_strategy(self.base_strategy, bars, timeframe=timeframe)
+        orders = base_run.orders
+        base_filter_decisions = base_run.filter_decisions
         if orders.empty:
             self.last_filter_decisions = base_filter_decisions
-            return empty_orders()
+            return StrategyRunResult(
+                orders=empty_orders(),
+                filter_decisions=self.last_filter_decisions,
+                strategy_name=self.name,
+            )
         context = _normalize_context(self.higher_context, self.config.context_column)
         aligned = _merge_prior_context(orders, context)
         if aligned.empty:
             self.last_filter_decisions = base_filter_decisions
-            return empty_orders()
+            return StrategyRunResult(
+                orders=empty_orders(),
+                filter_decisions=self.last_filter_decisions,
+                strategy_name=self.name,
+            )
         mask = self._alignment_mask(aligned)
         alignment_decisions = _filter_decision_frame(
             aligned,
@@ -73,7 +85,11 @@ class HigherTimeframeAlignmentStrategy:
         self.last_filter_decisions = _merge_filter_decision_frames(base_filter_decisions, alignment_decisions)
         accepted = aligned.loc[mask].copy()
         if accepted.empty:
-            return empty_orders()
+            return StrategyRunResult(
+                orders=empty_orders(),
+                filter_decisions=self.last_filter_decisions,
+                strategy_name=self.name,
+            )
 
         accepted["strategy_name"] = self.name
         accepted["metadata"] = _metadata_with_context_columns(
@@ -83,7 +99,11 @@ class HigherTimeframeAlignmentStrategy:
             self.base_strategy.name,
             self.config.context_timeframe,
         )
-        return accepted[ORDER_COLUMNS].reset_index(drop=True)
+        return StrategyRunResult(
+            orders=accepted[ORDER_COLUMNS].reset_index(drop=True),
+            filter_decisions=self.last_filter_decisions,
+            strategy_name=self.name,
+        )
 
     def _alignment_mask(self, frame: pd.DataFrame) -> pd.Series:
         state = frame["_context_state"].astype(str).str.strip().str.lower()

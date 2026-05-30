@@ -11,6 +11,7 @@ from trending_winning.strategies.multitimeframe import (
     TimeframeAlignmentConfig,
     _filter_decision_frame,
 )
+from trending_winning.strategies.runtime import StrategyRunResult
 
 
 class FixedOrderStrategy:
@@ -29,6 +30,25 @@ class FixedOrderStrategyWithBaseFilter(FixedOrderStrategy):
     def __init__(self, orders: list[dict[str, object]], filter_decisions: list[dict[str, object]]) -> None:
         super().__init__(orders)
         self.last_filter_decisions = pd.DataFrame(filter_decisions, columns=STRATEGY_FILTER_DECISION_COLUMNS)
+
+
+class ExplicitPlanBaseStrategy:
+    name = "explicit_base_signal_bar"
+
+    def __init__(self, orders: list[dict[str, object]], filter_decisions: pd.DataFrame) -> None:
+        self._orders = orders
+        self._filter_decisions = filter_decisions
+        self.seen_timeframe = ""
+
+    def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+        self.seen_timeframe = timeframe
+        return StrategyRunResult(
+            orders=pd.DataFrame(self._orders, columns=ORDER_COLUMNS),
+            filter_decisions=self._filter_decisions,
+        )
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        raise AssertionError("多周期包装器应通过显式 StrategyRunResult 获取底层策略产物。")
 
 
 def _order(order_id: str, *, symbol: str, side: str, signal_date: str) -> dict[str, object]:
@@ -77,6 +97,33 @@ def _filter_decision(order_id: str, *, status: str, reason: str) -> dict[str, ob
         "context_date": pd.NaT,
         "context_state": "",
     }
+
+
+def _explicit_filter_decisions() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "order_id": "base-rejected",
+                "event_id": "event:base-rejected",
+                "strategy_name": "explicit_base_signal_bar",
+                "base_strategy_name": "explicit_base_signal_bar",
+                "detector_name": "trend",
+                "event_type": "bull_h2_setup",
+                "stock_code": "000001.SZ",
+                "timeframe": "15m",
+                "signal_date": pd.Timestamp("2026-05-25 10:00:00"),
+                "signal_bar_index": 1,
+                "side": "long",
+                "status": "rejected",
+                "reason": "custom_base_filter",
+                "filter_name": "explicit_base",
+                "context_timeframe": "",
+                "context_date": pd.NaT,
+                "context_state": "",
+            }
+        ],
+        columns=STRATEGY_FILTER_DECISION_COLUMNS,
+    )
 
 
 def test_higher_timeframe_alignment_filters_orders_without_touching_detector_contract() -> None:
@@ -232,6 +279,37 @@ def test_higher_timeframe_alignment_preserves_base_strategy_filter_decisions() -
     assert orders["order_id"].tolist() == ["accepted"]
     assert ("signal_bar_adapter", "base-rejected") in decisions.index
     assert decisions.loc[("signal_bar_adapter", "base-rejected"), "reason"] == "signal_bar_no_liquidity"
+    assert ("higher_timeframe_alignment", "accepted") in decisions.index
+    assert decisions.loc[("higher_timeframe_alignment", "accepted"), "status"] == "accepted"
+
+
+def test_higher_timeframe_alignment_consumes_explicit_base_strategy_run_result() -> None:
+    base = ExplicitPlanBaseStrategy(
+        [_order("accepted", symbol="000001.SZ", side="long", signal_date="2026-05-25 10:00:00")],
+        _explicit_filter_decisions(),
+    )
+    higher_context = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-05-25 09:30:00")],
+            "stock_code": ["000001.SZ"],
+            "direction": ["long"],
+        }
+    )
+    strategy = HigherTimeframeAlignmentStrategy(
+        base,
+        higher_context,
+        TimeframeAlignmentConfig(name="mtf_explicit", context_timeframe="60m", context_column="direction"),
+    )
+
+    result = strategy.generate_order_plan(pd.DataFrame(), timeframe="15m")
+    decisions = result.filter_decisions.set_index(["filter_name", "order_id"])
+
+    assert base.seen_timeframe == "15m"
+    assert result.strategy_name == "mtf_explicit"
+    assert result.orders["order_id"].tolist() == ["accepted"]
+    assert result.orders["strategy_name"].tolist() == ["mtf_explicit"]
+    assert ("explicit_base", "base-rejected") in decisions.index
+    assert decisions.loc[("explicit_base", "base-rejected"), "reason"] == "custom_base_filter"
     assert ("higher_timeframe_alignment", "accepted") in decisions.index
     assert decisions.loc[("higher_timeframe_alignment", "accepted"), "status"] == "accepted"
 
