@@ -56,7 +56,7 @@ def simulate_order_trade_with_rejection(
     cfg: Any,
 ) -> OrderExecutionResult:
     """撮合订单并返回拒绝原因和真实成交诊断；供订单决策日志使用。"""
-    side = str(order["side"])
+    side = normalize_order_side(order["side"])
     if side not in {"long", "short"}:
         return OrderExecutionResult(reject_reason="invalid_order")
     entry_price = float(order["entry_price"])
@@ -173,11 +173,14 @@ def compute_order_execution_metrics(
     """计算真实入场后的风险、追价和盈亏比，所有值均用小数比例表达。"""
     if actual_entry_price <= 0:
         return _empty_execution_metrics()
+    normalized_side = normalize_order_side(side)
     return {
         "actual_entry_price": _round_float(actual_entry_price),
         "actual_risk_pct": _round_float(_actual_risk_pct(actual_entry_price, stop_price)),
         "actual_chase_pct": _round_float(_actual_chase_pct(order, actual_entry_price)),
-        "actual_reward_to_risk": _round_float(_actual_reward_to_risk(side, actual_entry_price, stop_price, target_price)),
+        "actual_reward_to_risk": _round_float(
+            _actual_reward_to_risk(normalized_side, actual_entry_price, stop_price, target_price)
+        ),
     }
 
 
@@ -370,6 +373,7 @@ def _entry_constraint_rejection(
 
 
 def _target_is_favorable(side: str, entry_price: float, target_price: float) -> bool:
+    side = normalize_order_side(side)
     if side == "long":
         return target_price > entry_price
     if side == "short":
@@ -379,11 +383,18 @@ def _target_is_favorable(side: str, entry_price: float, target_price: float) -> 
 
 def is_protective_stop(side: str, entry_price: float, stop_price: float) -> bool:
     """校验止损方向：多头止损在入场下方，空头止损在入场上方。"""
+    side = normalize_order_side(side)
     if side == "long":
         return stop_price < entry_price
     if side == "short":
         return stop_price > entry_price
     return False
+
+
+def normalize_order_side(value: object) -> str:
+    """把外部策略传入的方向文本标准化成 long/short，无法识别时返回空串。"""
+    text = _safe_text(value).strip().lower()
+    return text if text in {"long", "short"} else ""
 
 
 def _actual_risk_pct(entry_price: float, stop_price: float) -> float:

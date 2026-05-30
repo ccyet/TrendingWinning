@@ -18,6 +18,7 @@ from trending_winning.backtest.engine import (
 from trending_winning.backtest.execution import (
     OrderExecutionResult,
     coerce_order_execution_result,
+    normalize_order_side,
     simulate_order_trade_with_rejection,
     validate_backtest_config,
 )
@@ -696,7 +697,7 @@ def _order_margin_fraction(order: pd.Series, capital_fraction: float, pcfg: Port
 
 
 def _order_margin_rate(order: pd.Series, pcfg: PortfolioConfig) -> float:
-    return pcfg.short_margin_rate if str(order.get("side", "long")) == "short" else 1.0
+    return pcfg.short_margin_rate if normalize_order_side(order.get("side", "long")) == "short" else 1.0
 
 
 def _execution_or_none(value: object) -> OrderExecutionResult | None:

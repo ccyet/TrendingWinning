@@ -12,6 +12,7 @@ from trending_winning.backtest.execution import (
     coerce_order_execution_result,
     compute_order_execution_metrics,
     is_protective_stop,
+    normalize_order_side,
     simulate_order_trade_with_rejection,
     trade_path_metrics,
     validate_backtest_config,
@@ -606,7 +607,7 @@ def order_preflight_reject_reason(order: Mapping[str, object]) -> str:
         return "invalid_order"
     if not normalize_symbol(order.get("stock_code", "")):
         return "invalid_order"
-    side = str(order.get("side", "")).strip().lower()
+    side = normalize_order_side(order.get("side", ""))
     if side not in {"long", "short"}:
         return "invalid_order"
     if pd.isna(pd.to_datetime(order.get("signal_date", pd.NaT), errors="coerce")):
@@ -645,6 +646,7 @@ def order_decision_record(
     """生成订单决策日志；记录未成交、被拒绝和接受的统一原因。"""
     source = trade or order
     execution_metrics = _decision_execution_metrics(order, trade, execution)
+    side = _decision_side(_field(source, order, "side", ""))
     return {
         "order_id": _field(source, order, "order_id", ""),
         "event_id": _field(source, order, "event_id", ""),
@@ -655,7 +657,7 @@ def order_decision_record(
         "timeframe": _field(source, order, "timeframe", ""),
         "signal_date": _field(order, source, "signal_date", pd.NaT),
         "signal_bar_index": _as_int(_field(order, source, "signal_bar_index", -1), default=-1),
-        "side": _field(source, order, "side", ""),
+        "side": side,
         "planned_entry_price": _as_float(_field(source, order, "planned_entry_price", _field(order, source, "entry_price", 0.0))),
         "entry_date": _field(source, order, "entry_date", pd.NaT) if trade is not None else pd.NaT,
         **execution_metrics,
@@ -698,6 +700,11 @@ def _decision_execution_metrics(
         _as_float(_field(trade, order, "stop_price", 0.0)),
         _as_float(_field(trade, order, "target_price", 0.0)),
     )
+
+
+def _decision_side(value: object) -> str:
+    normalized = normalize_order_side(value)
+    return normalized or _as_text(value)
 
 
 def _field(primary: object, fallback: object, key: str, default: object) -> object:

@@ -442,6 +442,36 @@ def test_portfolio_backtest_limits_short_notional_by_margin_rate() -> None:
     assert result.trades.loc[0, "return_pct"] == pytest.approx(result.trades.loc[0, "raw_return_pct"] * 0.5)
 
 
+def test_portfolio_backtest_normalizes_short_side_before_margin_allocation() -> None:
+    strategies = [
+        FixedOrderStrategy(
+            "channel_strategy",
+            [
+                _order(
+                    strategy_name="channel_strategy",
+                    symbol="000002.SZ",
+                    entry_price=19.5,
+                    stop_price=20.5,
+                    target_price=18.7,
+                    side=" SHORT ",
+                )
+            ],
+        )
+    ]
+
+    result = run_portfolio_backtest(
+        _short_bars(),
+        strategies,
+        BacktestConfig(max_holding_bars=2),
+        PortfolioConfig(max_open_positions=1, capital_per_trade=1.0, short_margin_rate=2.0),
+    )
+
+    assert result.trades["side"].tolist() == ["short"]
+    assert result.order_decisions.loc[0, "side"] == "short"
+    assert result.trades.loc[0, "capital_fraction"] == pytest.approx(0.5)
+    assert result.trades.loc[0, "margin_fraction"] == pytest.approx(1.0)
+
+
 def test_portfolio_backtest_respects_strategy_priority_when_capacity_is_full() -> None:
     strategies = [
         FixedOrderStrategy(

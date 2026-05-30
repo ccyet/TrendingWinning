@@ -169,6 +169,58 @@ def test_order_backtest_records_actual_execution_metrics_for_accepted_gap_fill()
     assert decision["actual_reward_to_risk"] == pytest.approx((12.0 - 11.0) / (11.0 - 9.9))
 
 
+@pytest.mark.parametrize(
+    ("side", "expected_side", "entry_price", "stop_price", "target_price"),
+    [
+        (" Long ", "long", 10.2, 9.8, 11.0),
+        (" SHORT ", "short", 9.8, 10.2, 9.0),
+    ],
+)
+def test_order_backtest_normalizes_side_text_at_execution_boundary(
+    side: str,
+    expected_side: str,
+    entry_price: float,
+    stop_price: float,
+    target_price: float,
+) -> None:
+    bars = _bars(
+        [
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.6, "low": 9.4, "close": 10.1},
+        ]
+    )
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": f"side-{expected_side}",
+                "strategy_name": "execution_case",
+                "detector_name": "trend",
+                "event_id": f"event-side-{expected_side}",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": bars.loc[0, "date"],
+                "signal_bar_index": 0,
+                "side": side,
+                "signal_price": 10.0,
+                "entry_price": entry_price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "max_holding_bars": 1,
+                "max_actual_risk_pct": None,
+                "max_chase_pct": None,
+                "metadata": {},
+            }
+        ]
+    )
+
+    result = run_order_backtest(bars, orders, BacktestConfig(max_holding_bars=1))
+
+    assert result.trades["side"].tolist() == [expected_side]
+    decision = result.order_decisions.iloc[0]
+    assert decision["status"] == "accepted"
+    assert decision["side"] == expected_side
+
+
 def test_order_backtest_rejects_duplicate_order_ids_after_first_occurrence() -> None:
     bars = _bars(
         [
