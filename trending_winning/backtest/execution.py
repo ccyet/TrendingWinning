@@ -271,6 +271,12 @@ def _first_exit_after_entry(
     else:
         _set_exit_values(reasons, prices, conflict, stop_price, "stop_loss")
 
+    stop_trailing_conflict = (reasons == "") & hit_stop & hit_trailing
+    if policy == "optimistic":
+        _set_exit_values(reasons, prices, stop_trailing_conflict, trailing_prices, "trailing_take_profit")
+    else:
+        _set_exit_values(reasons, prices, stop_trailing_conflict, stop_price, "stop_loss")
+
     target_trailing_conflict = (reasons == "") & hit_target & hit_trailing
     if policy == "optimistic":
         _set_exit_values(reasons, prices, target_trailing_conflict, target_price, "take_profit")

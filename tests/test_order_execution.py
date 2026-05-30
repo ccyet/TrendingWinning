@@ -1257,6 +1257,61 @@ def test_intrabar_exit_policy_resolves_target_and_trailing_hit_in_same_bar(
     assert trade["exit_price"] == pytest.approx(expected_exit)
 
 
+@pytest.mark.parametrize(
+    ("side", "policy", "expected_reason", "expected_exit"),
+    [
+        ("long", "conservative", "stop_loss", 9.5),
+        ("long", "optimistic", "trailing_take_profit", 10.67),
+        ("short", "conservative", "stop_loss", 10.5),
+        ("short", "optimistic", "trailing_take_profit", 9.27),
+    ],
+)
+def test_intrabar_exit_policy_resolves_stop_and_trailing_hit_in_same_bar(
+    side: str,
+    policy: str,
+    expected_reason: str,
+    expected_exit: float,
+) -> None:
+    if side == "long":
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+                {"open": 10.8, "high": 11.0, "low": 10.7, "close": 10.9},
+                {"open": 10.8, "high": 10.9, "low": 9.4, "close": 10.2},
+            ]
+        )
+        stop_price = 9.5
+        target_price = 12.0
+    else:
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.1, "low": 9.8, "close": 9.9},
+                {"open": 9.2, "high": 9.3, "low": 9.0, "close": 9.1},
+                {"open": 9.2, "high": 10.6, "low": 9.1, "close": 9.8},
+            ]
+        )
+        stop_price = 10.5
+        target_price = 8.0
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side=side, entry_price=10.0, stop_price=stop_price, target_price=target_price),
+        signal_index=0,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            intrabar_exit_policy=policy,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == expected_reason
+    assert trade["exit_price"] == pytest.approx(expected_exit)
+
+
 def test_backtest_config_rejects_invalid_trailing_take_profit_parameters() -> None:
     bars = _bars(
         [
