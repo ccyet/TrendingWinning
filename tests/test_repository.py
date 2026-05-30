@@ -27,7 +27,7 @@ from trending_winning.data.repository import (
     update_from_tdx,
     write_local_bars,
 )
-from trending_winning.data.schema import normalize_bars
+from trending_winning.data.schema import CANONICAL_COLUMNS, normalize_bars
 
 
 class FakeTq:
@@ -245,6 +245,75 @@ def test_inventory_local_data_reads_only_identity_columns_for_cached_files(
     assert read_columns == [("date", "stock_code")]
     assert inventory.loc[0, "status"] == "cached"
     assert inventory.loc[0, "rows"] == 2
+
+
+def test_bar_loaders_project_columns_and_push_down_date_filters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    intraday_bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-24 10:00:00", "2026-05-25 10:00:00", "2026-05-26 10:00:00"]),
+            "stock_code": ["000001.SZ"] * 3,
+            "open": [9.8, 10.0, 10.2],
+            "high": [10.0, 10.3, 10.4],
+            "low": [9.7, 9.9, 10.0],
+            "close": [9.9, 10.2, 10.3],
+            "volume": [900.0, 1000.0, 1100.0],
+            "amount": [8910.0, 10200.0, 11330.0],
+        }
+    )
+    daily_bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-24", "2026-05-25", "2026-05-26"]),
+            "stock_code": ["000001.SZ"] * 3,
+            "open": [9.8, 10.0, 10.2],
+            "high": [10.0, 10.3, 10.4],
+            "low": [9.7, 9.9, 10.0],
+            "close": [9.9, 10.2, 10.3],
+            "volume": [9000.0, 10000.0, 11000.0],
+            "amount": [89100.0, 102000.0, 113300.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=intraday_bars)
+    write_local_bars(data_root=data_root, timeframe="1d", adjust="qfq", bars=daily_bars)
+    original_read_parquet = pd.read_parquet
+    calls: list[dict[str, object]] = []
+
+    def spy_read_parquet(*args: object, **kwargs: object) -> pd.DataFrame:
+        calls.append({"path": args[0], "columns": kwargs.get("columns"), "filters": kwargs.get("filters")})
+        return original_read_parquet(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_parquet", spy_read_parquet)
+
+    intraday = load_local_bars(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25 15:00:00",
+    )
+    daily = load_daily_bars(
+        data_root=data_root,
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+    )
+
+    assert intraday["date"].tolist() == [pd.Timestamp("2026-05-25 10:00:00")]
+    assert daily["date"].tolist() == [pd.Timestamp("2026-05-25")]
+    assert [tuple(call["columns"]) for call in calls] == [tuple(CANONICAL_COLUMNS), tuple(CANONICAL_COLUMNS)]
+    assert calls[0]["filters"] == [
+        ("date", ">=", pd.Timestamp("2026-05-25")),
+        ("date", "<=", pd.Timestamp("2026-05-25 15:00:00")),
+    ]
+    assert calls[1]["filters"] == [
+        ("date", ">=", pd.Timestamp("2026-05-25")),
+        ("date", "<=", pd.Timestamp("2026-05-25 23:59:59.999999999")),
+    ]
 
 
 def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: Path) -> None:

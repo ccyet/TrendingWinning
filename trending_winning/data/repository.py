@@ -649,8 +649,7 @@ def load_local_bars(
         path = root / f"{symbol}.parquet"
         if not path.exists():
             continue
-        frame = normalize_bars(pd.read_parquet(path), symbol)
-        frame = frame.loc[frame["date"].between(start_ts, end_ts)]
+        frame = _read_bars_parquet_window(path, symbol=symbol, start_ts=start_ts, end_ts=end_ts)
         if not frame.empty:
             frames.append(frame)
     if not frames:
@@ -673,13 +672,33 @@ def load_daily_bars(
         path = root / f"{symbol}.parquet"
         if not path.exists():
             continue
-        frame = normalize_bars(pd.read_parquet(path), symbol)
-        frame = frame.loc[frame["date"].between(start_ts, end_ts)]
+        frame = _read_bars_parquet_window(path, symbol=symbol, start_ts=start_ts, end_ts=end_ts)
         if not frame.empty:
             frames.append(frame)
     if not frames:
         return empty_bars()
     return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
+
+
+def _read_bars_parquet_window(
+    path: Path,
+    *,
+    symbol: str,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+) -> pd.DataFrame:
+    """按标准列和时间窗口读取 parquet，减少分钟线大文件的无效 IO。"""
+    frame = pd.read_parquet(
+        path,
+        columns=list(CANONICAL_COLUMNS),
+        filters=_date_window_filters(start_ts, end_ts),
+    )
+    normalized = normalize_bars(frame, symbol)
+    return normalized.loc[normalized["date"].between(start_ts, end_ts)].reset_index(drop=True)
+
+
+def _date_window_filters(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> list[tuple[str, str, pd.Timestamp]]:
+    return [("date", ">=", start_ts), ("date", "<=", end_ts)]
 
 
 def load_backtest_data(
