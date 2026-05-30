@@ -84,6 +84,17 @@ def test_market_structure_marks_pivots_and_structure_breaks_from_confirmed_swing
     assert structured.loc[5, "last_swing_high"] < structured.loc[5, "close"]
 
 
+def test_market_structure_exposes_swings_only_after_right_side_confirmation() -> None:
+    bars = _bars([10.0, 12.0, 11.2, 10.8, 11.4])
+
+    structured = attach_market_structure(bars, StructureConfig(left_bars=1, right_bars=2, break_buffer=0.0))
+
+    assert bool(structured.loc[1, "pivot_high"]) is True
+    assert pd.isna(structured.loc[2, "last_swing_high"])
+    assert structured.loc[2, "structure_score"] == 0.0
+    assert structured.loc[3, "last_swing_high"] == pytest.approx(bars.loc[1, "high"])
+
+
 def test_channel_detector_uses_log_regression_channel_and_emits_standard_events() -> None:
     bars = _bars([10.0, 10.4, 10.8, 11.3, 11.8, 12.3, 12.9, 13.6, 15.8])
 

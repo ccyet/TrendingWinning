@@ -375,6 +375,7 @@
           <tr><td>信号形态（setup）</td><td>具体可交易形态，例如 H2 回撤、失败突破、通道突破、二次反转。</td><td>看 <code>setup_stats.csv</code> 比较哪类形态更有效。</td></tr>
           <tr><td>大周期方向过滤</td><td>用更大周期确认主方向，小周期只做顺势方向。</td><td>60m 向上时，15m/5m 优先做多；方向不一致的订单会被记录为过滤。</td></tr>
           <tr><td>K 线覆盖率检查</td><td>确认本地分钟 K 是否足够完整。</td><td>缺口太多时，先补数据再回测。</td></tr>
+          <tr><td>结构确认</td><td>摆动高点或低点必须等右侧确认 K 线完成后才进入结构状态。</td><td><code>last_swing_high</code>、<code>BOS</code>、<code>CHoCH</code> 不提前使用未确认摆动点。</td></tr>
           <tr><td>突破挂单</td><td>不追市价，等价格突破信号 K 高点或低点再成交。</td><td>没触发就是 <code>no_fill</code>，不是策略失败。</td></tr>
           <tr><td>实际风险</td><td>真实成交价到止损价的距离。</td><td>跳空成交后风险过大，会被 <code>actual_risk_too_high</code> 拒绝。</td></tr>
           <tr><td>追价距离</td><td>真实成交价偏离信号价的幅度。</td><td>偏离过大说明买得太远，会被 <code>chase_too_far</code> 拒绝。</td></tr>

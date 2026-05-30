@@ -62,29 +62,23 @@ def _attach_group_structure(group: pd.DataFrame, cfg: StructureConfig) -> pd.Dat
     pivot_high, pivot_low = confirmed_pivots(high, low, cfg.left_bars, cfg.right_bars)
 
     labels = np.full(length, "", dtype=object)
-    last_high = np.full(length, np.nan)
-    last_low = np.full(length, np.nan)
     previous_pivot_high = np.nan
     previous_pivot_low = np.nan
-    current_last_high = np.nan
-    current_last_low = np.nan
-    structure_score = np.zeros(length, dtype=float)
-    score = 0.0
-
     for index in range(length):
-        last_high[index] = current_last_high
-        last_low[index] = current_last_low
         if pivot_high[index]:
             labels[index] = "HH" if np.isfinite(previous_pivot_high) and high[index] > previous_pivot_high else "LH"
-            score += 1.0 if labels[index] == "HH" else -1.0
             previous_pivot_high = high[index]
-            current_last_high = high[index]
         if pivot_low[index]:
             labels[index] = "HL" if np.isfinite(previous_pivot_low) and low[index] > previous_pivot_low else "LL"
-            score += 1.0 if labels[index] == "HL" else -1.0
             previous_pivot_low = low[index]
-            current_last_low = low[index]
-        structure_score[index] = score
+    last_high, last_low, structure_score = _confirmed_structure_state(
+        high,
+        low,
+        pivot_high,
+        pivot_low,
+        labels,
+        right_bars=cfg.right_bars,
+    )
 
     bos_up = close > last_high * (1.0 + cfg.break_buffer)
     bos_down = close < last_low * (1.0 - cfg.break_buffer)
@@ -99,3 +93,38 @@ def _attach_group_structure(group: pd.DataFrame, cfg: StructureConfig) -> pd.Dat
     result["choch_down"] = result["bos_down"] & (pd.Series(structure_score).shift(1).fillna(0.0) > 0).to_numpy()
     result["structure_score"] = structure_score
     return result
+
+
+def _confirmed_structure_state(
+    high: np.ndarray,
+    low: np.ndarray,
+    pivot_high: np.ndarray,
+    pivot_low: np.ndarray,
+    labels: np.ndarray,
+    *,
+    right_bars: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """把原始 pivot 延迟到确认 K 线完成后，避免结构字段提前暴露未来信息。"""
+    length = len(high)
+    last_high = np.full(length, np.nan)
+    last_low = np.full(length, np.nan)
+    structure_score = np.zeros(length, dtype=float)
+    current_last_high = np.nan
+    current_last_low = np.nan
+    score = 0.0
+
+    for index in range(length):
+        confirmed_index = index - right_bars
+        if confirmed_index >= 0:
+            if pivot_high[confirmed_index]:
+                label = str(labels[confirmed_index])
+                score += 1.0 if label == "HH" else -1.0
+                current_last_high = high[confirmed_index]
+            if pivot_low[confirmed_index]:
+                label = str(labels[confirmed_index])
+                score += 1.0 if label == "HL" else -1.0
+                current_last_low = low[confirmed_index]
+        structure_score[index] = score
+        last_high[index] = current_last_high
+        last_low[index] = current_last_low
+    return last_high, last_low, structure_score
