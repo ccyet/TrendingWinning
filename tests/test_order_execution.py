@@ -1202,6 +1202,36 @@ def test_order_execution_trailing_take_profit_uses_previous_completed_bar_level(
     assert trade["exit_price"] == pytest.approx(10.282)
 
 
+def test_order_execution_trailing_take_profit_can_exit_by_current_timeframe_ma() -> None:
+    bars = _bars(
+        [
+            {"open": 9.9, "high": 10.1, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.1, "high": 10.3, "low": 10.0, "close": 10.2},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.8, "high": 10.9, "low": 10.7, "close": 10.8},
+            {"open": 10.55, "high": 10.6, "low": 10.25, "close": 10.3},
+        ]
+    )
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side="long", entry_price=10.0, stop_price=9.5, target_price=12.0),
+        signal_index=2,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.0,
+            trailing_take_profit_ma_period=3,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx((10.2 + 10.1 + 10.8) / 3)
+    assert trade["return_pct"] > 0.0
+
+
 @pytest.mark.parametrize(
     ("side", "policy", "expected_reason", "expected_exit"),
     [
@@ -1329,16 +1359,40 @@ def test_backtest_config_rejects_invalid_trailing_take_profit_parameters() -> No
         )
 
 
+def test_backtest_config_rejects_invalid_trailing_take_profit_ma_period() -> None:
+    bars = _bars(
+        [
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+        ]
+    )
+
+    with pytest.raises(ValueError, match="trailing_take_profit"):
+        simulate_order_trade(
+            bars,
+            _order(side="long", entry_price=10.0, stop_price=9.5, target_price=11.5),
+            signal_index=0,
+            cfg=BacktestConfig(
+                max_holding_bars=1,
+                trailing_take_profit_activation_pct=0.05,
+                trailing_take_profit_drawdown_pct=0.0,
+                trailing_take_profit_ma_period=1,
+            ),
+        )
+
+
 @pytest.mark.parametrize(
-    ("activation_pct", "drawdown_pct"),
+    ("activation_pct", "drawdown_pct", "ma_period"),
     [
-        (0.05, 0.0),
-        (0.0, 0.03),
+        (0.05, 0.0, 0),
+        (0.0, 0.03, 0),
+        (0.0, 0.0, 3),
     ],
 )
 def test_backtest_config_rejects_half_enabled_trailing_take_profit(
     activation_pct: float,
     drawdown_pct: float,
+    ma_period: int,
 ) -> None:
     bars = _bars(
         [
@@ -1356,6 +1410,7 @@ def test_backtest_config_rejects_half_enabled_trailing_take_profit(
                 max_holding_bars=1,
                 trailing_take_profit_activation_pct=activation_pct,
                 trailing_take_profit_drawdown_pct=drawdown_pct,
+                trailing_take_profit_ma_period=ma_period,
             ),
         )
 

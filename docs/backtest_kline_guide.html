@@ -335,7 +335,7 @@
         <thead><tr><th>页面模块</th><th>作用</th><th>出现条件</th></tr></thead>
         <tbody>
           <tr><td>1. 样本范围</td><td>周期、标的代码、日期窗口、回测模式。</td><td>全部模式</td></tr>
-          <tr><td>2. 基础风控与成本</td><td>旧突破显示固定止盈止损；单策略和组合显示最大持有 K 数、盈利通道回撤止盈开关、手续费、滑点和同 K 冲突规则。关闭回撤止盈时，启动浮盈和回撤幅度都按 0 处理；启用时两个参数必须同时大于 0。</td><td>全部模式</td></tr>
+          <tr><td>2. 基础风控与成本</td><td>旧突破显示固定止盈止损；单策略和组合显示最大持有 K 数、盈利通道回撤止盈开关、手续费、滑点和同 K 冲突规则。关闭回撤止盈时，启动浮盈、回撤幅度和均线周期都按 0 处理；启用时启动浮盈必须大于 0，并至少选择比例回撤或当前周期均线其中一种退出线。</td><td>全部模式</td></tr>
           <tr><td>3. 数据质量检查</td><td>检查 K 线是否缺失、重复、价格异常，以及覆盖率是否足够。</td><td>全部模式</td></tr>
           <tr><td>4. 大周期方向过滤</td><td>用 60m 或 30m 判断主方向，只保留顺势入场。</td><td>现代单策略和组合策略重点使用</td></tr>
           <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、实际风险和追价过滤。</td><td>单策略回测</td></tr>
@@ -643,7 +643,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>哪类信号形态被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
           <tr><td>止盈、盈利通道回撤止盈和止损各占多少？</td><td><code>stats.json</code>、<code>sweep.csv</code>、<code>parameter_summary.csv</code></td><td><code>take_profit_exit_rate / trailing_take_profit_exit_rate / stop_loss_exit_rate / avg_trailing_take_profit_exit_rate</code></td></tr>
-          <tr><td>盈利通道回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按实际成交价和上一根已完成 K 的峰值/谷值确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
+          <tr><td>盈利通道回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按实际成交价和上一根已完成 K 的峰值/谷值或当前周期均线确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
           <tr><td>参数组在哪些股票有效？</td><td><code>case_symbol_stats.csv</code></td><td><code>sweep_rank / stock_name / stock_code / total_return / trade_count</code></td></tr>
           <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature</code></td></tr>
           <tr><td>哪只股票贡献了收益？</td><td><code>symbol_stats.csv</code></td><td><code>stock_name / stock_code / total_return / win_rate</code></td></tr>

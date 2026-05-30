@@ -615,6 +615,7 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         captured["initial_equity"] = cfg.initial_equity
         captured["trailing_take_profit_activation_pct"] = cfg.trailing_take_profit_activation_pct
         captured["trailing_take_profit_drawdown_pct"] = cfg.trailing_take_profit_drawdown_pct
+        captured["trailing_take_profit_ma_period"] = cfg.trailing_take_profit_ma_period
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
@@ -639,6 +640,7 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         initial_equity=2.0,
         trailing_take_profit_activation_pct=0.05,
         trailing_take_profit_drawdown_pct=0.02,
+        trailing_take_profit_ma_period=5,
         strict_data_quality=False,
     )
 
@@ -650,6 +652,7 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         "initial_equity": 2.0,
         "trailing_take_profit_activation_pct": 0.05,
         "trailing_take_profit_drawdown_pct": 0.02,
+        "trailing_take_profit_ma_period": 5,
     }
 
 
@@ -680,6 +683,7 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         captured["initial_equity"] = cfg.initial_equity
         captured["trailing_take_profit_activation_pct"] = cfg.trailing_take_profit_activation_pct
         captured["trailing_take_profit_drawdown_pct"] = cfg.trailing_take_profit_drawdown_pct
+        captured["trailing_take_profit_ma_period"] = cfg.trailing_take_profit_ma_period
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
@@ -702,6 +706,7 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         initial_equity=2.0,
         trailing_take_profit_activation_pct=0.06,
         trailing_take_profit_drawdown_pct=0.025,
+        trailing_take_profit_ma_period=8,
         strict_data_quality=False,
     )
 
@@ -713,6 +718,7 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         "initial_equity": 2.0,
         "trailing_take_profit_activation_pct": 0.06,
         "trailing_take_profit_drawdown_pct": 0.025,
+        "trailing_take_profit_ma_period": 8,
     }
 
 

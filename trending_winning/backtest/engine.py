@@ -50,6 +50,7 @@ class BacktestConfig:
     intrabar_exit_policy: str = "conservative"
     trailing_take_profit_activation_pct: float = 0.0
     trailing_take_profit_drawdown_pct: float = 0.0
+    trailing_take_profit_ma_period: int = 0
 
 
 @dataclass(frozen=True)
@@ -384,7 +385,12 @@ def _first_legacy_long_exit(
     gap_target = liquid & (opens >= target_price)
     hit_stop = liquid & (lows <= stop_price)
     hit_target = liquid & (highs >= target_price)
-    hit_trailing, trailing_prices = _legacy_long_trailing_take_profit(path, entry_price, cfg)
+    hit_trailing, trailing_prices = _legacy_long_trailing_take_profit(
+        path,
+        entry_price,
+        cfg,
+        moving_average=_legacy_shifted_moving_average(group, path.index, cfg.trailing_take_profit_ma_period),
+    )
     gap_trailing = hit_trailing & (opens <= trailing_prices)
     reasons = np.full(len(path), "", dtype=object)
     prices = np.full(len(path), np.nan)
@@ -421,8 +427,10 @@ def _legacy_long_trailing_take_profit(
     path: pd.DataFrame,
     entry_price: float,
     cfg: BacktestConfig,
+    *,
+    moving_average: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """旧版长仓复用回撤止盈口径；回撤线只使用上一根完成 K 的峰值。"""
+    """旧版长仓复用回撤止盈口径；回撤线只使用上一根完成 K 的信息。"""
     if not _trailing_take_profit_enabled(cfg) or path.empty or entry_price <= 0:
         return np.full(len(path), False), np.full(len(path), np.nan)
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
@@ -438,6 +446,7 @@ def _legacy_long_trailing_take_profit(
         entry_price=entry_price,
         activation_pct=float(cfg.trailing_take_profit_activation_pct),
         drawdown_pct=float(cfg.trailing_take_profit_drawdown_pct),
+        moving_average=moving_average,
     )
     return result.hit, result.prices
 
@@ -446,7 +455,17 @@ def _trailing_take_profit_enabled(cfg: BacktestConfig) -> bool:
     return is_trailing_take_profit_enabled(
         float(cfg.trailing_take_profit_activation_pct),
         float(cfg.trailing_take_profit_drawdown_pct),
+        int(cfg.trailing_take_profit_ma_period),
     )
+
+
+def _legacy_shifted_moving_average(group: pd.DataFrame, path_index: pd.Index, period: int) -> np.ndarray | None:
+    """旧版突破回测同样使用当前周期上一根完成 K 的均线，避免未来函数。"""
+    if period < 2:
+        return None
+    closes = pd.to_numeric(group["close"], errors="coerce").astype(float)
+    moving_average = closes.rolling(period, min_periods=period).mean().shift(1)
+    return moving_average.loc[path_index].to_numpy(dtype=float)
 
 
 def run_single_strategy_backtest(

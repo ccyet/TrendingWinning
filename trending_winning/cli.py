@@ -74,6 +74,12 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         default=0.0,
         help="回撤止盈回撤幅度，小数比例；按上一根已完成 K 的峰值/谷值计算，0 表示关闭。",
     )
+    parser.add_argument(
+        "--trailing-take-profit-ma-period",
+        type=int,
+        default=0,
+        help="回撤止盈均线周期；按当前周期上一根已完成 K 的均线触发，0 表示关闭。",
+    )
 
 
 def _parse_generic_sweep_grid(items: list[str], config: object) -> dict[str, list[object]]:
@@ -603,6 +609,7 @@ def main() -> None:
             intrabar_exit_policy=str(args.intrabar_exit_policy),
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
+            trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -661,6 +668,7 @@ def main() -> None:
             intrabar_exit_policy=str(args.intrabar_exit_policy),
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
+            trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -745,6 +753,7 @@ def main() -> None:
             intrabar_exit_policy=str(args.intrabar_exit_policy),
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
+            trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),
@@ -826,6 +835,7 @@ def main() -> None:
             intrabar_exit_policy=str(args.intrabar_exit_policy),
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
+            trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),

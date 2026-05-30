@@ -45,6 +45,7 @@ BACKTEST_HELP_TEXT = {
     "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方两个参数强制按 0 处理。",
     "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
     "trailing_take_profit_drawdown_pct": "回撤平仓触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
+    "trailing_take_profit_ma_period": "均线回撤止盈周期。用当前回测周期的上一根已完成 K 均线作为移动平仓线，0 表示关闭。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
@@ -338,6 +339,7 @@ class BacktestRiskInputs:
     trailing_take_profit_enabled: bool
     trailing_take_profit_activation_pct: float
     trailing_take_profit_drawdown_pct: float
+    trailing_take_profit_ma_period: int
 
 
 @dataclass(frozen=True)
@@ -1957,11 +1959,16 @@ def _backtest_scope_module(data_root: Path) -> BacktestScopeInputs:
     return BacktestScopeInputs(symbols=symbols, timeframe=timeframe, start=start, end=end, mode=str(mode))
 
 
-def _resolve_trailing_take_profit_controls(enabled: bool, activation_pct: float, drawdown_pct: float) -> tuple[float, float]:
+def _resolve_trailing_take_profit_controls(
+    enabled: bool,
+    activation_pct: float,
+    drawdown_pct: float,
+    ma_period: int,
+) -> tuple[float, float, int]:
     """把页面开关转换成撮合参数；关闭时强制归零，避免隐藏参数继续影响回测。"""
     if not enabled:
-        return 0.0, 0.0
-    return float(activation_pct), float(drawdown_pct)
+        return 0.0, 0.0, 0
+    return float(activation_pct), float(drawdown_pct), int(ma_period)
 
 
 def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
@@ -2004,7 +2011,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             key="bt_enable_trailing_take_profit",
             help=BACKTEST_HELP_TEXT["enable_trailing_take_profit"],
         )
-        trailing1, trailing2 = st.columns(2)
+        trailing1, trailing2, trailing3 = st.columns(3)
         with trailing1:
             trailing_take_profit_activation_pct = st.number_input(
                 "盈利通道启动浮盈",
@@ -2028,6 +2035,16 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
                 key="bt_trailing_take_profit_drawdown_pct",
                 disabled=not enable_trailing_take_profit,
                 help=BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"],
+            )
+        with trailing3:
+            trailing_take_profit_ma_period = st.number_input(
+                "均线回撤止盈周期",
+                min_value=0,
+                value=0,
+                step=1,
+                key="bt_trailing_take_profit_ma_period",
+                disabled=not enable_trailing_take_profit,
+                help=BACKTEST_HELP_TEXT["trailing_take_profit_ma_period"],
             )
         cost1, cost2, cost3 = st.columns(3)
         with cost1:
@@ -2067,10 +2084,11 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             key="bt_intrabar_policy",
             help=BACKTEST_HELP_TEXT["intrabar_exit_policy"],
         )
-    trailing_activation, trailing_drawdown = _resolve_trailing_take_profit_controls(
+    trailing_activation, trailing_drawdown, trailing_ma_period = _resolve_trailing_take_profit_controls(
         bool(enable_trailing_take_profit),
         float(trailing_take_profit_activation_pct),
         float(trailing_take_profit_drawdown_pct),
+        int(trailing_take_profit_ma_period),
     )
     return BacktestRiskInputs(
         take_profit=float(take_profit),
@@ -2083,6 +2101,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
         trailing_take_profit_enabled=bool(enable_trailing_take_profit),
         trailing_take_profit_activation_pct=trailing_activation,
         trailing_take_profit_drawdown_pct=trailing_drawdown,
+        trailing_take_profit_ma_period=trailing_ma_period,
     )
 
 
@@ -2174,6 +2193,7 @@ def _legacy_backtest_module(
             intrabar_exit_policy=risk.intrabar_exit_policy,
             trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
             trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
+            trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
         ),
     )
     _render_backtest_result(result, bundle, stock_names=_backtest_stock_names(data_root, scope.symbols))
@@ -2665,6 +2685,7 @@ def _execute_single_strategy_experiment(
             intrabar_exit_policy=risk.intrabar_exit_policy,
             trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
             trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
+            trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",
@@ -2754,6 +2775,7 @@ def _execute_portfolio_strategy_experiment(
             intrabar_exit_policy=risk.intrabar_exit_policy,
             trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
             trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
+            trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",

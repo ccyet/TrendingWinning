@@ -42,10 +42,15 @@ def validate_backtest_config(cfg: Any) -> None:
         raise ValueError("intrabar_exit_policy 仅支持 conservative 或 optimistic。")
     activation_pct = float(getattr(cfg, "trailing_take_profit_activation_pct", 0.0))
     drawdown_pct = float(getattr(cfg, "trailing_take_profit_drawdown_pct", 0.0))
-    if activation_pct < 0 or not 0 <= drawdown_pct < 1:
+    ma_period = int(getattr(cfg, "trailing_take_profit_ma_period", 0))
+    if activation_pct < 0 or not 0 <= drawdown_pct < 1 or ma_period < 0:
         raise ValueError("trailing_take_profit 参数必须非负，且回撤幅度必须小于 1。")
-    if (activation_pct == 0) != (drawdown_pct == 0):
-        raise ValueError("trailing_take_profit 启动浮盈和回撤幅度必须同时为 0 或同时大于 0。")
+    if ma_period == 1:
+        raise ValueError("trailing_take_profit 均线周期只能为 0 或至少 2。")
+    if activation_pct == 0 and (drawdown_pct > 0 or ma_period > 0):
+        raise ValueError("trailing_take_profit 启动浮盈必须与比例回撤或均线周期同时启用。")
+    if activation_pct > 0 and drawdown_pct == 0 and ma_period == 0:
+        raise ValueError("trailing_take_profit 启动浮盈必须与比例回撤或均线周期同时启用。")
 
 
 def simulate_order_trade(
@@ -115,6 +120,7 @@ def simulate_order_trade_with_rejection(
         policy=str(getattr(cfg, "intrabar_exit_policy", "conservative")),
         trailing_activation_pct=float(getattr(cfg, "trailing_take_profit_activation_pct", 0.0)),
         trailing_drawdown_pct=float(getattr(cfg, "trailing_take_profit_drawdown_pct", 0.0)),
+        trailing_ma_period=int(getattr(cfg, "trailing_take_profit_ma_period", 0)),
     )
     slipped_exit = apply_slippage(exit_price, -direction, cfg)
     gross_return = direction * (slipped_exit / slipped_entry - 1.0)
@@ -236,6 +242,7 @@ def _first_exit_after_entry(
     policy: str,
     trailing_activation_pct: float,
     trailing_drawdown_pct: float,
+    trailing_ma_period: int,
 ) -> tuple[int, float, str]:
     """向量化查找首个退出 K；优先级保持 gap、同 K 冲突、普通 stop/target。"""
     path = group.loc[entry_index:last_exit_index]
@@ -265,6 +272,7 @@ def _first_exit_after_entry(
         entry_price=entry_price,
         activation_pct=trailing_activation_pct,
         drawdown_pct=trailing_drawdown_pct,
+        moving_average=_shifted_moving_average(group, path.index, trailing_ma_period),
     )
 
     _set_exit_values(reasons, prices, gap_stop, opens, "stop_loss")
@@ -321,6 +329,7 @@ def _trailing_take_profit_masks(
     entry_price: float,
     activation_pct: float,
     drawdown_pct: float,
+    moving_average: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """兼容旧调用签名，实际计算下沉到独立回撤止盈模块。"""
     result = compute_trailing_take_profit_masks(
@@ -332,8 +341,18 @@ def _trailing_take_profit_masks(
         entry_price=entry_price,
         activation_pct=activation_pct,
         drawdown_pct=drawdown_pct,
+        moving_average=moving_average,
     )
     return result.gap, result.hit, result.prices
+
+
+def _shifted_moving_average(group: pd.DataFrame, path_index: pd.Index, period: int) -> np.ndarray | None:
+    """用当前周期收盘价计算上一根完成 K 的均线，返回与持仓路径对齐的数组。"""
+    if period < 2:
+        return None
+    closes = pd.to_numeric(group["close"], errors="coerce").astype(float)
+    moving_average = closes.rolling(period, min_periods=period).mean().shift(1)
+    return moving_average.loc[path_index].to_numpy(dtype=float)
 
 
 def _set_exit_values(

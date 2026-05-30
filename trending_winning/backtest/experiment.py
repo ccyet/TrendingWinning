@@ -266,6 +266,7 @@ class PortfolioExperimentConfig:
     initial_equity: float = 1.0
     trailing_take_profit_activation_pct: float = 0.0
     trailing_take_profit_drawdown_pct: float = 0.0
+    trailing_take_profit_ma_period: int = 0
     strict_data_quality: bool = True
     min_coverage_ratio: float | None = None
     output_dir: str = ""
@@ -320,6 +321,7 @@ class SingleStrategyExperimentConfig:
     initial_equity: float = 1.0
     trailing_take_profit_activation_pct: float = 0.0
     trailing_take_profit_drawdown_pct: float = 0.0
+    trailing_take_profit_ma_period: int = 0
     strict_data_quality: bool = True
     min_coverage_ratio: float | None = None
     output_dir: str = ""
@@ -1105,6 +1107,7 @@ def _backtest_config(config: PortfolioExperimentConfig | SingleStrategyExperimen
         intrabar_exit_policy=config.intrabar_exit_policy,
         trailing_take_profit_activation_pct=config.trailing_take_profit_activation_pct,
         trailing_take_profit_drawdown_pct=config.trailing_take_profit_drawdown_pct,
+        trailing_take_profit_ma_period=config.trailing_take_profit_ma_period,
     )
 
 
@@ -1117,6 +1120,7 @@ def _candidate_cache_key(config: PortfolioExperimentConfig) -> tuple[object, ...
         str(config.intrabar_exit_policy),
         float(config.trailing_take_profit_activation_pct),
         float(config.trailing_take_profit_drawdown_pct),
+        int(config.trailing_take_profit_ma_period),
     )
 
 

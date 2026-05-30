@@ -257,6 +257,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         "take_profit",
         "trailing_take_profit_activation_pct",
         "trailing_take_profit_drawdown_pct",
+        "trailing_take_profit_ma_period",
         "strict_data_quality",
         "higher_timeframe",
         "side_mode",
@@ -271,6 +272,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
     assert "启用盈利通道回撤止盈" in source
+    assert "均线回撤止盈周期" in source
     assert "bt_enable_trailing_take_profit" in source
 
 
@@ -278,8 +280,8 @@ def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:
     resolver = getattr(streamlit_app, "_resolve_trailing_take_profit_controls", None)
 
     assert resolver is not None
-    assert resolver(False, 0.05, 0.02) == (0.0, 0.0)
-    assert resolver(True, 0.05, 0.02) == (0.05, 0.02)
+    assert resolver(False, 0.05, 0.02, 20) == (0.0, 0.0, 0)
+    assert resolver(True, 0.05, 0.02, 20) == (0.05, 0.02, 20)
 
 
 def test_backtest_display_tables_are_localized_and_formatted() -> None:

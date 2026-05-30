@@ -197,6 +197,8 @@ def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, 
             "0.04",
             "--trailing-take-profit-drawdown-pct",
             "0.015",
+            "--trailing-take-profit-ma-period",
+            "20",
             "--trend-lookback",
             "7",
             "--trend-min-score",
@@ -242,6 +244,7 @@ def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, 
     assert saved_config["intrabar_exit_policy"] == "optimistic"
     assert saved_config["trailing_take_profit_activation_pct"] == 0.04
     assert saved_config["trailing_take_profit_drawdown_pct"] == 0.015
+    assert saved_config["trailing_take_profit_ma_period"] == 20
     assert saved_config["trend_lookback"] == 7
     assert saved_config["trend_min_score"] == 0.4
     assert saved_config["trend_h2_min_pullback_legs"] == 3
@@ -726,6 +729,8 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
             "0.05",
             "--trailing-take-profit-drawdown-pct",
             "0.02",
+            "--trailing-take-profit-ma-period",
+            "10",
             "--trend-lookback",
             "5",
             "--trend-min-score",
@@ -792,6 +797,7 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
     assert saved_config["initial_equity"] == 2.0
     assert saved_config["trailing_take_profit_activation_pct"] == 0.05
     assert saved_config["trailing_take_profit_drawdown_pct"] == 0.02
+    assert saved_config["trailing_take_profit_ma_period"] == 10
     assert saved_config["trend_strong_close_pos"] == 0.7
     assert saved_config["trend_min_body_ratio"] == 0.55
     assert saved_config["trend_pullback_lookback"] == 4
@@ -865,6 +871,8 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
             "0.03",
             "--trailing-take-profit-drawdown-pct",
             "0.01",
+            "--trailing-take-profit-ma-period",
+            "8",
             "--strategy-capital-limit",
             "trend_signal_bar=0.6",
             "--sector-capital-limit",
@@ -899,6 +907,7 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
     assert saved_config["strategy_priority"] == {"trend_signal_bar": 1}
     assert saved_config["trailing_take_profit_activation_pct"] == 0.03
     assert saved_config["trailing_take_profit_drawdown_pct"] == 0.01
+    assert saved_config["trailing_take_profit_ma_period"] == 8
     assert saved_config["strategy_capital_limit"] == {"trend_signal_bar": 0.6}
     assert saved_config["sector_capital_limit"] == {"银行": 0.5}
     assert saved_config["symbol_sector_map"] == {"000001.SZ": "银行"}
@@ -952,6 +961,8 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
             "0.03",
             "--trailing-take-profit-drawdown-pct",
             "0.01",
+            "--trailing-take-profit-ma-period",
+            "6",
             "--output-dir",
             str(output_dir),
         ],
@@ -988,6 +999,7 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
     }
     assert saved_config["trailing_take_profit_activation_pct"] == 0.03
     assert saved_config["trailing_take_profit_drawdown_pct"] == 0.01
+    assert saved_config["trailing_take_profit_ma_period"] == 6
 
 
 def test_cli_replay_case_runs_saved_single_sweep_case(tmp_path: Path, monkeypatch, capsys) -> None:
