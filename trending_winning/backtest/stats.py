@@ -111,14 +111,18 @@ PERIOD_STAT_KEYS = [
     "avg_return",
     "return_std",
     "best_return",
+    "best_return_period",
     "worst_return",
+    "worst_return_period",
     "avg_drawdown",
     "worst_drawdown",
+    "worst_drawdown_period",
     "avg_observation_count",
     "max_consecutive_gains",
     "max_consecutive_losses",
     "max_recovery_periods",
     "underwater_ratio",
+    "current_underwater_periods",
 ]
 
 _PERIOD_RETURN_COLUMNS = pd.Index(
@@ -514,7 +518,7 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
     return pd.DataFrame(rows, columns=_PERIOD_RETURN_COLUMNS)
 
 
-def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: str = "period") -> dict[str, float]:
+def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: str = "period") -> dict[str, object]:
     """把月度/年度收益表压成稳定性摘要；只依赖周期收益表，和策略模块完全解耦。"""
     if period_returns.empty:
         return _empty_period_return_statistics(prefix)
@@ -535,14 +539,18 @@ def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: st
         f"{prefix}_avg_return": _mean_or_zero(returns),
         f"{prefix}_return_std": _std_or_zero(returns),
         f"{prefix}_best_return": _max_or_zero(returns),
+        f"{prefix}_best_return_period": _period_label_at(period_returns, _series_max_position(returns)),
         f"{prefix}_worst_return": _min_or_zero(returns),
+        f"{prefix}_worst_return_period": _period_label_at(period_returns, _series_min_position(returns)),
         f"{prefix}_avg_drawdown": _mean_or_zero(drawdown),
         f"{prefix}_worst_drawdown": _min_or_zero(drawdown),
+        f"{prefix}_worst_drawdown_period": _period_label_at(period_returns, _series_min_position(drawdown)),
         f"{prefix}_avg_observation_count": _mean_or_zero(observation_count),
         f"{prefix}_max_consecutive_gains": float(_max_streak(returns, positive=True)),
         f"{prefix}_max_consecutive_losses": float(_max_streak(returns, positive=False)),
         f"{prefix}_max_recovery_periods": float(_max_drawdown_duration(period_net_value)),
         f"{prefix}_underwater_ratio": _round_float(float(period_underwater.mean())) if not period_underwater.empty else 0.0,
+        f"{prefix}_current_underwater_periods": float(_trailing_true_length(period_underwater)),
     }
 
 
@@ -944,8 +952,45 @@ def _min_or_zero(values: pd.Series) -> float:
     return _round_float(values.min())
 
 
-def _empty_period_return_statistics(prefix: str) -> dict[str, float]:
-    return {f"{prefix}_{key}": 0.0 for key in PERIOD_STAT_KEYS}
+def _series_max_position(values: pd.Series) -> int | None:
+    if values.empty:
+        return None
+    return int(values.idxmax())
+
+
+def _series_min_position(values: pd.Series) -> int | None:
+    if values.empty:
+        return None
+    return int(values.idxmin())
+
+
+def _period_label_at(period_returns: pd.DataFrame, position: int | None) -> str:
+    if position is None or position < 0 or position >= len(period_returns):
+        return ""
+    row = period_returns.iloc[position]
+    if "period" in period_returns.columns and pd.notna(row["period"]):
+        return str(row["period"])
+    if "start" in period_returns.columns:
+        timestamp = pd.to_datetime(row["start"], errors="coerce")
+        if pd.notna(timestamp):
+            return timestamp.strftime("%Y-%m-%d")
+    return str(position)
+
+
+def _trailing_true_length(mask: pd.Series) -> int:
+    count = 0
+    for value in reversed(mask.tolist()):
+        if not bool(value):
+            break
+        count += 1
+    return count
+
+
+def _empty_period_return_statistics(prefix: str) -> dict[str, object]:
+    result: dict[str, object] = {f"{prefix}_{key}": 0.0 for key in PERIOD_STAT_KEYS}
+    for key in ("best_return_period", "worst_return_period", "worst_drawdown_period"):
+        result[f"{prefix}_{key}"] = ""
+    return result
 
 
 def _period_net_value_series(period_returns: pd.DataFrame, returns: pd.Series) -> pd.Series:
