@@ -182,6 +182,24 @@ PARAMETER_SUMMARY_METRICS = (
 SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
 SETUP_ORDER_DECISION_FIELDS = ("detector_name", "event_type", "side")
 SETUP_STRATEGY_FILTER_FIELDS = ("detector_name", "event_type", "side", "filter_name", "context_timeframe")
+SWEEP_CASE_STRATEGY_COLUMNS = (
+    "sweep_rank",
+    "pareto_rank",
+    "is_pareto_efficient",
+    "case_name",
+    "case_config_hash",
+    "strategy_name",
+    *STAT_KEYS,
+)
+SWEEP_CASE_DETECTOR_COLUMNS = (
+    "sweep_rank",
+    "pareto_rank",
+    "is_pareto_efficient",
+    "case_name",
+    "case_config_hash",
+    "detector_name",
+    *STAT_KEYS,
+)
 SWEEP_CASE_SETUP_COLUMNS = (
     "sweep_rank",
     "pareto_rank",
@@ -402,6 +420,8 @@ class PortfolioSweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    strategy_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -421,6 +441,8 @@ class SingleStrategySweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    strategy_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -611,6 +633,8 @@ def run_portfolio_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    strategy_frames: list[pd.DataFrame] = []
+    detector_frames: list[pd.DataFrame] = []
     setup_frames: list[pd.DataFrame] = []
     symbol_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
@@ -624,6 +648,7 @@ def run_portfolio_parameter_sweep(
         min_coverage_ratio=config.min_coverage_ratio,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
+    strategy_names_by_config: dict[tuple[object, ...], tuple[str, ...]] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     candidates_by_execution: dict[tuple[tuple[object, ...], tuple[object, ...]], PortfolioCandidateSet] = {}
     for case_index, variant in enumerate(variants, start=1):
@@ -642,6 +667,7 @@ def run_portfolio_parameter_sweep(
             strategy_runs = execute_strategies(strategies, data.bars, timeframe=variant.timeframe)
             orders = strategy_runs.orders
             orders_by_config[order_key] = orders
+            strategy_names_by_config[order_key] = _strategy_names_for_statistics(strategies)
             filter_decisions_by_config[order_key] = strategy_runs.filter_decisions
         backtest_config = _backtest_config(variant)
         candidate_key = (order_key, _candidate_cache_key(variant))
@@ -696,6 +722,26 @@ def run_portfolio_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
+        strategy_frames.append(
+            _case_strategy_statistics(
+                backtest.trades,
+                strategy_names_by_config.get(order_key, ()),
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
+        detector_frames.append(
+            _case_detector_statistics(
+                backtest.trades,
+                variant,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
         setup_frames.append(
             _case_setup_statistics(
                 backtest.trades,
@@ -732,6 +778,8 @@ def run_portfolio_parameter_sweep(
         )
 
     table = _rank_sweep_table(pd.DataFrame(rows))
+    strategy_stats = _ranked_case_strategy_statistics(_concat_case_strategy_statistics(strategy_frames), table)
+    detector_stats = _ranked_case_detector_statistics(_concat_case_detector_statistics(detector_frames), table)
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
     symbol_stats = _ranked_case_symbol_statistics(_concat_case_symbol_statistics(symbol_frames), table)
     setup_order_decision_stats = _ranked_case_decision_statistics(
@@ -754,6 +802,8 @@ def run_portfolio_parameter_sweep(
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
+        strategy_stats=strategy_stats,
+        detector_stats=detector_stats,
         setup_stats=setup_stats,
         symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
@@ -778,6 +828,8 @@ def run_single_strategy_parameter_sweep(
     data = _load_experiment_data(repo, config)
 
     rows: list[dict[str, object]] = []
+    strategy_frames: list[pd.DataFrame] = []
+    detector_frames: list[pd.DataFrame] = []
     setup_frames: list[pd.DataFrame] = []
     symbol_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
@@ -791,6 +843,7 @@ def run_single_strategy_parameter_sweep(
         min_coverage_ratio=config.min_coverage_ratio,
     )
     orders_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
+    strategy_names_by_config: dict[tuple[object, ...], tuple[str, ...]] = {}
     filter_decisions_by_config: dict[tuple[object, ...], pd.DataFrame] = {}
     for case_index, variant in enumerate(variants, start=1):
         case_start = perf_counter()
@@ -808,6 +861,7 @@ def run_single_strategy_parameter_sweep(
             strategy_run = execute_strategy(strategy, data.bars, timeframe=variant.timeframe)
             orders = strategy_run.orders
             orders_by_config[order_key] = orders
+            strategy_names_by_config[order_key] = _strategy_names_for_statistics((strategy,))
             filter_decisions_by_config[order_key] = strategy_run.filter_decisions
         filter_decisions = filter_decisions_by_config.get(order_key, pd.DataFrame())
         backtest = _with_strategy_filter_decisions(
@@ -835,6 +889,26 @@ def run_single_strategy_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=True))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
+        strategy_frames.append(
+            _case_strategy_statistics(
+                backtest.trades,
+                strategy_names_by_config.get(order_key, ()),
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
+        detector_frames.append(
+            _case_detector_statistics(
+                backtest.trades,
+                variant,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
         setup_frames.append(
             _case_setup_statistics(
                 backtest.trades,
@@ -871,6 +945,8 @@ def run_single_strategy_parameter_sweep(
         )
 
     table = _rank_sweep_table(pd.DataFrame(rows))
+    strategy_stats = _ranked_case_strategy_statistics(_concat_case_strategy_statistics(strategy_frames), table)
+    detector_stats = _ranked_case_detector_statistics(_concat_case_detector_statistics(detector_frames), table)
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
     symbol_stats = _ranked_case_symbol_statistics(_concat_case_symbol_statistics(symbol_frames), table)
     setup_order_decision_stats = _ranked_case_decision_statistics(
@@ -893,6 +969,8 @@ def run_single_strategy_parameter_sweep(
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
+        strategy_stats=strategy_stats,
+        detector_stats=detector_stats,
         setup_stats=setup_stats,
         symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
@@ -1403,6 +1481,8 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
+    result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
+    result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
     result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
@@ -1425,6 +1505,8 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
+    result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
+    result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
     result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
@@ -1578,6 +1660,44 @@ def _case_setup_statistics(
     return stats
 
 
+def _case_strategy_statistics(
+    trades: pd.DataFrame,
+    strategies: Sequence[object],
+    *,
+    case_name: str,
+    case_config_hash: str,
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按 case 汇总策略表现；已启用但没有成交的策略也保留零行。"""
+    columns = pd.Index(["case_name", "case_config_hash", "strategy_name", *STAT_KEYS])
+    stats = _strategy_trade_statistics(trades, strategies, order_decisions, filter_decisions)
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    stats.insert(0, "case_config_hash", case_config_hash)
+    stats.insert(0, "case_name", case_name)
+    return stats.reindex(columns=columns)
+
+
+def _case_detector_statistics(
+    trades: pd.DataFrame,
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    *,
+    case_name: str,
+    case_config_hash: str,
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按 case 汇总识别模块表现；已启用但没有成交的 detector 也保留零行。"""
+    columns = pd.Index(["case_name", "case_config_hash", "detector_name", *STAT_KEYS])
+    stats = _detector_trade_statistics(trades, config, order_decisions, filter_decisions)
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    stats.insert(0, "case_config_hash", case_config_hash)
+    stats.insert(0, "case_name", case_name)
+    return stats.reindex(columns=columns)
+
+
 def _case_symbol_statistics(
     trades: pd.DataFrame,
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
@@ -1597,6 +1717,22 @@ def _case_symbol_statistics(
     stats.insert(0, "case_config_hash", case_config_hash)
     stats.insert(0, "case_name", case_name)
     return stats
+
+
+def _concat_case_strategy_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    columns = pd.Index(["case_name", "case_config_hash", "strategy_name", *STAT_KEYS])
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
+
+
+def _concat_case_detector_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    columns = pd.Index(["case_name", "case_config_hash", "detector_name", *STAT_KEYS])
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
 
 
 def _case_decision_statistics(
@@ -1638,6 +1774,38 @@ def _concat_case_decision_statistics(frames: Sequence[pd.DataFrame], *, group_fi
     if not non_empty:
         return pd.DataFrame(columns=columns)
     return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
+
+
+def _ranked_case_strategy_statistics(case_strategy: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
+    if case_strategy.empty:
+        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_STRATEGY_COLUMNS))
+    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
+    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
+    merged = case_strategy.merge(ranks, on="case_config_hash", how="left")
+    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    return (
+        merged.reindex(columns=pd.Index(SWEEP_CASE_STRATEGY_COLUMNS))
+        .sort_values(["sweep_rank", "case_name", "strategy_name"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _ranked_case_detector_statistics(case_detector: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
+    if case_detector.empty:
+        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_DETECTOR_COLUMNS))
+    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
+    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
+    merged = case_detector.merge(ranks, on="case_config_hash", how="left")
+    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    return (
+        merged.reindex(columns=pd.Index(SWEEP_CASE_DETECTOR_COLUMNS))
+        .sort_values(["sweep_rank", "case_name", "detector_name"], kind="mergesort")
+        .reset_index(drop=True)
+    )
 
 
 def _ranked_case_setup_statistics(case_setup: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
@@ -2142,7 +2310,7 @@ def _strategy_names_for_statistics(
     """生成策略统计行的稳定顺序，优先使用本次实际执行的策略对象。"""
     names: list[str] = []
     for strategy in strategies:
-        name = _setup_label(getattr(strategy, "name", ""))
+        name = _setup_label(strategy if isinstance(strategy, str) else getattr(strategy, "name", ""))
         if name and name not in names:
             names.append(name)
     for strategy_name in _strategy_names_from_decisions(*decision_frames):

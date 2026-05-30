@@ -981,6 +981,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "parameter_summary.csv").exists()
+    assert (output_dir / "case_strategy_stats.csv").exists()
+    assert (output_dir / "case_detector_stats.csv").exists()
     assert (output_dir / "case_setup_stats.csv").exists()
     assert (output_dir / "case_symbol_stats.csv").exists()
     assert (output_dir / "case_setup_order_decision_stats.csv").exists()
@@ -996,6 +998,8 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
+    saved_case_strategy = pd.read_csv(output_dir / "case_strategy_stats.csv")
+    saved_case_detector = pd.read_csv(output_dir / "case_detector_stats.csv")
     saved_case_setup = pd.read_csv(output_dir / "case_setup_stats.csv")
     saved_case_symbol = pd.read_csv(output_dir / "case_symbol_stats.csv")
     saved_case_setup_order_decisions = pd.read_csv(output_dir / "case_setup_order_decision_stats.csv")
@@ -1065,6 +1069,34 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     _assert_parameter_summary_efficiency_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     _assert_parameter_summary_exit_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "strategy_name",
+        "trade_count",
+        "total_return",
+    }.issubset(saved_case_strategy.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "strategy_name"}.issubset(
+        result.strategy_stats.columns
+    )
+    assert set(saved_case_strategy["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "detector_name",
+        "trade_count",
+        "total_return",
+    }.issubset(saved_case_detector.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "detector_name"}.issubset(
+        result.detector_stats.columns
+    )
+    assert set(saved_case_detector["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -1758,6 +1790,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert (output_dir / "sweep.csv").exists()
     assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "parameter_summary.csv").exists()
+    assert (output_dir / "case_strategy_stats.csv").exists()
+    assert (output_dir / "case_detector_stats.csv").exists()
     assert (output_dir / "case_setup_stats.csv").exists()
     assert (output_dir / "case_symbol_stats.csv").exists()
     assert (output_dir / "case_setup_order_decision_stats.csv").exists()
@@ -1772,6 +1806,8 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     saved_sweep = pd.read_csv(output_dir / "sweep.csv")
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
+    saved_case_strategy = pd.read_csv(output_dir / "case_strategy_stats.csv")
+    saved_case_detector = pd.read_csv(output_dir / "case_detector_stats.csv")
     saved_case_setup = pd.read_csv(output_dir / "case_setup_stats.csv")
     saved_case_symbol = pd.read_csv(output_dir / "case_symbol_stats.csv")
     saved_case_setup_order_decisions = pd.read_csv(output_dir / "case_setup_order_decision_stats.csv")
@@ -1835,6 +1871,32 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     _assert_parameter_summary_efficiency_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     _assert_parameter_summary_exit_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "strategy_name",
+        "trade_count",
+    }.issubset(saved_case_strategy.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "strategy_name"}.issubset(
+        result.strategy_stats.columns
+    )
+    assert set(saved_case_strategy["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "detector_name",
+        "trade_count",
+    }.issubset(saved_case_detector.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "detector_name"}.issubset(
+        result.detector_stats.columns
+    )
+    assert set(saved_case_detector["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
     assert {
         "sweep_rank",
         "pareto_rank",
