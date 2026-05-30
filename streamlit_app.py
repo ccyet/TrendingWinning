@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 import math
@@ -19,6 +19,7 @@ from trending_winning.backtest.experiment import (
     run_single_strategy_experiment,
 )
 from trending_winning.data.repository import BacktestDataBundle, MarketDataRepository, available_symbols
+from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE
 from trending_winning.multitimeframe import scan_timeframes
 from trending_winning.strategy import StrategyConfig, scan_bars
 
@@ -27,20 +28,6 @@ DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
-STOCK_NAME_BY_CODE = {
-    "000001.SZ": "平安银行",
-    "000002.SZ": "万科A",
-    "000003.SZ": "PT金田A",
-    "000333.SZ": "美的集团",
-    "002415.SZ": "海康威视",
-    "300059.SZ": "东方财富",
-    "300750.SZ": "宁德时代",
-    "600000.SH": "浦发银行",
-    "600036.SH": "招商银行",
-    "600519.SH": "贵州茅台",
-    "601318.SH": "中国平安",
-    "688001.SH": "华兴源创",
-}
 BACKTEST_HELP_TEXT = {
     "take_profit": "单笔交易达到该收益率后止盈，例如 0.060 表示 6%。",
     "stop_loss": "单笔交易触及该亏损率后止损，例如 0.030 表示 3%。",
@@ -521,16 +508,16 @@ def _display_path(value: str) -> str:
     return "~" if str(relative) == "." else f"~/{relative}"
 
 
-def _stock_name_label(value: object) -> str:
+def _stock_name_label(value: object, stock_names: Mapping[str, str] | None = None) -> str:
     """把证券代码转成界面可读名称；未知代码保留在名称后方，便于追溯原始样本。"""
     code = str(value).strip().upper()
     if not code:
         return ""
-    name = STOCK_NAME_BY_CODE.get(code)
+    name = (stock_names or DEFAULT_STOCK_NAME_BY_CODE).get(code)
     return f"{name}（{code}）" if name else f"未知名称（{code}）"
 
 
-def _prepare_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
+def _prepare_display_frame(frame: pd.DataFrame, *, stock_names: Mapping[str, str] | None = None) -> pd.DataFrame:
     """把回测展示表转成中文列名、中文枚举和已格式化字符串。"""
     if frame.empty:
         return frame.copy()
@@ -538,7 +525,7 @@ def _prepare_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
     display = pd.DataFrame(index=frame.index)
     for column in frame.columns:
         label = _unique_display_label(_display_column_label(str(column)), used_labels)
-        display[label] = [_format_display_value(str(column), value) for value in frame[column]]
+        display[label] = [_format_display_value(str(column), value, stock_names=stock_names) for value in frame[column]]
     return display.reset_index(drop=True)
 
 
@@ -562,12 +549,22 @@ def _style_display_frame(frame: pd.DataFrame):
     )
 
 
-def _render_display_table(title: str, frame: pd.DataFrame, *, tail: int | None = None) -> None:
+def _render_display_table(
+    title: str,
+    frame: pd.DataFrame,
+    *,
+    tail: int | None = None,
+    stock_names: Mapping[str, str] | None = None,
+) -> None:
     if frame.empty:
         return
     data = frame.tail(tail) if tail is not None else frame
     st.markdown(f"##### {title}")
-    st.dataframe(_style_display_frame(_prepare_display_frame(data)), use_container_width=True, hide_index=True)
+    st.dataframe(
+        _style_display_frame(_prepare_display_frame(data, stock_names=stock_names)),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def _display_column_label(column: str) -> str:
@@ -610,11 +607,11 @@ def _unique_display_label(label: str, used_labels: set[str]) -> str:
     return unique
 
 
-def _format_display_value(column: str, value: object) -> str:
+def _format_display_value(column: str, value: object, *, stock_names: Mapping[str, str] | None = None) -> str:
     if _is_missing(value):
         return ""
     if column in {"stock_code", "symbol"}:
-        return _stock_name_label(value)
+        return _stock_name_label(value, stock_names=stock_names)
     if isinstance(value, bool):
         return "是" if value else "否"
     mapped = DISPLAY_VALUE_MAP.get(column, {}).get(str(value))
@@ -1414,7 +1411,7 @@ def _legacy_backtest_module(
             intrabar_exit_policy=risk.intrabar_exit_policy,
         ),
     )
-    _render_backtest_result(result, bundle)
+    _render_backtest_result(result, bundle, stock_names=_backtest_stock_names(data_root, scope.symbols))
 
 
 def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
@@ -1906,12 +1903,14 @@ def _execute_single_strategy_experiment(
         ),
         save=output.save_outputs,
     )
+    stock_names = _backtest_stock_names(data_root, scope.symbols)
     _render_backtest_result(
         experiment.backtest,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
+        stock_names=stock_names,
     )
-    _render_experiment_breakdowns(experiment)
+    _render_experiment_breakdowns(experiment, stock_names=stock_names)
     if output.save_outputs:
         _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
 
@@ -1989,12 +1988,14 @@ def _execute_portfolio_strategy_experiment(
         ),
         save=output.save_outputs,
     )
+    stock_names = _backtest_stock_names(data_root, scope.symbols)
     _render_backtest_result(
         experiment.backtest,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
+        stock_names=stock_names,
     )
-    _render_experiment_breakdowns(experiment)
+    _render_experiment_breakdowns(experiment, stock_names=stock_names)
     if output.save_outputs:
         _show_saved_experiment_path(experiment.config.output_dir, experiment.config.name)
 
@@ -2005,6 +2006,7 @@ def _render_backtest_result(
     *,
     filtered_limit_open_count: int | None = None,
     data_coverage: pd.DataFrame | None = None,
+    stock_names: Mapping[str, str] | None = None,
 ) -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("交易数", int(result.stats["trade_count"]))
@@ -2015,15 +2017,15 @@ def _render_backtest_result(
     if filtered_count > 0:
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")
     if data_coverage is not None and not data_coverage.empty:
-        _render_display_table("数据覆盖率检查", data_coverage)
-    _render_display_table("逐笔交易", result.trades)
+        _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
+    _render_display_table("逐笔交易", result.trades, stock_names=stock_names)
     if not result.equity_curve.empty:
         st.markdown("##### 净值曲线")
         _render_equity_chart(result.equity_curve)
-        _render_display_table("净值明细", result.equity_curve, tail=200)
+        _render_display_table("净值明细", result.equity_curve, tail=200, stock_names=stock_names)
 
 
-def _render_experiment_breakdowns(experiment) -> None:
+def _render_experiment_breakdowns(experiment, *, stock_names: Mapping[str, str] | None = None) -> None:
     """展示实验拆分统计；单策略和组合回测复用同一组产物。"""
     for title, frame in [
         ("策略绩效", experiment.strategy_stats),
@@ -2033,7 +2035,11 @@ def _render_experiment_breakdowns(experiment) -> None:
         ("信号形态绩效", experiment.event_type_stats),
         ("月度收益", experiment.monthly_returns),
     ]:
-        _render_display_table(title, frame)
+        _render_display_table(title, frame, stock_names=stock_names)
+
+
+def _backtest_stock_names(data_root: Path, symbols: list[str]) -> dict[str, str]:
+    return MarketDataRepository(data_root).symbol_names(symbols=tuple(symbols))
 
 
 def _chart_close(frame: pd.DataFrame) -> None:

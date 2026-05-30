@@ -247,9 +247,11 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     )
 
     display = _prepare_display_frame(frame)
+    custom_display = _prepare_display_frame(frame, stock_names={"000001.SZ": "自定义银行"})
 
     assert "stock_code" not in display.columns
     assert display["股票名称"].tolist() == ["平安银行（000001.SZ）", "贵州茅台（600519.SH）"]
+    assert custom_display["股票名称"].tolist()[0] == "自定义银行（000001.SZ）"
     assert display["交易次数"].tolist() == ["3", "4"]
     assert display["胜率"].tolist() == ["9.60%", "100.00%"]
     assert display["总收益"].tolist() == ["9.60%", "100.00%"]
@@ -279,6 +281,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "inventory-data" in html
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
+    assert "symbol_metadata.csv" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
 
@@ -331,6 +334,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "分钟 no_data" in guide
     assert "monthly_worst_return" in readme
     assert "monthly_worst_return" in guide
+    assert "symbol_metadata.csv" in readme
+    assert "symbol_metadata.csv" in guide
     assert "monthly_max_consecutive_losses" in readme
     assert "monthly_max_consecutive_losses" in guide
     assert "monthly_max_recovery_periods" in readme

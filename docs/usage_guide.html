@@ -370,6 +370,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>detector_stats.csv</code></td><td>按 <code>detector_name</code> 汇总趋势、区间、通道、反转等识别模块的成交绩效。</td></tr>
           <tr><td><code>setup_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总信号形态级别绩效，用于比较 H1/H2、失败突破、通道突破和反转信号。</td></tr>
           <tr><td><code>data_inventory.csv</code></td><td>本次实验涉及的日 K、主周期和高周期 parquet 缓存快照，包含存在状态、行数、起止时间、文件大小、修改时间和路径。</td></tr>
+          <tr><td><code>symbol_metadata.csv</code></td><td>本次实验涉及股票的代码、名称和名称来源。优先读取行情目录 <code>symbols.csv / stock_names.csv</code>，其次读取 TDX <code>hq_cache</code> 的 <code>shm/szm/bjm.tnf</code>。</td></tr>
           <tr><td><code>data_coverage.csv</code></td><td>本地数据审计和覆盖率，包含 <code>expected_rows</code>、<code>missing_rows</code>、<code>coverage_ratio</code>、<code>max_missing_gap_minutes</code>、<code>first_missing_at</code>、<code>last_missing_at</code>、<code>max_missing_gap_start_at</code> 和 <code>max_missing_gap_end_at</code>，用于定位需要补齐的 K 线区间和最长连续缺口。</td></tr>
           <tr><td><code>limit_filter_audit.csv</code></td><td>日 K 涨停开盘过滤是否真实执行。</td></tr>
           <tr><td><code>monthly_returns.csv</code></td><td>自然周期收益、周期最大回撤和净值样本数，是 <code>stats.json</code> 周期稳定性字段的明细来源。</td></tr>

@@ -137,6 +137,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "data_inventory.csv").exists()
     assert (output_dir / "data_coverage.csv").exists()
     assert (output_dir / "limit_filter_audit.csv").exists()
+    assert (output_dir / "symbol_metadata.csv").exists()
     assert (output_dir / "strategy_stats.csv").exists()
     assert (output_dir / "detector_stats.csv").exists()
     assert (output_dir / "setup_stats.csv").exists()
@@ -150,6 +151,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     saved_coverage = pd.read_csv(output_dir / "data_coverage.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
     saved_limit_filter_audit = pd.read_csv(output_dir / "limit_filter_audit.csv")
+    saved_symbol_metadata = pd.read_csv(output_dir / "symbol_metadata.csv")
     saved_decisions = pd.read_csv(output_dir / "order_decisions.csv")
     saved_filter_decisions = pd.read_csv(output_dir / "strategy_filter_decisions.csv")
     saved_decision_stats = pd.read_csv(output_dir / "order_decision_stats.csv")
@@ -179,6 +181,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert result.data_coverage["status"].tolist() == ["ok"]
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
+    assert saved_symbol_metadata.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
     assert saved_coverage.loc[0, "stock_code"] == "000001.SZ"
     assert result.limit_filter_audit["status"].tolist() == ["daily_missing"]
     assert saved_limit_filter_audit.loc[0, "status"] == "daily_missing"
@@ -766,6 +769,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert (output_dir / "config.json").exists()
     assert (output_dir / "case_configs.jsonl").exists()
     assert (output_dir / "data_inventory.csv").exists()
+    assert (output_dir / "symbol_metadata.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["name"] == "sweep"
     assert saved_config["sweep_grid"] == {"risk_reward": [1.5, 2.0], "max_holding_bars": [3, 5]}

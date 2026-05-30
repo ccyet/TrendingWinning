@@ -227,6 +227,22 @@ def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: P
     assert inventory["status"].tolist() == ["cached"]
 
 
+def test_market_data_repository_exposes_symbol_names_from_metadata(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    data_root.mkdir(parents=True)
+    pd.DataFrame({"stock_code": ["000001.SZ", "600519.SH"], "stock_name": ["平安银行", "贵州茅台"]}).to_csv(
+        tmp_path / "market" / "symbols.csv",
+        index=False,
+    )
+    repo = MarketDataRepository(data_root)
+
+    metadata = repo.symbol_metadata()
+    names = repo.symbol_names(symbols=("000001.SZ", "600519.SH", "300750.SZ"))
+
+    assert metadata.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
+    assert names == {"000001.SZ": "平安银行", "600519.SH": "贵州茅台", "300750.SZ": "宁德时代"}
+
+
 def test_normalize_bars_drops_rows_with_missing_or_invalid_symbol() -> None:
     bars = pd.DataFrame(
         {

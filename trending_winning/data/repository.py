@@ -22,6 +22,7 @@ from trending_winning.data.schema import (
     resolve_timeframe_root,
     unique_symbols,
 )
+from trending_winning.data.symbols import load_symbol_metadata, resolve_symbol_names
 
 __all__ = [
     "BacktestDataBundle",
@@ -34,9 +35,11 @@ __all__ = [
     "load_daily_bars",
     "load_local_bars",
     "load_multi_timeframe_backtest_data",
+    "load_symbol_metadata",
     "plan_tdx_backtest_data",
     "prepare_tdx_backtest_data",
     "resolve_daily_root",
+    "resolve_symbol_names",
     "resolve_timeframe_root",
     "summarize_data_audit",
     "summarize_limit_filter_audit",
@@ -370,6 +373,19 @@ class MarketDataRepository:
             end=end,
             min_coverage_ratio=min_coverage_ratio,
         )
+
+    def symbol_metadata(self, *, tdx_path: str | Path = "") -> pd.DataFrame:
+        """返回股票代码和名称元数据；供 UI、统计展示和导出解释复用。"""
+        return load_symbol_metadata(self.data_root, tdx_path=tdx_path)
+
+    def symbol_names(
+        self,
+        *,
+        symbols: tuple[str, ...] | list[str],
+        tdx_path: str | Path = "",
+    ) -> dict[str, str]:
+        """返回指定股票的名称映射；本地 sidecar/TDX 优先，常用代码兜底。"""
+        return resolve_symbol_names(symbols, data_root=self.data_root, tdx_path=tdx_path)
 
     def load_backtest_data(
         self,

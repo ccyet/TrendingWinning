@@ -35,6 +35,8 @@ from trending_winning.data.repository import (
     summarize_data_audit,
     summarize_limit_filter_audit,
 )
+from trending_winning.data.schema import unique_symbols
+from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
 from trending_winning.strategies.diagnostics import collect_strategy_filter_decisions
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
@@ -1176,6 +1178,31 @@ def _inventory_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float)
 
 
+def _symbol_metadata_for_config(
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+) -> pd.DataFrame:
+    """把实验涉及的股票名称随结果一起保存，避免统计表脱离代码名称映射。"""
+    metadata = load_symbol_metadata(config.data_root)
+    metadata_by_symbol = {str(row.stock_code): row for row in metadata.itertuples(index=False)}
+    rows: list[dict[str, object]] = []
+    for symbol in unique_symbols(tuple(config.symbols)):
+        if symbol in metadata_by_symbol:
+            record = metadata_by_symbol[symbol]
+            rows.append(
+                {
+                    "stock_code": symbol,
+                    "stock_name": str(record.stock_name),
+                    "source": str(record.source),
+                    "path": str(record.path),
+                }
+            )
+            continue
+        name = DEFAULT_STOCK_NAME_BY_CODE.get(symbol)
+        if name:
+            rows.append({"stock_code": symbol, "stock_name": name, "source": "default_builtin", "path": ""})
+    return pd.DataFrame(rows, columns=pd.Index(SYMBOL_METADATA_COLUMNS))
+
+
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
     output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1200,6 +1227,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
+    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
@@ -1239,6 +1267,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
+    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
@@ -1278,6 +1307,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
+    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
     return output_dir
 
 
@@ -1298,6 +1328,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
+    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
     return output_dir
 
 
