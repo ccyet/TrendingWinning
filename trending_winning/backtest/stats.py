@@ -7,11 +7,19 @@ import re
 import pandas as pd
 
 
+CONFIDENCE_Z_SCORE = 1.96
+
 STAT_KEYS = [
     "trade_count",
     "win_rate",
+    "win_rate_ci_lower",
+    "win_rate_ci_upper",
     "total_return",
     "avg_return",
+    "avg_return_standard_error",
+    "avg_return_ci_lower",
+    "avg_return_ci_upper",
+    "positive_expectancy_probability",
     "max_drawdown",
     "profit_factor",
     "expectancy",
@@ -291,12 +299,19 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     return_p75 = _quantile_or_zero(returns, 0.75)
     return_p95 = _quantile_or_zero(returns, 0.95)
     capital_turnover = _round_float(capital_fraction.sum()) if not capital_fraction.empty else 0.0
+    confidence_stats = _sample_confidence_statistics(returns)
 
     return {
         "trade_count": float(len(returns)),
         "win_rate": _round_float((returns > 0).mean()),
+        "win_rate_ci_lower": confidence_stats["win_rate_ci_lower"],
+        "win_rate_ci_upper": confidence_stats["win_rate_ci_upper"],
         "total_return": total_return,
         "avg_return": _round_float(returns.mean()),
+        "avg_return_standard_error": confidence_stats["avg_return_standard_error"],
+        "avg_return_ci_lower": confidence_stats["avg_return_ci_lower"],
+        "avg_return_ci_upper": confidence_stats["avg_return_ci_upper"],
+        "positive_expectancy_probability": confidence_stats["positive_expectancy_probability"],
         "max_drawdown": max_drawdown,
         "profit_factor": _ratio_or_inf(gross_profit, gross_loss),
         "expectancy": _round_float(returns.mean()),
@@ -733,6 +748,65 @@ def _std_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.std(ddof=0))
+
+
+def _sample_confidence_statistics(returns: pd.Series) -> dict[str, float]:
+    """给小样本逐笔收益增加置信区间，避免只看点估计误判策略质量。"""
+    if returns.empty:
+        return {
+            "win_rate_ci_lower": 0.0,
+            "win_rate_ci_upper": 0.0,
+            "avg_return_standard_error": 0.0,
+            "avg_return_ci_lower": 0.0,
+            "avg_return_ci_upper": 0.0,
+            "positive_expectancy_probability": 0.0,
+        }
+
+    avg_return = float(returns.mean())
+    standard_error = _standard_error(returns)
+    win_rate = float((returns > 0).mean())
+    win_rate_ci_lower, win_rate_ci_upper = _wilson_score_interval(win_rate, len(returns))
+    if standard_error > 0:
+        avg_return_ci_lower = avg_return - CONFIDENCE_Z_SCORE * standard_error
+        avg_return_ci_upper = avg_return + CONFIDENCE_Z_SCORE * standard_error
+    else:
+        avg_return_ci_lower = avg_return
+        avg_return_ci_upper = avg_return
+    return {
+        "win_rate_ci_lower": _round_float(win_rate_ci_lower),
+        "win_rate_ci_upper": _round_float(win_rate_ci_upper),
+        "avg_return_standard_error": _round_float(standard_error),
+        "avg_return_ci_lower": _round_float(avg_return_ci_lower),
+        "avg_return_ci_upper": _round_float(avg_return_ci_upper),
+        "positive_expectancy_probability": _round_float(_positive_expectancy_probability(avg_return, standard_error)),
+    }
+
+
+def _standard_error(values: pd.Series) -> float:
+    if len(values) <= 1:
+        return 0.0
+    return float(values.std(ddof=1)) / math.sqrt(len(values))
+
+
+def _wilson_score_interval(rate: float, sample_count: int) -> tuple[float, float]:
+    if sample_count <= 0:
+        return 0.0, 0.0
+    z2 = CONFIDENCE_Z_SCORE**2
+    denominator = 1.0 + z2 / sample_count
+    center = rate + z2 / (2.0 * sample_count)
+    margin = CONFIDENCE_Z_SCORE * math.sqrt(rate * (1.0 - rate) / sample_count + z2 / (4.0 * sample_count**2))
+    return max(0.0, (center - margin) / denominator), min(1.0, (center + margin) / denominator)
+
+
+def _positive_expectancy_probability(avg_return: float, standard_error: float) -> float:
+    if standard_error <= 0:
+        if avg_return > 0:
+            return 1.0
+        if avg_return < 0:
+            return 0.0
+        return 0.5
+    z_value = avg_return / standard_error
+    return 0.5 * (1.0 + math.erf(z_value / math.sqrt(2.0)))
 
 
 def _ratio_or_inf(numerator: float, denominator: float) -> float:

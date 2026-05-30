@@ -29,6 +29,11 @@ DEFAULT_OUTPUT_ROOT = "runs"
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
 BACKTEST_HELP_TEXT = {
+    "timeframe": "本次扫描或回测使用的 K 线周期。策略周期只支持分钟级，日 K 只用于涨停开盘过滤。",
+    "symbols": "输入股票代码，多个代码用英文逗号分隔，例如 000001.SZ,600519.SH。",
+    "start_date": "回测样本开始日期，系统只读取这个日期之后的本地 K 线。",
+    "end_date": "回测样本结束日期，结束日之后的 K 线不会进入样本。",
+    "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
     "take_profit": "单笔交易达到该收益率后止盈，例如 0.060 表示 6%。",
     "stop_loss": "单笔交易触及该亏损率后止损，例如 0.030 表示 3%。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
@@ -44,7 +49,7 @@ BACKTEST_HELP_TEXT = {
     "risk_reward": "目标盈利与初始风险的倍数，用来计算挂单后的目标价。",
     "trend_lookback": "趋势评分使用的回看 K 线数量，越大越重视较长结构。",
     "trend_min_score": "趋势形态入选的最低评分，越高越严格。",
-    "trend_h2_min_pullback_legs": "H2/L2 是二次顺势入场：H2 为上涨趋势回调后第二次向上突破，L2 为下跌趋势反弹后第二次向下跌破；这里限制回调/反弹至少有几段摆动。",
+    "trend_h2_min_pullback_legs": "H 是 High 1/High 2，指回调后第 1/2 次突破前一根 K 线高点；L 是 Low 1/Low 2，指反弹后第 1/2 次跌破前一根 K 线低点。这里限制 H2/L2 至少经历几段反向摆动，不是数单根 K 线。",
     "range_lookback": "判断交易区间上下沿时使用的回看 K 线数量。",
     "channel_lookback": "计算趋势通道或摆动点通道时使用的回看 K 线数量。",
     "channel_method": "回归通道适合连续斜率，摆动点通道更贴近人工画高低点连线。",
@@ -84,6 +89,8 @@ BACKTEST_HELP_TEXT = {
     "trigger_volume_multiple": "突破 K 的成交量需要达到近期均量的倍数。",
     "close_buffer": "突破收盘价需要超过关键价位的最小幅度。",
     "require_landmark": "开启后，突破 K 本身也必须满足标志 K 条件。",
+    "save_outputs": "开启后保存 config、成交、净值、统计、拒单、过滤和数据审计文件，方便复盘和在 Windows 侧复现。",
+    "output_parent": "选择实验产物保存的父目录，系统会按实验名自动生成子文件夹。",
 }
 DISPLAY_COLUMN_LABELS = {
     "stock_code": "股票名称",
@@ -108,8 +115,14 @@ DISPLAY_COLUMN_LABELS = {
     "event_id": "信号ID",
     "trade_count": "交易次数",
     "win_rate": "胜率",
+    "win_rate_ci_lower": "胜率95%下限",
+    "win_rate_ci_upper": "胜率95%上限",
     "total_return": "总收益",
     "avg_return": "平均收益",
+    "avg_return_standard_error": "平均收益标准误",
+    "avg_return_ci_lower": "平均收益95%下限",
+    "avg_return_ci_upper": "平均收益95%上限",
+    "positive_expectancy_probability": "正期望概率",
     "return_pct": "收益率",
     "raw_return_pct": "原始收益率",
     "return": "收益率",
@@ -171,6 +184,17 @@ DISPLAY_VALUE_MAP = {
         "range_signal_bar": "区间信号K",
         "channel_signal_bar": "通道信号K",
         "reversal_signal_bar": "反转信号K",
+        "bull_h1_setup": "H1 多头第一次入场",
+        "bull_h2_setup": "H2 多头二次入场",
+        "bear_l1_setup": "L1 空头第一次入场",
+        "bear_l2_setup": "L2 空头二次入场",
+        "failed_breakdown": "跌破失败做多",
+        "failed_breakout": "突破失败做空",
+        "no_trade_middle": "区间中部不交易",
+        "channel_overshoot_up": "通道上破",
+        "channel_break_down": "通道下破",
+        "first_reversal_watch_short": "第一次空头反转观察",
+        "second_reversal_short": "第二次空头反转",
     },
     "reason": {
         "": "",
@@ -323,7 +347,14 @@ def main() -> None:
         _backtest_panel(data_root, adjust)
 
 
-def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bool = False) -> Path:
+def _directory_picker(
+    label: str,
+    default: str | Path,
+    *,
+    key: str,
+    disabled: bool = False,
+    help_text: str = "",
+) -> Path:
     """本地文件夹选择器；优先弹出系统选择框，保留站内浏览作为补充。"""
     selected_key = f"{key}_selected_path"
     current_key = f"{key}_current_path"
@@ -334,6 +365,8 @@ def _directory_picker(label: str, default: str | Path, *, key: str, disabled: bo
         st.session_state[current_key] = str(_initial_browse_directory(default_path))
 
     st.markdown(f"**{label}**")
+    if help_text:
+        st.caption(help_text)
     picker_cols = st.columns([1, 3])
     with picker_cols[0]:
         if st.button(
@@ -509,12 +542,12 @@ def _display_path(value: str) -> str:
 
 
 def _stock_name_label(value: object, stock_names: Mapping[str, str] | None = None) -> str:
-    """把证券代码转成界面可读名称；未知代码保留在名称后方，便于追溯原始样本。"""
+    """把证券代码转成界面可读名称；已知代码在统计表中只展示股票名称。"""
     code = str(value).strip().upper()
     if not code:
         return ""
     name = (stock_names or DEFAULT_STOCK_NAME_BY_CODE).get(code)
-    return f"{name}（{code}）" if name else f"未知名称（{code}）"
+    return name if name else f"未知名称（{code}）"
 
 
 def _prepare_display_frame(frame: pd.DataFrame, *, stock_names: Mapping[str, str] | None = None) -> pd.DataFrame:
@@ -531,19 +564,36 @@ def _prepare_display_frame(frame: pd.DataFrame, *, stock_names: Mapping[str, str
 
 def _style_display_frame(frame: pd.DataFrame):
     """表格只做展示样式，不修改底层回测数据。"""
-    return frame.style.set_properties(**{"text-align": "center"}).set_table_styles(
+    return frame.style.set_properties(
+        **{
+            "text-align": "center",
+            "border-bottom": "1px solid #e2e8f0",
+            "padding": "8px 10px",
+        }
+    ).set_table_styles(
         [
             {
                 "selector": "th",
                 "props": [
                     ("text-align", "center"),
-                    ("background-color", "#f8fafc"),
+                    ("background-color", "#eef2f7"),
                     ("font-weight", "700"),
+                    ("color", "#0f172a"),
+                    ("border-bottom", "1px solid #cbd5e1"),
+                    ("padding", "9px 10px"),
                 ],
             },
             {
                 "selector": "td",
-                "props": [("text-align", "center")],
+                "props": [
+                    ("text-align", "center"),
+                    ("border-bottom", "1px solid #e2e8f0"),
+                    ("padding", "8px 10px"),
+                ],
+            },
+            {
+                "selector": "tbody tr:nth-child(even)",
+                "props": [("background-color", "#f8fafc")],
             },
         ]
     )
@@ -675,6 +725,12 @@ def _is_percent_column(column: str) -> bool:
     return name in {
         "return",
         "win_rate",
+        "win_rate_ci_lower",
+        "win_rate_ci_upper",
+        "avg_return_standard_error",
+        "avg_return_ci_lower",
+        "avg_return_ci_upper",
+        "positive_expectancy_probability",
         "acceptance_rate",
         "rejection_rate",
         "decision_rate",
@@ -766,41 +822,63 @@ def _equity_y_domain(values: pd.Series) -> tuple[float, float]:
 
 
 def _render_equity_chart(equity_curve: pd.DataFrame) -> None:
-    if equity_curve.empty or "net_value" not in equity_curve.columns:
+    chart_data = _equity_chart_frame(equity_curve)
+    if chart_data.empty:
         return
+    x_label = "时间" if "时间" in chart_data.columns else "交易序号"
+    lower, upper = _equity_y_domain(chart_data["净值比例"])
+    line = (
+        alt.Chart(chart_data)
+        .mark_line(color="#0f766e", strokeWidth=2)
+        .encode(
+            x=alt.X(f"{x_label}:T" if x_label == "时间" else f"{x_label}:Q", title=x_label),
+            y=alt.Y("净值比例:Q", title="净值比例", scale=alt.Scale(domain=[lower, upper]), axis=alt.Axis(format=".2f")),
+            tooltip=[x_label, alt.Tooltip("净值比例:Q", format=".4f")],
+        )
+    )
+    baseline = (
+        alt.Chart(pd.DataFrame({"净值比例": [1.0]}))
+        .mark_rule(color="#64748b", strokeDash=[4, 4])
+        .encode(y="净值比例:Q")
+    )
+    st.altair_chart(line + baseline, use_container_width=True)
+
+
+def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
+    """把净值曲线转换成从 1.0 起步的比例曲线，避免初始资金大小影响视觉比例。"""
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return pd.DataFrame()
     x_column = "date" if "date" in equity_curve.columns else "trade_no"
     chart_data = equity_curve[[x_column, "net_value"]].copy()
     chart_data["net_value"] = pd.to_numeric(chart_data["net_value"], errors="coerce")
     chart_data = chart_data.dropna(subset=["net_value"])
     if chart_data.empty:
-        return
+        return pd.DataFrame()
+    start_value = float(chart_data["net_value"].iloc[0])
+    if start_value <= 0:
+        return pd.DataFrame()
+    chart_data["净值比例"] = chart_data["net_value"] / start_value
     if x_column == "date":
         chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
-    chart_data = chart_data.rename(columns={x_column: "时间" if x_column == "date" else "交易序号", "net_value": "净值"})
+        chart_data = chart_data.dropna(subset=[x_column])
     x_label = "时间" if x_column == "date" else "交易序号"
-    lower, upper = _equity_y_domain(chart_data["净值"])
-    line = (
-        alt.Chart(chart_data)
-        .mark_line(color="#0f766e", strokeWidth=2)
-        .encode(
-            x=alt.X(f"{x_label}:T" if x_column == "date" else f"{x_label}:Q", title=x_label),
-            y=alt.Y("净值:Q", title="净值", scale=alt.Scale(domain=[lower, upper]), axis=alt.Axis(format=".2f")),
-            tooltip=[x_label, alt.Tooltip("净值:Q", format=".4f")],
-        )
-    )
-    baseline = alt.Chart(pd.DataFrame({"净值": [1.0]})).mark_rule(color="#64748b", strokeDash=[4, 4]).encode(y="净值:Q")
-    st.altair_chart(line + baseline, use_container_width=True)
+    return chart_data.rename(columns={x_column: x_label})[[x_label, "净值比例"]].reset_index(drop=True)
 
 
-def _symbol_input(label: str, default: str = "000001.SZ", *, key: str) -> list[str]:
-    raw = st.text_input(label, default, key=key)
+def _symbol_input(label: str, default: str = "000001.SZ", *, key: str, help_text: str | None = None) -> list[str]:
+    raw = st.text_input(label, default, key=key, help=help_text)
     return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
 
 
 def _date_inputs(key_prefix: str) -> tuple[str, str]:
     today = date.today()
-    start = st.date_input("开始日期", today - timedelta(days=20), key=f"{key_prefix}_start")
-    end = st.date_input("结束日期", today, key=f"{key_prefix}_end")
+    start = st.date_input(
+        "开始日期",
+        today - timedelta(days=20),
+        key=f"{key_prefix}_start",
+        help=BACKTEST_HELP_TEXT["start_date"],
+    )
+    end = st.date_input("结束日期", today, key=f"{key_prefix}_end", help=BACKTEST_HELP_TEXT["end_date"])
     return str(start), str(end)
 
 
@@ -840,13 +918,19 @@ def _experiment_name(prefix: str, timeframe: str, start: str, end: str) -> str:
 def _experiment_output_controls(prefix: str, default_name: str) -> tuple[bool, str]:
     c1, c2 = st.columns([1, 3])
     with c1:
-        save_outputs = st.checkbox("保存实验产物", value=False, key=f"{prefix}_save_outputs")
+        save_outputs = st.checkbox(
+            "保存实验产物",
+            value=False,
+            key=f"{prefix}_save_outputs",
+            help=BACKTEST_HELP_TEXT["save_outputs"],
+        )
     with c2:
         output_root = _directory_picker(
             "输出父目录",
             DEFAULT_OUTPUT_ROOT,
             key=f"{prefix}_output_root",
             disabled=not save_outputs,
+            help_text=BACKTEST_HELP_TEXT["output_parent"],
         )
         output_dir = output_root / default_name
         if save_outputs:
@@ -1018,13 +1102,31 @@ def _fetch_panel(data_root: Path, adjust: str, tdx_path: str) -> None:
     st.subheader("TDX K 线落地")
     fetch_cols = st.columns([2, 2, 1, 1, 1])
     with fetch_cols[0]:
-        symbols = _symbol_input("标的代码", "000001.SZ,600519.SH", key="fetch_symbols")
+        symbols = _symbol_input(
+            "标的代码",
+            "000001.SZ,600519.SH",
+            key="fetch_symbols",
+            help_text=BACKTEST_HELP_TEXT["symbols"],
+        )
     with fetch_cols[1]:
-        timeframes = st.multiselect("周期", DATA_TIMEFRAMES, default=DATA_TIMEFRAMES, key="fetch_timeframes")
+        timeframes = st.multiselect(
+            "周期",
+            DATA_TIMEFRAMES,
+            default=DATA_TIMEFRAMES,
+            key="fetch_timeframes",
+            help=BACKTEST_HELP_TEXT["timeframe"],
+        )
     with fetch_cols[2]:
-        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key="fetch_start"))
+        start = str(
+            st.date_input(
+                "开始日期",
+                date.today() - timedelta(days=20),
+                key="fetch_start",
+                help=BACKTEST_HELP_TEXT["start_date"],
+            )
+        )
     with fetch_cols[3]:
-        end = str(st.date_input("结束日期", date.today(), key="fetch_end"))
+        end = str(st.date_input("结束日期", date.today(), key="fetch_end", help=BACKTEST_HELP_TEXT["end_date"]))
     with fetch_cols[4]:
         prepare_min_coverage_input = st.number_input(
             "补齐最低覆盖率",
@@ -1034,6 +1136,7 @@ def _fetch_panel(data_root: Path, adjust: str, tdx_path: str) -> None:
             step=0.05,
             format="%.2f",
             key="fetch_prepare_min_coverage",
+            help=BACKTEST_HELP_TEXT["min_coverage_ratio"],
         )
     prepare_min_coverage = float(prepare_min_coverage_input) if float(prepare_min_coverage_input) > 0 else None
     if st.button("查看本地缓存库存"):
@@ -1164,15 +1267,28 @@ def _strategy_controls(prefix: str) -> StrategyConfig:
 def _load_panel_inputs(data_root: Path, prefix: str) -> tuple[list[str], str, str, str]:
     scope_cols = st.columns([1, 2, 1, 1])
     with scope_cols[0]:
-        timeframe = st.selectbox("周期", INTRADAY_TIMEFRAMES, index=2, key=f"{prefix}_tf")
+        timeframe = st.selectbox(
+            "周期",
+            INTRADAY_TIMEFRAMES,
+            index=2,
+            key=f"{prefix}_tf",
+            help=BACKTEST_HELP_TEXT["timeframe"],
+        )
     available = available_symbols(data_root, timeframe=timeframe)
     default_symbols = ",".join(available[:5]) if available else "000001.SZ"
     with scope_cols[1]:
-        symbols = _symbol_input("标的代码", default_symbols, key=f"{prefix}_symbols")
+        symbols = _symbol_input("标的代码", default_symbols, key=f"{prefix}_symbols", help_text=BACKTEST_HELP_TEXT["symbols"])
     with scope_cols[2]:
-        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key=f"{prefix}_start"))
+        start = str(
+            st.date_input(
+                "开始日期",
+                date.today() - timedelta(days=20),
+                key=f"{prefix}_start",
+                help=BACKTEST_HELP_TEXT["start_date"],
+            )
+        )
     with scope_cols[3]:
-        end = str(st.date_input("结束日期", date.today(), key=f"{prefix}_end"))
+        end = str(st.date_input("结束日期", date.today(), key=f"{prefix}_end", help=BACKTEST_HELP_TEXT["end_date"]))
     return symbols, timeframe, start, end
 
 
@@ -1180,15 +1296,28 @@ def _scan_panel(data_root: Path, adjust: str) -> None:
     st.subheader("标志K + 趋势通道 + 突破扫描")
     scan_cols = st.columns([2, 2, 1, 1])
     with scan_cols[0]:
-        timeframes = st.multiselect("周期", INTRADAY_TIMEFRAMES, default=["30m", "60m"], key="scan_timeframes")
+        timeframes = st.multiselect(
+            "周期",
+            INTRADAY_TIMEFRAMES,
+            default=["30m", "60m"],
+            key="scan_timeframes",
+            help=BACKTEST_HELP_TEXT["timeframe"],
+        )
     available = sorted({symbol for timeframe in timeframes for symbol in available_symbols(data_root, timeframe=timeframe)})
     default_symbols = ",".join(available[:5]) if available else "000001.SZ"
     with scan_cols[1]:
-        symbols = _symbol_input("标的代码", default_symbols, key="scan_symbols")
+        symbols = _symbol_input("标的代码", default_symbols, key="scan_symbols", help_text=BACKTEST_HELP_TEXT["symbols"])
     with scan_cols[2]:
-        start = str(st.date_input("开始日期", date.today() - timedelta(days=20), key="scan_start"))
+        start = str(
+            st.date_input(
+                "开始日期",
+                date.today() - timedelta(days=20),
+                key="scan_start",
+                help=BACKTEST_HELP_TEXT["start_date"],
+            )
+        )
     with scan_cols[3]:
-        end = str(st.date_input("结束日期", date.today(), key="scan_end"))
+        end = str(st.date_input("结束日期", date.today(), key="scan_end", help=BACKTEST_HELP_TEXT["end_date"]))
     config = _strategy_controls("scan")
     if st.button("运行扫描", type="primary"):
         result = scan_timeframes(
@@ -1247,7 +1376,12 @@ def _backtest_module_container(title: str, caption: str = ""):
 def _backtest_scope_module(data_root: Path) -> BacktestScopeInputs:
     with _backtest_module_container("1. 样本范围", "先确定本次回测的数据窗口和回测模式。"):
         symbols, timeframe, start, end = _load_panel_inputs(data_root, "bt")
-        mode = st.radio("回测模式", ["旧突破回测", "单策略回测", "组合策略回测"], horizontal=True)
+        mode = st.radio(
+            "回测模式",
+            ["旧突破回测", "单策略回测", "组合策略回测"],
+            horizontal=True,
+            help=BACKTEST_HELP_TEXT["scope_mode"],
+        )
     return BacktestScopeInputs(symbols=symbols, timeframe=timeframe, start=start, end=end, mode=str(mode))
 
 

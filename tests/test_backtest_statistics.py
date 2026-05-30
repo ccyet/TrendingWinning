@@ -106,6 +106,48 @@ def test_compute_trade_statistics_reports_return_distribution_and_tail_risk() ->
     assert stats["cvar_95"] == pytest.approx(-0.1)
 
 
+def test_compute_trade_statistics_reports_sample_confidence_metrics() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [5.0, -2.0, 4.0, -1.0],
+            "holding_bars": [1, 1, 1, 1],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+
+    returns = trades["return_pct"] / 100.0
+    win_rate = 0.5
+    z_score = 1.96
+    wilson_denominator = 1 + z_score**2 / 4
+    wilson_center = win_rate + z_score**2 / 8
+    wilson_margin = z_score * ((win_rate * (1 - win_rate) / 4 + z_score**2 / 64) ** 0.5)
+    expected_se = returns.std(ddof=1) / (len(returns) ** 0.5)
+
+    assert stats["win_rate_ci_lower"] == pytest.approx((wilson_center - wilson_margin) / wilson_denominator)
+    assert stats["win_rate_ci_upper"] == pytest.approx((wilson_center + wilson_margin) / wilson_denominator)
+    assert stats["avg_return_standard_error"] == pytest.approx(expected_se)
+    assert stats["avg_return_ci_lower"] == pytest.approx(returns.mean() - z_score * expected_se)
+    assert stats["avg_return_ci_upper"] == pytest.approx(returns.mean() + z_score * expected_se)
+    assert stats["positive_expectancy_probability"] > 0.5
+
+
+def test_compute_grouped_trade_statistics_includes_sample_confidence_metrics() -> None:
+    trades = pd.DataFrame(
+        {
+            "strategy_name": ["trend", "trend", "range", "range"],
+            "return_pct": [5.0, -2.0, 4.0, -1.0],
+            "holding_bars": [1, 1, 1, 1],
+        }
+    )
+
+    grouped = compute_grouped_trade_statistics(trades, by="strategy_name")
+
+    assert "win_rate_ci_lower" in grouped.columns
+    assert "avg_return_ci_upper" in grouped.columns
+    assert grouped.set_index("strategy_name").loc["trend", "avg_return_standard_error"] > 0
+
+
 def test_compute_trade_statistics_reports_r_profit_factor_and_sqn() -> None:
     trades = pd.DataFrame(
         {

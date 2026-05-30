@@ -382,11 +382,11 @@
       <div class="grid">
         <div class="card">
           <b>H1/H2/L1/L2 的准确含义</b>
-          <span>H 不是 high 的简称，而是多头顺势信号；L 不是 low 的简称，而是空头顺势信号。H1 是回调后的第一次向上突破，H2 多头二次入场是第二次向上突破；L1 是反弹后的第一次向下跌破，L2 空头二次入场是第二次向下跌破。</span>
+          <span>H 是 High 1/High 2：上涨趋势回调后，第 1/2 次突破前一根 K 线高点；L 是 Low 1/Low 2：下降趋势反弹后，第 1/2 次跌破前一根 K 线低点。H2 多头二次入场和 L2 空头二次入场都要求背景趋势仍然有效。</span>
         </div>
         <div class="card">
           <b>最少回撤腿数怎么理解</b>
-          <span>“腿”指一段可见的反向摆动，不是单根阴线或阳线。上涨趋势里，H2 至少需要两段回调尝试；下降趋势里，L2 至少需要两段反弹尝试。这个参数越大，信号更少但结构更成熟。</span>
+          <span>“腿”指一段可见的反向摆动，不是单根 K 线，也不是单根阴线或阳线。上涨趋势里，H2 至少需要两段回调尝试；下降趋势里，L2 至少需要两段反弹尝试。这个参数越大，信号更少但结构更成熟。</span>
         </div>
         <div class="card">
           <b>为什么少做第一次反转</b>
@@ -634,6 +634,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>为什么没有成交？</td><td><code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
           <tr><td>哪类信号形态有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code></td></tr>
+          <tr><td>胜率和平均收益是否可信？</td><td><code>stats.json</code>、<code>setup_stats.csv</code></td><td><code>win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability</code></td></tr>
           <tr><td>哪类信号形态被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
           <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at</code></td></tr>

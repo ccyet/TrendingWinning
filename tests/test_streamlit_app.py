@@ -6,6 +6,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from streamlit_app import (
+    _equity_chart_frame,
     _equity_y_domain,
     _format_display_value,
     _parse_float_mapping,
@@ -13,6 +14,7 @@ from streamlit_app import (
     _parse_text_mapping,
     _prepare_display_frame,
     _resolve_native_directory_choice,
+    _style_display_frame,
 )
 
 
@@ -222,6 +224,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     source = (Path(__file__).resolve().parents[1] / "streamlit_app.py").read_text()
 
     for help_key in [
+        "scope_mode",
         "take_profit",
         "strict_data_quality",
         "higher_timeframe",
@@ -230,6 +233,8 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         "channel_sigma",
         "reversal_old_extreme_tolerance_pct",
         "risk_per_trade",
+        "save_outputs",
+        "output_parent",
     ]:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
@@ -242,6 +247,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "win_rate": [0.096, 1.0],
             "total_return": [0.096, 1.0],
             "return_pct": [9.6, -0.5],
+            "positive_expectancy_probability": [0.096, 1.0],
+            "avg_return_standard_error": [0.0123, 0.0],
+            "win_rate_ci_lower": [0.0432, 0.9],
             "avg_holding_bars": [2.45, 3.2],
         }
     )
@@ -250,14 +258,26 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     custom_display = _prepare_display_frame(frame, stock_names={"000001.SZ": "自定义银行"})
 
     assert "stock_code" not in display.columns
-    assert display["股票名称"].tolist() == ["平安银行（000001.SZ）", "贵州茅台（600519.SH）"]
-    assert custom_display["股票名称"].tolist()[0] == "自定义银行（000001.SZ）"
+    assert display["股票名称"].tolist() == ["平安银行", "贵州茅台"]
+    assert custom_display["股票名称"].tolist()[0] == "自定义银行"
     assert display["交易次数"].tolist() == ["3", "4"]
     assert display["胜率"].tolist() == ["9.60%", "100.00%"]
     assert display["总收益"].tolist() == ["9.60%", "100.00%"]
     assert display["收益率"].tolist() == ["9.60%", "-0.50%"]
+    assert display["正期望概率"].tolist() == ["9.60%", "100.00%"]
+    assert display["平均收益标准误"].tolist() == ["1.23%", "0.00%"]
+    assert display["胜率95%下限"].tolist() == ["4.32%", "90.00%"]
     assert display["平均持有K数"].tolist() == ["2.45", "3.20"]
     assert _format_display_value("max_drawdown", 0.096) == "9.60%"
+
+
+def test_backtest_display_table_style_centers_cells_and_has_grid_lines() -> None:
+    styled = _style_display_frame(pd.DataFrame({"股票名称": ["平安银行"], "胜率": ["9.60%"]}))
+    html = styled.to_html()
+
+    assert "text-align: center" in html
+    assert "border-bottom" in html
+    assert "background-color" in html
 
 
 def test_backtest_equity_chart_domain_is_anchored_at_one() -> None:
@@ -267,6 +287,15 @@ def test_backtest_equity_chart_domain_is_anchored_at_one() -> None:
 
     assert lower < 1.0
     assert upper > 1.08
+
+
+def test_backtest_equity_chart_uses_relative_net_value_starting_at_one() -> None:
+    equity = pd.DataFrame({"trade_no": [0, 1, 2], "net_value": [2.0, 2.2, 1.98]})
+
+    chart = _equity_chart_frame(equity)
+
+    assert chart["净值比例"].tolist() == [1.0, 1.1, 0.99]
+    assert chart["交易序号"].tolist() == [0, 1, 2]
 
 
 def test_readme_usage_guide_html_exists_with_core_sections() -> None:
@@ -297,6 +326,10 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "趋势回撤：H2 顺势做多" in html
     assert "下降趋势：L2 顺势做空" in html
     assert "H1/H2/L1/L2" in html
+    assert "H 是 High 1/High 2" in html
+    assert "L 是 Low 1/Low 2" in html
+    assert "不是单根 K 线" in html
+    assert "H 不是 high 的简称" not in html
     assert "H2 多头二次入场" in html
     assert "L2 空头二次入场" in html
     assert "交易区间下沿：失败突破做多" in html
