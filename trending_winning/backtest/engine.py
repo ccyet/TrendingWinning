@@ -13,6 +13,7 @@ from trending_winning.backtest.execution import (
     compute_order_execution_metrics,
     is_favorable_target,
     is_protective_stop,
+    liquid_bar_mask,
     normalize_order_side,
     simulate_order_trade_with_rejection,
     trade_path_metrics,
@@ -374,10 +375,11 @@ def _first_legacy_long_exit(
     opens = pd.to_numeric(path["open"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
-    gap_stop = opens <= stop_price
-    gap_target = opens >= target_price
-    hit_stop = lows <= stop_price
-    hit_target = highs >= target_price
+    liquid = liquid_bar_mask(path)
+    gap_stop = liquid & (opens <= stop_price)
+    gap_target = liquid & (opens >= target_price)
+    hit_stop = liquid & (lows <= stop_price)
+    hit_target = liquid & (highs >= target_price)
     hit_trailing, trailing_prices = _legacy_long_trailing_take_profit(path, entry_price, cfg)
     gap_trailing = hit_trailing & (opens <= trailing_prices)
     reasons = np.full(len(path), "", dtype=object)
@@ -418,12 +420,13 @@ def _legacy_long_trailing_take_profit(
         return np.full(len(path), False), np.full(len(path), np.nan)
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
+    liquid = liquid_bar_mask(path)
     peak = np.maximum.accumulate(highs)
     previous_peak = np.concatenate(([entry_price], peak[:-1]))
     trailing_prices = previous_peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
     armed = previous_peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
     profitable = trailing_prices > entry_price
-    return armed & profitable & (lows <= trailing_prices), trailing_prices
+    return liquid & armed & profitable & (lows <= trailing_prices), trailing_prices
 
 
 def _trailing_take_profit_enabled(cfg: BacktestConfig) -> bool:

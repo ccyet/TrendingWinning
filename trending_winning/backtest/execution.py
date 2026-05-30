@@ -410,13 +410,17 @@ def _is_liquid_bar(row: pd.Series) -> bool:
     return _positive_float_or_none(row.get("volume")) is not None and _positive_float_or_none(row.get("amount")) is not None
 
 
-def _liquid_bar_mask(frame: pd.DataFrame) -> np.ndarray:
+def liquid_bar_mask(frame: pd.DataFrame) -> np.ndarray:
     """返回可成交 K 的布尔掩码；缺少量额字段时兼容旧数据全部视为可成交。"""
     if "volume" not in frame.columns or "amount" not in frame.columns:
         return np.ones(len(frame), dtype=bool)
     volume = pd.to_numeric(frame["volume"], errors="coerce").fillna(0.0).to_numpy()
     amount = pd.to_numeric(frame["amount"], errors="coerce").fillna(0.0).to_numpy()
     return (volume > 0.0) & (amount > 0.0)
+
+
+def _liquid_bar_mask(frame: pd.DataFrame) -> np.ndarray:
+    return liquid_bar_mask(frame)
 
 
 def _entry_constraint_rejection(
