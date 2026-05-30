@@ -19,7 +19,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 独立形态识别策略：趋势、区间、通道、反转模块解耦，单策略回测只消费本策略事件
 - Detector 事件契约：非空事件表必须包含 `event_id / detector_name / stock_code / timeframe / date / bar_index / event_type / direction / signal_price / entry_price / stop_price / confidence / metadata`，策略层统一校验，缺字段会直接报错
 - 订单契约：撮合层要求 `order_id / event_id / stock_code / signal_date / signal_bar_index / side / entry_price / stop_price / target_price` 必备，组合回测额外要求 `strategy_name`；空 `order_id` 或 `event_id` 记为 `invalid_order`，重复 `order_id` 记为 `duplicate_order_id`
-- 高性能订单链路：信号 K 策略用列运算把 detector 事件转换为挂单，单策略和组合实验复用已标准化 K 线，sweep 热路径复用订单和候选成交，避免重复标准化或逐行创建 pandas 行对象
+- 高性能订单链路：信号 K 策略用列运算把 detector 事件转换为挂单，单策略、组合实验和外部订单回测都可复用已标准化 K 线，sweep 热路径复用订单和候选成交，避免重复标准化或逐行创建 pandas 行对象
 - 趋势回撤事件：`TrendDetector` 输出 `trend_state / pullback_legs`，并把顺势回撤信号区分为 `bull_h1_setup / bull_h2_setup / bear_l1_setup / bear_l2_setup`
 - 区间识别评分：`RangeDetector` 输出 `range_score / overlap_mean / ema_flatness / directional_efficiency`，过滤强趋势里的中部噪声
 - 反转确认：`ReversalDetector` 默认第一次反转只观察，第二次反转必须满足旧极端失败测试和结构确认后才输出交易事件

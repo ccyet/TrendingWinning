@@ -145,6 +145,20 @@ def run_portfolio_order_backtest(
     return _run_portfolio_orders(normalize_bars(bars), orders, cfg, pcfg)
 
 
+def run_portfolio_order_backtest_from_normalized(
+    normalized_bars: pd.DataFrame,
+    orders: pd.DataFrame,
+    config: BacktestConfig | None = None,
+    portfolio_config: PortfolioConfig | None = None,
+) -> BacktestResult:
+    """基于已标准化 K 线和已生成订单做组合撮合；外部批量订单接入用它复用数据准备结果。"""
+    cfg = config or BacktestConfig()
+    pcfg = portfolio_config or PortfolioConfig()
+    validate_backtest_config(cfg)
+    _validate_portfolio_config(pcfg)
+    return _run_portfolio_orders(normalized_bars, orders, cfg, pcfg)
+
+
 def prepare_portfolio_candidates(
     bars: pd.DataFrame,
     orders: pd.DataFrame,

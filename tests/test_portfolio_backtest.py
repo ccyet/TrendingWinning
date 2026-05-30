@@ -12,7 +12,9 @@ from trending_winning.backtest.portfolio import (
     _candidate_trades_by_entry_time,
     run_portfolio_backtest,
     run_portfolio_order_backtest,
+    run_portfolio_order_backtest_from_normalized,
 )
+from trending_winning.data.schema import normalize_bars
 from trending_winning.strategies.base import ORDER_COLUMNS
 from trending_winning.strategies.runtime import StrategyRunResult
 
@@ -630,6 +632,39 @@ def test_portfolio_order_decisions_are_sorted_by_signal_time_after_mixed_accepta
     assert result.order_decisions["order_id"].tolist() == ["early-accepted", "late-rejected"]
     assert result.order_decisions["status"].tolist() == ["accepted", "rejected"]
     assert result.order_decisions["reason"].tolist() == ["", "no_fill"]
+
+
+def test_portfolio_order_backtest_from_normalized_reuses_prepared_bars(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trending_winning.backtest import portfolio as portfolio_module
+
+    normalized = normalize_bars(_portfolio_bars())
+    orders = pd.DataFrame(
+        [
+            _order(
+                strategy_name="trend_strategy",
+                symbol="000001.SZ",
+                entry_price=10.4,
+                stop_price=9.8,
+                target_price=11.6,
+            )
+        ],
+        columns=ORDER_COLUMNS,
+    )
+
+    def fail_normalize(_: pd.DataFrame) -> pd.DataFrame:
+        raise AssertionError("组合订单回测 normalized 入口不应重复 normalize。")
+
+    monkeypatch.setattr(portfolio_module, "normalize_bars", fail_normalize)
+
+    result = run_portfolio_order_backtest_from_normalized(
+        normalized,
+        orders,
+        BacktestConfig(max_holding_bars=3),
+        PortfolioConfig(max_open_positions=1),
+    )
+
+    assert result.trades["order_id"].tolist() == ["trend_strategy:000001.SZ"]
+    assert result.stats["accepted_order_count"] == 1.0
 
 
 def test_portfolio_order_backtest_rejects_duplicate_order_ids_before_allocation() -> None:
