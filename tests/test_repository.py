@@ -316,6 +316,37 @@ def test_bar_loaders_project_columns_and_push_down_date_filters(
     ]
 
 
+def test_load_local_bars_supports_legacy_string_date_parquet(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    root = resolve_timeframe_root(data_root, "30m") / "qfq"
+    root.mkdir(parents=True)
+    legacy = pd.DataFrame(
+        {
+            "date": ["2026-05-24 10:00:00", "2026-05-25 10:00:00", "2026-05-26 10:00:00"],
+            "stock_code": ["000001.SZ", "000001.SZ", "000001.SZ"],
+            "open": [9.8, 10.0, 10.2],
+            "high": [10.0, 10.3, 10.4],
+            "low": [9.7, 9.9, 10.0],
+            "close": [9.9, 10.2, 10.3],
+            "volume": [900.0, 1000.0, 1100.0],
+            "amount": [8910.0, 10200.0, 11330.0],
+        }
+    )
+    legacy.to_parquet(root / "000001.SZ.parquet", index=False)
+
+    loaded = load_local_bars(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25 15:00:00",
+    )
+
+    assert loaded["date"].tolist() == [pd.Timestamp("2026-05-25 10:00:00")]
+    assert loaded["close"].tolist() == [10.2]
+
+
 def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

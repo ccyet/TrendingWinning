@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 from trending_winning.data.filters import filter_limit_open_days, limit_open_dates
@@ -688,17 +689,27 @@ def _read_bars_parquet_window(
     end_ts: pd.Timestamp,
 ) -> pd.DataFrame:
     """按标准列和时间窗口读取 parquet，减少分钟线大文件的无效 IO。"""
-    frame = pd.read_parquet(
-        path,
-        columns=list(CANONICAL_COLUMNS),
-        filters=_date_window_filters(start_ts, end_ts),
-    )
+    try:
+        frame = pd.read_parquet(
+            path,
+            columns=list(CANONICAL_COLUMNS),
+            filters=_date_window_filters(start_ts, end_ts),
+        )
+    except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as exc:
+        if not _is_date_filter_type_mismatch(exc):
+            raise
+        frame = pd.read_parquet(path, columns=list(CANONICAL_COLUMNS))
     normalized = normalize_bars(frame, symbol)
     return normalized.loc[normalized["date"].between(start_ts, end_ts)].reset_index(drop=True)
 
 
 def _date_window_filters(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> list[tuple[str, str, pd.Timestamp]]:
     return [("date", ">=", start_ts), ("date", "<=", end_ts)]
+
+
+def _is_date_filter_type_mismatch(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "timestamp" in message and "string" in message and ("greater_equal" in message or "less_equal" in message)
 
 
 def load_backtest_data(
