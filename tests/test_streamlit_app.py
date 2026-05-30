@@ -533,6 +533,31 @@ def test_strategy_kline_altair_chart_supports_large_zoomable_full_windows() -> N
     assert spec["params"][0]["select"]["encodings"] == ["x", "y"]
 
 
+def test_strategy_kline_altair_chart_uses_svg_renderer_for_high_resolution() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00", "2026-05-25 10:30"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.4, 10.5],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.1],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11110.0],
+        }
+    )
+
+    chart = _build_strategy_kline_altair_chart(
+        _strategy_kline_chart_frame(bars, "000001.SZ"),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+    )
+    spec = chart.to_dict()
+
+    assert spec["usermeta"]["embedOptions"]["renderer"] == "svg"
+
+
 def test_strategy_kline_symbol_options_prioritize_symbols_with_trades() -> None:
     bars = pd.DataFrame(
         {

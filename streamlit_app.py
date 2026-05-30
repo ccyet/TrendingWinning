@@ -1377,7 +1377,7 @@ def _build_strategy_kline_altair_chart(
     return (
         alt.layer(*layers)
         .resolve_scale(y="shared")
-        .properties(width="container", height=640)
+        .properties(width="container", height=640, usermeta={"embedOptions": {"renderer": "svg"}})
         .add_params(zoom)
         .configure_axis(labelFontSize=11, titleFontSize=12)
         .configure_view(continuousWidth=1100, continuousHeight=640, strokeWidth=0)

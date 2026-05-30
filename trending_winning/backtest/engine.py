@@ -27,6 +27,10 @@ from trending_winning.backtest.stats import (
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
+from trending_winning.backtest.trailing_take_profit import (
+    trailing_take_profit_enabled as is_trailing_take_profit_enabled,
+    trailing_take_profit_masks as compute_trailing_take_profit_masks,
+)
 from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.strategies.base import Strategy
 from trending_winning.strategies.diagnostics import empty_strategy_filter_decisions
@@ -423,17 +427,26 @@ def _legacy_long_trailing_take_profit(
         return np.full(len(path), False), np.full(len(path), np.nan)
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
+    opens = pd.to_numeric(path["open"], errors="coerce").astype(float).to_numpy()
     liquid = liquid_bar_mask(path)
-    peak = np.maximum.accumulate(np.where(liquid, highs, entry_price))
-    previous_peak = np.concatenate(([entry_price], peak[:-1]))
-    trailing_prices = previous_peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
-    armed = previous_peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
-    profitable = trailing_prices > entry_price
-    return liquid & armed & profitable & (lows <= trailing_prices), trailing_prices
+    result = compute_trailing_take_profit_masks(
+        opens,
+        highs,
+        lows,
+        liquid,
+        side="long",
+        entry_price=entry_price,
+        activation_pct=float(cfg.trailing_take_profit_activation_pct),
+        drawdown_pct=float(cfg.trailing_take_profit_drawdown_pct),
+    )
+    return result.hit, result.prices
 
 
 def _trailing_take_profit_enabled(cfg: BacktestConfig) -> bool:
-    return bool(cfg.trailing_take_profit_activation_pct > 0 and cfg.trailing_take_profit_drawdown_pct > 0)
+    return is_trailing_take_profit_enabled(
+        float(cfg.trailing_take_profit_activation_pct),
+        float(cfg.trailing_take_profit_drawdown_pct),
+    )
 
 
 def run_single_strategy_backtest(

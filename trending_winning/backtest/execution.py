@@ -7,6 +7,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from trending_winning.backtest.trailing_take_profit import (
+    trailing_take_profit_masks as compute_trailing_take_profit_masks,
+)
+
 
 @dataclass(frozen=True)
 class OrderExecutionResult:
@@ -316,30 +320,18 @@ def _trailing_take_profit_masks(
     activation_pct: float,
     drawdown_pct: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """计算回撤止盈触发点；只用上一根完成 K 的峰值/谷值确认回撤线。"""
-    empty_mask = np.full(len(opens), False)
-    empty_prices = np.full(len(opens), np.nan)
-    if len(opens) == 0 or entry_price <= 0 or activation_pct <= 0 or drawdown_pct <= 0:
-        return empty_mask, empty_mask, empty_prices
-
-    if side == "long":
-        peak = np.maximum.accumulate(np.where(liquid, highs, entry_price))
-        previous_peak = np.concatenate(([entry_price], peak[:-1]))
-        trailing_prices = previous_peak * (1.0 - drawdown_pct)
-        armed = previous_peak >= entry_price * (1.0 + activation_pct)
-        profitable = trailing_prices > entry_price
-        gap_trailing = liquid & armed & profitable & (opens <= trailing_prices)
-        hit_trailing = liquid & armed & profitable & (lows <= trailing_prices)
-        return gap_trailing, hit_trailing, trailing_prices
-
-    trough = np.minimum.accumulate(np.where(liquid, lows, entry_price))
-    previous_trough = np.concatenate(([entry_price], trough[:-1]))
-    trailing_prices = previous_trough * (1.0 + drawdown_pct)
-    armed = previous_trough <= entry_price * (1.0 - activation_pct)
-    profitable = trailing_prices < entry_price
-    gap_trailing = liquid & armed & profitable & (opens >= trailing_prices)
-    hit_trailing = liquid & armed & profitable & (highs >= trailing_prices)
-    return gap_trailing, hit_trailing, trailing_prices
+    """兼容旧调用签名，实际计算下沉到独立回撤止盈模块。"""
+    result = compute_trailing_take_profit_masks(
+        opens,
+        highs,
+        lows,
+        liquid,
+        side=side,
+        entry_price=entry_price,
+        activation_pct=activation_pct,
+        drawdown_pct=drawdown_pct,
+    )
+    return result.gap, result.hit, result.prices
 
 
 def _set_exit_values(
