@@ -1160,7 +1160,6 @@ def _data_inventory_signature(data_inventory: pd.DataFrame) -> str:
         "start",
         "end",
         "file_size_bytes",
-        "modified_at",
     )
     records = [
         {

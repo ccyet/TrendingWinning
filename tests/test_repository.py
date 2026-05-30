@@ -451,10 +451,14 @@ def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> 
     same_snapshot_different_path = inventory.assign(
         path=["D:/market/1d/000001.SZ.parquet", "D:/market/30m/000001.SZ.parquet"]
     )
+    same_snapshot_different_mtime = inventory.assign(
+        modified_at=[pd.Timestamp("2026-05-31 11:00:00"), pd.Timestamp("2026-05-31 11:01:00")]
+    )
     changed_snapshot = inventory.assign(file_size_bytes=[1024, 4097])
 
     inventory_stats = summarize_data_inventory(inventory)
     same_inventory_stats = summarize_data_inventory(same_snapshot_different_path)
+    same_mtime_stats = summarize_data_inventory(same_snapshot_different_mtime)
     changed_inventory_stats = summarize_data_inventory(changed_snapshot)
     data_stats = summarize_data_management(
         data_audit,
@@ -466,6 +470,7 @@ def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> 
 
     assert len(inventory_stats["data_inventory_signature"]) == 64
     assert inventory_stats["data_inventory_signature"] == same_inventory_stats["data_inventory_signature"]
+    assert inventory_stats["data_inventory_signature"] == same_mtime_stats["data_inventory_signature"]
     assert inventory_stats["data_inventory_signature"] != changed_inventory_stats["data_inventory_signature"]
     assert data_stats["data_audit_row_count"] == 2.0
     assert data_stats["data_inventory_cached_count"] == 2.0

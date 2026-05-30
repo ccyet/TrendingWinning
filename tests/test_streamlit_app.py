@@ -544,6 +544,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "data_coverage_p05" in guide
     assert "data_coverage_below_min_count" in readme
     assert "data_coverage_below_min_count" in guide
+    assert "不含本机绝对路径和文件修改时间" in readme
+    assert "不含本机绝对路径和文件修改时间" in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
     assert "pareto_rank" in readme
