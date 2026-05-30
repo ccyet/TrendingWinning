@@ -288,6 +288,37 @@ def test_compute_equity_statistics_reports_cash_and_net_exposure_ratios() -> Non
     assert stats["max_net_exposure"] == pytest.approx(net_exposure.max())
 
 
+def test_compute_equity_statistics_reports_drawdown_episode_boundaries() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-06-01"]
+            ),
+            "trade_no": [0, 1, 2, 3, 4, 5],
+            "net_value": [1.0, 1.2, 1.1, 0.9, 1.21, 1.15],
+        }
+    )
+
+    stats = compute_equity_statistics(equity, periods_per_year=252)
+
+    assert stats["max_drawdown"] == pytest.approx(0.9 / 1.2 - 1.0)
+    assert stats["max_drawdown_start_at"] == "2026-05-26 00:00:00"
+    assert stats["max_drawdown_trough_at"] == "2026-05-28 00:00:00"
+    assert stats["max_drawdown_recovery_at"] == "2026-05-29 00:00:00"
+    assert stats["current_drawdown"] == pytest.approx(1.15 / 1.21 - 1.0)
+    assert stats["current_underwater_bars"] == 1.0
+
+
+def test_compute_equity_statistics_keeps_empty_drawdown_episode_fields_stable() -> None:
+    stats = compute_equity_statistics(pd.DataFrame())
+
+    assert stats["max_drawdown_start_at"] == ""
+    assert stats["max_drawdown_trough_at"] == ""
+    assert stats["max_drawdown_recovery_at"] == ""
+    assert stats["current_drawdown"] == 0.0
+    assert stats["current_underwater_bars"] == 0.0
+
+
 def test_compute_equity_statistics_keeps_single_point_curve_numeric() -> None:
     stats = compute_equity_statistics(pd.DataFrame({"date": [pd.Timestamp("2026-05-25")], "net_value": [1.0]}))
 

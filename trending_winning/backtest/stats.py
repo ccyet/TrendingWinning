@@ -74,6 +74,11 @@ EQUITY_STAT_KEYS = [
     "total_return",
     "max_drawdown",
     "max_drawdown_duration",
+    "max_drawdown_start_at",
+    "max_drawdown_trough_at",
+    "max_drawdown_recovery_at",
+    "current_drawdown",
+    "current_underwater_bars",
     "equity_return_std",
     "equity_sharpe",
     "equity_sortino",
@@ -362,7 +367,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     }
 
 
-def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: float | None = None) -> dict[str, float]:
+def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: float | None = None) -> dict[str, object]:
     """从时间净值曲线计算组合层收益和回撤，适合重叠持仓。"""
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return _empty_equity_statistics()
@@ -377,12 +382,14 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
             data["trade_no"] = pd.to_numeric(data["trade_no"], errors="coerce")
             sort_columns = ["date", "trade_no", "_row_order"]
         data = data.sort_values(sort_columns, kind="mergesort")
+    data = data.reset_index(drop=True)
     net_value = data["net_value"].reset_index(drop=True)
     if net_value.empty:
         return _empty_equity_statistics()
     returns = net_value.pct_change().dropna()
     losses = returns.loc[returns < 0]
     drawdown = net_value / net_value.cummax() - 1.0
+    drawdown_episode = _drawdown_episode_statistics(data, net_value, drawdown)
     std = _std_or_zero(returns)
     downside_std = _std_or_zero(losses)
     total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
@@ -403,6 +410,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         "total_return": total_return,
         "max_drawdown": max_drawdown,
         "max_drawdown_duration": float(_max_drawdown_duration(net_value.reset_index(drop=True))),
+        **drawdown_episode,
         "equity_return_std": std,
         "equity_sharpe": _ratio_or_zero(_round_float(returns.mean()), std),
         "equity_sortino": _ratio_or_zero(_round_float(returns.mean()), downside_std),
@@ -821,8 +829,82 @@ def _ratio_or_zero(numerator: float, denominator: float) -> float:
     return 0.0
 
 
-def _empty_equity_statistics() -> dict[str, float]:
-    return {key: 0.0 for key in EQUITY_STAT_KEYS}
+def _drawdown_episode_statistics(
+    data: pd.DataFrame,
+    net_value: pd.Series,
+    drawdown: pd.Series,
+) -> dict[str, object]:
+    """定位最大回撤的开始、触底、修复点，同时给出当前水下状态。"""
+    result = _empty_drawdown_episode_statistics()
+    if net_value.empty or drawdown.empty:
+        return result
+
+    result["current_drawdown"] = _round_float(float(drawdown.iloc[-1]))
+    result["current_underwater_bars"] = float(_trailing_underwater_length(drawdown))
+    if float(drawdown.min()) >= 0:
+        return result
+
+    trough_pos = int(drawdown.idxmin())
+    peak_value = float(net_value.cummax().iloc[trough_pos])
+    prior_values = net_value.iloc[: trough_pos + 1]
+    peak_positions = prior_values.index[prior_values.eq(peak_value)]
+    peak_pos = int(peak_positions[-1]) if len(peak_positions) else trough_pos
+    after_trough = net_value.iloc[trough_pos + 1 :]
+    recovered_positions = after_trough.index[after_trough.ge(peak_value)]
+
+    result["max_drawdown_start_at"] = _equity_point_label(data, peak_pos)
+    result["max_drawdown_trough_at"] = _equity_point_label(data, trough_pos)
+    if len(recovered_positions):
+        result["max_drawdown_recovery_at"] = _equity_point_label(data, int(recovered_positions[0]))
+    return result
+
+
+def _empty_drawdown_episode_statistics() -> dict[str, object]:
+    return {
+        "max_drawdown_start_at": "",
+        "max_drawdown_trough_at": "",
+        "max_drawdown_recovery_at": "",
+        "current_drawdown": 0.0,
+        "current_underwater_bars": 0.0,
+    }
+
+
+def _equity_point_label(data: pd.DataFrame, position: int) -> str:
+    if position < 0 or position >= len(data):
+        return ""
+    row = data.iloc[position]
+    if "date" in data.columns:
+        timestamp = pd.to_datetime(row["date"], errors="coerce")
+        if pd.notna(timestamp):
+            return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    if "trade_no" in data.columns and pd.notna(row["trade_no"]):
+        return _compact_numeric_label(row["trade_no"])
+    return str(position)
+
+
+def _compact_numeric_label(value: object) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if math.isfinite(numeric) and numeric.is_integer():
+        return str(int(numeric))
+    return str(value)
+
+
+def _trailing_underwater_length(drawdown: pd.Series) -> int:
+    count = 0
+    for value in reversed(drawdown.tolist()):
+        if pd.isna(value) or float(value) >= 0:
+            break
+        count += 1
+    return count
+
+
+def _empty_equity_statistics() -> dict[str, object]:
+    result: dict[str, object] = {key: 0.0 for key in EQUITY_STAT_KEYS}
+    result.update(_empty_drawdown_episode_statistics())
+    return result
 
 
 def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:

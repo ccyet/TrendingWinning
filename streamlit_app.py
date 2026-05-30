@@ -151,6 +151,11 @@ DISPLAY_COLUMN_LABELS = {
     "raw_return_pct": "原始收益率",
     "return": "收益率",
     "max_drawdown": "最大回撤",
+    "max_drawdown_start_at": "最大回撤开始",
+    "max_drawdown_trough_at": "最大回撤触底",
+    "max_drawdown_recovery_at": "最大回撤修复",
+    "current_drawdown": "当前回撤",
+    "current_underwater_bars": "当前水下K数",
     "profit_factor": "盈亏因子",
     "expectancy": "期望收益",
     "avg_win": "平均盈利",
@@ -749,7 +754,22 @@ def _coerce_float(value: object) -> float | None:
 
 
 def _is_date_column(column: str) -> bool:
-    return column in {"date", "period", "start", "end", "signal_date", "entry_date", "exit_date"} or column.endswith("_date")
+    return (
+        column
+        in {
+            "date",
+            "period",
+            "start",
+            "end",
+            "signal_date",
+            "entry_date",
+            "exit_date",
+            "max_drawdown_start_at",
+            "max_drawdown_trough_at",
+            "max_drawdown_recovery_at",
+        }
+        or column.endswith("_date")
+    )
 
 
 def _format_date_value(value: object) -> str | None:
@@ -847,6 +867,7 @@ def _is_integer_column(column: str) -> bool:
         "max_consecutive_gains",
         "monthly_max_consecutive_losses",
         "monthly_max_recovery_periods",
+        "current_underwater_bars",
         "filtered_limit_open_count",
         "rejected_no_fill_count",
     }
