@@ -302,7 +302,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     total_return = _round_float(equity.iloc[-1] - 1.0)
     max_drawdown = _round_float(drawdown.min())
     return_std = _round_float(returns.std(ddof=0))
-    downside_std = _round_float(losses.std(ddof=0)) if not losses.empty else 0.0
+    downside_deviation = _downside_deviation(returns)
     exposure_bars = pd.to_numeric(trades.get("holding_bars", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     r_multiple = _numeric_column(trades, "r_multiple")
     positive_r = r_multiple.loc[r_multiple > 0]
@@ -355,7 +355,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "gross_loss": gross_loss,
         "return_std": return_std,
         "sharpe_per_trade": _ratio_or_zero(_round_float(returns.mean()), return_std),
-        "sortino_per_trade": _ratio_or_zero(_round_float(returns.mean()), downside_std),
+        "sortino_per_trade": _ratio_or_zero(_round_float(returns.mean()), downside_deviation),
         "max_consecutive_wins": float(_max_streak(returns, positive=True)),
         "max_consecutive_losses": float(_max_streak(returns, positive=False)),
         "avg_holding_bars": _round_float(exposure_bars.mean()),
@@ -435,11 +435,10 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     if net_value.empty:
         return _empty_equity_statistics()
     returns = net_value.pct_change().dropna()
-    losses = returns.loc[returns < 0]
     drawdown = net_value / net_value.cummax() - 1.0
     drawdown_episode = _drawdown_episode_statistics(data, net_value, drawdown)
     std = _std_or_zero(returns)
-    downside_std = _std_or_zero(losses)
+    downside_deviation = _downside_deviation(returns)
     total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
     max_drawdown = _round_float(drawdown.min())
     avg_drawdown = _mean_or_zero(drawdown)
@@ -449,7 +448,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     annualized_return = _annualized_return(net_value, annual_periods, len(returns))
     annualized_volatility = _round_float(std * math.sqrt(annual_periods))
     annualized_sharpe = _annualized_ratio(returns, std, annual_periods)
-    annualized_sortino = _annualized_ratio(returns, downside_std, annual_periods)
+    annualized_sortino = _annualized_ratio(returns, downside_deviation, annual_periods)
     gross_exposure = _numeric_column(data, "gross_exposure")
     margin_exposure = _numeric_column(data, "margin_exposure")
     open_positions = _numeric_column(data, "open_positions")
@@ -462,7 +461,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         **drawdown_episode,
         "equity_return_std": std,
         "equity_sharpe": _ratio_or_zero(_round_float(returns.mean()), std),
-        "equity_sortino": _ratio_or_zero(_round_float(returns.mean()), downside_std),
+        "equity_sortino": _ratio_or_zero(_round_float(returns.mean()), downside_deviation),
         "annualized_return": annualized_return,
         "annualized_volatility": annualized_volatility,
         "annualized_sharpe": annualized_sharpe,
@@ -811,6 +810,14 @@ def _std_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.std(ddof=0))
+
+
+def _downside_deviation(values: pd.Series) -> float:
+    """按全样本低于 0 的收益偏差计算 Sortino 分母，避免低估下行波动。"""
+    if values.empty:
+        return 0.0
+    downside = values.clip(upper=0.0)
+    return _round_float(math.sqrt(float(downside.pow(2).mean())))
 
 
 def _sample_confidence_statistics(returns: pd.Series) -> dict[str, float]:

@@ -89,6 +89,21 @@ def test_compute_trade_statistics_reports_risk_adjusted_and_streak_metrics() -> 
     assert stats["avg_mfe_r"] == pytest.approx(0.82)
 
 
+def test_compute_trade_statistics_uses_full_sample_downside_deviation_for_sortino() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [5.0, -2.0, 0.0, 4.0, -3.0],
+            "holding_bars": [1, 1, 1, 1, 1],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+
+    returns = trades["return_pct"] / 100.0
+    downside_deviation = ((returns.clip(upper=0.0) ** 2).mean()) ** 0.5
+    assert stats["sortino_per_trade"] == pytest.approx(returns.mean() / downside_deviation)
+
+
 def test_compute_trade_statistics_reports_return_distribution_and_tail_risk() -> None:
     trades = pd.DataFrame(
         {
@@ -319,6 +334,23 @@ def test_compute_equity_statistics_reports_annualized_return_and_exposure_metric
     assert stats["exposure_bar_ratio"] == pytest.approx(0.6)
     assert stats["avg_open_positions"] == pytest.approx(0.8)
     assert stats["max_open_positions"] == pytest.approx(2.0)
+
+
+def test_compute_equity_statistics_uses_full_sample_downside_deviation_for_sortino() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29"]),
+            "net_value": [1.0, 1.05, 1.02, 1.02, 1.08],
+        }
+    )
+
+    stats = compute_equity_statistics(equity, periods_per_year=4)
+
+    returns = equity["net_value"].pct_change().dropna()
+    downside_deviation = ((returns.clip(upper=0.0) ** 2).mean()) ** 0.5
+    expected_sortino = returns.mean() / downside_deviation
+    assert stats["equity_sortino"] == pytest.approx(expected_sortino)
+    assert stats["annualized_sortino"] == pytest.approx(expected_sortino * (4**0.5))
 
 
 def test_compute_equity_statistics_reports_cash_and_net_exposure_ratios() -> None:
