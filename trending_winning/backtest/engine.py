@@ -401,7 +401,25 @@ def run_order_backtest(
 ) -> BacktestResult:
     cfg = config or BacktestConfig()
     validate_backtest_config(cfg)
-    normalized = normalize_bars(bars)
+    return _run_order_backtest_from_normalized(normalize_bars(bars), orders, cfg)
+
+
+def run_order_backtest_from_normalized(
+    normalized_bars: pd.DataFrame,
+    orders: pd.DataFrame,
+    config: BacktestConfig | None = None,
+) -> BacktestResult:
+    """基于已标准化 K 线做订单回测；参数遍历热路径用它避免重复 normalize。"""
+    cfg = config or BacktestConfig()
+    validate_backtest_config(cfg)
+    return _run_order_backtest_from_normalized(normalized_bars, orders, cfg)
+
+
+def _run_order_backtest_from_normalized(
+    normalized: pd.DataFrame,
+    orders: pd.DataFrame,
+    cfg: BacktestConfig,
+) -> BacktestResult:
     if orders.empty:
         trades = pd.DataFrame(columns=TRADE_COLUMNS)
         decisions = pd.DataFrame(columns=ORDER_DECISION_COLUMNS)

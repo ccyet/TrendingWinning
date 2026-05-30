@@ -145,6 +145,47 @@ def test_data_inventory_statistics_reports_stable_snapshot_signature() -> None:
     assert stats["data_inventory_signature"] != changed_stats["data_inventory_signature"]
 
 
+def test_single_strategy_sweep_uses_normalized_order_backtest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2026-05-25 09:30:00", "2026-05-25 10:00:00", "2026-05-25 10:30:00", "2026-05-25 11:00:00"]
+            ),
+            "stock_code": ["000001.SZ", "000001.SZ", "000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2, 10.4, 10.6],
+            "high": [10.3, 10.5, 10.7, 10.9],
+            "low": [9.8, 10.0, 10.2, 10.4],
+            "close": [10.2, 10.4, 10.6, 10.8],
+            "volume": [1000.0, 1100.0, 1200.0, 1300.0],
+            "amount": [10200.0, 11440.0, 12720.0, 14040.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    config = SingleStrategyExperimentConfig(
+        name="single-sweep-normalized",
+        data_root=str(data_root),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        strict_data_quality=False,
+    )
+
+    def fail_order_backtest(*_: object, **__: object) -> BacktestResult:
+        raise AssertionError("单策略 sweep 不应调用会重复 normalize 的订单回测入口。")
+
+    monkeypatch.setattr(experiment_module, "run_order_backtest", fail_order_backtest, raising=False)
+
+    result = run_single_strategy_parameter_sweep(config, grid={"risk_reward": [1.0, 1.5]})
+
+    assert len(result.table) == 2
+
+
 def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     output_dir = tmp_path / "runs" / "case-001"

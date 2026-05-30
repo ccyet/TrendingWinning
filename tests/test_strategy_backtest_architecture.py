@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from trending_winning.backtest.engine import BacktestConfig, run_single_strategy_backtest
+from trending_winning.backtest.engine import (
+    BacktestConfig,
+    run_order_backtest_from_normalized,
+    run_single_strategy_backtest,
+)
+from trending_winning.data.schema import normalize_bars
 from trending_winning.detectors.range import RangeDetector, RangeDetectorConfig
 from trending_winning.detectors.trend import TrendDetector, TrendDetectorConfig
 from trending_winning.strategies.base import ORDER_COLUMNS
@@ -334,6 +339,36 @@ def test_single_strategy_backtest_reports_exposure_ratio_from_market_timeline() 
     assert result.stats["market_bar_count"] == 3.0
     assert result.stats["exposure_bars"] == 1.0
     assert result.stats["exposure_bar_ratio"] == pytest.approx(1 / 3)
+
+
+def test_order_backtest_from_normalized_reuses_prepared_bars(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trending_winning.backtest import engine as engine_module
+
+    normalized = normalize_bars(_two_symbol_bars())
+    orders = pd.DataFrame(
+        [
+            _fixed_order(
+                order_id="reuse-normalized",
+                symbol="000002.SZ",
+                signal_date="2026-05-25 09:30:00",
+                signal_bar_index=0,
+                entry_price=20.5,
+                stop_price=19.5,
+                target_price=22.0,
+            )
+        ],
+        columns=ORDER_COLUMNS,
+    )
+
+    def fail_normalize(_: pd.DataFrame) -> pd.DataFrame:
+        raise AssertionError("标准化行情入口不应在热路径里重复 normalize。")
+
+    monkeypatch.setattr(engine_module, "normalize_bars", fail_normalize)
+
+    result = run_order_backtest_from_normalized(normalized, orders, BacktestConfig(max_holding_bars=2))
+
+    assert result.trades["order_id"].tolist() == ["reuse-normalized"]
+    assert result.stats["market_bar_count"] == 3.0
 
 
 def test_single_strategy_backtest_records_trade_r_multiple_and_excursions() -> None:

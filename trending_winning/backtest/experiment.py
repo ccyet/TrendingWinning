@@ -12,7 +12,12 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from trending_winning.backtest.engine import BacktestConfig, BacktestResult, run_order_backtest, run_single_strategy_backtest
+from trending_winning.backtest.engine import (
+    BacktestConfig,
+    BacktestResult,
+    run_order_backtest_from_normalized,
+    run_single_strategy_backtest,
+)
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,
     PortfolioCandidateSet,
@@ -759,7 +764,7 @@ def run_single_strategy_parameter_sweep(
             filter_decisions_by_config[order_key] = strategy_run.filter_decisions
         filter_decisions = filter_decisions_by_config.get(order_key, pd.DataFrame())
         backtest = _with_strategy_filter_decisions(
-            run_order_backtest(data.bars, orders, _backtest_config(variant)),
+            run_order_backtest_from_normalized(data.bars, orders, _backtest_config(variant)),
             filter_decisions,
         )
         case_elapsed = max(perf_counter() - case_start, 1e-12)
