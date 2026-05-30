@@ -141,6 +141,44 @@ def test_signal_bar_strategy_rejects_zero_liquidity_signal_bars_before_order_gen
     assert decisions.loc["liquid-signal", "reason"] == ""
 
 
+def test_signal_bar_strategy_reuses_normalized_bars_for_liquidity_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    from trending_winning.strategies import signal_bar as signal_bar_module
+
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2026-05-25 09:30:00", "2026-05-25 10:00:00", "2026-05-25 10:30:00"]
+            ),
+            "stock_code": ["000001.SZ"] * 3,
+            "open": [9.8, 10.0, 10.3],
+            "high": [10.0, 10.2, 10.6],
+            "low": [9.7, 9.9, 10.2],
+            "close": [9.9, 10.1, 10.5],
+            "volume": [1000.0, 0.0, 1200.0],
+            "amount": [9900.0, 0.0, 12600.0],
+        }
+    )
+    strategy = SignalBarStopStrategy(
+        FixedEventDetector(
+            [
+                _event(event_id="zero-signal", entry_price=10.2, stop_price=9.8, signal_price=10.1, bar_index=1),
+                _event(event_id="liquid-signal", entry_price=10.6, stop_price=10.1, signal_price=10.5, bar_index=2),
+            ]
+        )
+    )
+
+    def fail_normalize(_: pd.DataFrame) -> pd.DataFrame:
+        raise AssertionError("已标准化 K 线不应在信号 K 流动性检查里重复 normalize。")
+
+    monkeypatch.setattr(signal_bar_module, "normalize_bars", fail_normalize)
+
+    orders = strategy.generate_orders(bars)
+    decisions = strategy.last_filter_decisions.set_index("event_id")
+
+    assert orders["event_id"].tolist() == ["liquid-signal"]
+    assert decisions.loc["zero-signal", "reason"] == "signal_bar_no_liquidity"
+
+
 def test_signal_bar_strategy_records_non_tradable_detector_events_in_filter_log() -> None:
     watch_event = {
         **_event(event_id="middle-watch", entry_price=10.2, stop_price=9.8, signal_price=10.0, bar_index=1),

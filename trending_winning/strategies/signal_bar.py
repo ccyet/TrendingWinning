@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from trending_winning.data.schema import normalize_bars, normalize_symbol
+from trending_winning.data.schema import CANONICAL_COLUMNS, normalize_bars, normalize_symbol
 from trending_winning.detectors.base import Detector, validate_detector_events
 from trending_winning.strategies.base import ORDER_COLUMNS, empty_orders
 from trending_winning.strategies.diagnostics import STRATEGY_FILTER_DECISION_COLUMNS, empty_strategy_filter_decisions
@@ -140,7 +140,7 @@ def _signal_bar_liquidity_mask(bars: pd.DataFrame, events: pd.DataFrame) -> pd.S
     """判断事件对应的信号 K 是否有真实成交；缺量额字段时保持兼容。"""
     if events.empty or bars.empty or "volume" not in bars.columns or "amount" not in bars.columns:
         return pd.Series([True] * len(events), index=events.index, dtype=bool)
-    normalized = normalize_bars(bars)
+    normalized = _liquidity_lookup_bars(bars)
     if normalized.empty:
         return pd.Series([True] * len(events), index=events.index, dtype=bool)
     signal_bars = normalized.copy()
@@ -156,6 +156,21 @@ def _signal_bar_liquidity_mask(bars: pd.DataFrame, events: pd.DataFrame) -> pd.S
         names=["stock_code", "_bar_index"],
     )
     return pd.Series(lookup.reindex(keys).fillna(True).to_numpy(dtype=bool), index=events.index)
+
+
+def _liquidity_lookup_bars(bars: pd.DataFrame) -> pd.DataFrame:
+    """已标准化行情直接复用；外部原始行情仍走统一 normalize。"""
+    if _looks_like_normalized_bars(bars):
+        return bars.loc[:, CANONICAL_COLUMNS]
+    return normalize_bars(bars)
+
+
+def _looks_like_normalized_bars(bars: pd.DataFrame) -> bool:
+    if not set(CANONICAL_COLUMNS).issubset(bars.columns):
+        return False
+    if not pd.api.types.is_datetime64_any_dtype(bars["date"]):
+        return False
+    return bool(bars["stock_code"].notna().all())
 
 
 def _signal_filter_decisions(
