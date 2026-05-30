@@ -130,18 +130,32 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
     validate_backtest_config(cfg)
 
     candidates: list[dict[str, object]] = []
+    decisions: list[tuple[int, dict[str, object]]] = []
+    order_sequence = 0
     for symbol, group in scanned_bars.sort_values(["stock_code", "date"]).groupby("stock_code", sort=False):
         group = group.reset_index(drop=True)
-        for index in range(len(group) - 1):
+        for index in range(len(group)):
             if not bool(group.loc[index, "breakout_trigger"]):
                 continue
+            current_sequence = order_sequence
+            order_sequence += 1
             trade = _simulate_trade(group, index, str(symbol), cfg)
             if trade is None:
+                decisions.append(
+                    (
+                        current_sequence,
+                        _legacy_signal_rejection_record(
+                            group.loc[index],
+                            index,
+                            str(symbol),
+                            _legacy_signal_reject_reason(group, index),
+                        ),
+                    )
+                )
                 continue
-            candidates.append({"trade": trade, "order_sequence": len(candidates)})
+            candidates.append({"trade": trade, "order_sequence": current_sequence})
 
     trades: list[dict[str, object]] = []
-    decisions: list[tuple[int, dict[str, object]]] = []
     open_until_date: pd.Timestamp | None = None
     # 旧版突破回测也按单策略满仓处理：任意股票有持仓时，全局不再开第二笔。
     for candidate in sorted(candidates, key=_single_position_candidate_sort_key):
@@ -197,6 +211,42 @@ def _legacy_order_decision_record(trade: dict[str, object], status: str, reason:
     )
 
 
+def _legacy_signal_rejection_record(row: pd.Series, signal_index: int, symbol: str, reason: str) -> dict[str, object]:
+    """记录没有形成候选成交的旧版触发，避免最后一根 K 或坏价格被静默丢弃。"""
+    order = _legacy_signal_order_record(row, signal_index, symbol)
+    return order_decision_record(order, "rejected", reason)
+
+
+def _legacy_signal_order_record(row: pd.Series, signal_index: int, symbol: str) -> dict[str, object]:
+    signal_date = row.get("date", pd.NaT)
+    planned_entry_price = _legacy_planned_entry_price(row)
+    event_id = f"legacy_scan:{symbol}:{pd.Timestamp(signal_date).isoformat()}"
+    return {
+        "order_id": f"legacy_breakout:{symbol}:{pd.Timestamp(signal_date).isoformat()}",
+        "event_id": event_id,
+        "event_type": "legacy_breakout",
+        "strategy_name": "legacy_breakout",
+        "detector_name": "legacy_scan",
+        "stock_code": symbol,
+        "timeframe": "",
+        "signal_date": signal_date,
+        "signal_bar_index": int(signal_index),
+        "side": "long",
+        "entry_price": planned_entry_price,
+        "stop_price": 0.0,
+        "target_price": 0.0,
+        "metadata": {},
+    }
+
+
+def _legacy_signal_reject_reason(group: pd.DataFrame, signal_index: int) -> str:
+    if signal_index >= len(group) - 1:
+        return "no_fill"
+    row = group.loc[signal_index]
+    planned_entry_price = _legacy_planned_entry_price(row)
+    return "invalid_order" if planned_entry_price <= 0 else "no_fill"
+
+
 def _simulate_trade(
     group: pd.DataFrame,
     entry_index: int,
@@ -204,7 +254,7 @@ def _simulate_trade(
     cfg: BacktestConfig,
 ) -> dict[str, object] | None:
     entry = group.loc[entry_index]
-    planned_entry_price = float(entry["trigger_price"] if pd.notna(entry["trigger_price"]) else entry["close"])
+    planned_entry_price = _legacy_planned_entry_price(entry)
     if planned_entry_price <= 0:
         return None
     entry_price = apply_slippage(planned_entry_price, 1.0, cfg)
@@ -259,6 +309,12 @@ def _simulate_trade(
         "metadata": {},
         "_exit_index": int(exit_index),
     }
+
+
+def _legacy_planned_entry_price(row: pd.Series) -> float:
+    trigger_price = row.get("trigger_price", pd.NA)
+    source_price = trigger_price if pd.notna(trigger_price) else row.get("close", 0.0)
+    return _as_float(source_price)
 
 
 def _first_legacy_long_exit(

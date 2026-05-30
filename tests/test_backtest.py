@@ -172,6 +172,59 @@ def test_legacy_backtest_records_decisions_for_global_position_gate() -> None:
     assert result.stats["rejected_already_open_count"] == 1.0
 
 
+def test_legacy_backtest_records_last_bar_trigger_as_no_fill() -> None:
+    scanned = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.2, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.0, 10.3],
+            "volume": [1000.0, 1000.0],
+            "amount": [10000.0, 10300.0],
+            "breakout_trigger": [False, True],
+            "trigger_price": [pd.NA, 10.3],
+        }
+    )
+
+    result = run_backtest(scanned, BacktestConfig(max_holding_bars=1))
+
+    assert result.trades.empty
+    decision = result.order_decisions.iloc[0]
+    assert decision["stock_code"] == "000001.SZ"
+    assert decision["status"] == "rejected"
+    assert decision["reason"] == "no_fill"
+    assert result.stats["order_count"] == 1.0
+    assert result.stats["rejected_no_fill_count"] == 1.0
+
+
+def test_legacy_backtest_records_invalid_trigger_price_as_invalid_order() -> None:
+    scanned = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.2, 10.5],
+            "low": [9.8, 10.0],
+            "close": [10.0, 10.3],
+            "volume": [1000.0, 1000.0],
+            "amount": [10000.0, 10300.0],
+            "breakout_trigger": [True, False],
+            "trigger_price": [0.0, pd.NA],
+        }
+    )
+
+    result = run_backtest(scanned, BacktestConfig(max_holding_bars=1))
+
+    assert result.trades.empty
+    decision = result.order_decisions.iloc[0]
+    assert decision["status"] == "rejected"
+    assert decision["reason"] == "invalid_order"
+    assert decision["planned_entry_price"] == 0.0
+    assert result.stats["rejected_invalid_order_count"] == 1.0
+
+
 def test_legacy_backtest_reuses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(_simulate_trade)
 
