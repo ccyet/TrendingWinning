@@ -26,7 +26,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - 组合回测：按真实入场时间和真实成交风险做策略优先级、持仓互斥、风险预算、行业/策略资金上限、空头保证金和逐 K 净值重估
 - 实际风险过滤：信号 K 挂单策略透传 `max_actual_risk_pct` 和 `max_chase_pct`，由撮合层按真实成交价统一判定并记录拒绝原因
 - Detector 参数透传：趋势强收盘/实体/回撤窗口、区间中部/失败突破/区间评分、通道突破缓冲/摆动锚点、反转强收盘/实体阈值都可配置
-- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、胜率置信区间、平均收益标准误、正期望概率、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、现金占比、净暴露、总暴露、持仓数和策略/标的/方向/退出原因拆分
+- 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、最大回撤开始/触底/修复时间、当前回撤、当前水下 K 数、胜率置信区间、平均收益标准误、正期望概率、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、现金占比、净暴露、总暴露、持仓数和策略/标的/方向/退出原因拆分
 - 事件类型拆分：订单和成交透传 `event_type`，可单独评估 H1/H2、失败突破、通道突破、二次反转等 setup 表现
 - 真实撮合边界：跳空穿越按开盘成交；同 K 同时触发止盈止损时默认保守止损优先，可显式改为乐观止盈优先
 - 流动性检查：分钟 K 的 `volume` 或 `amount` 为 0 时会从回测数据包剔除；裸策略/撮合入口仍不允许用这类 K 入场、止盈止损或统计路径波动
@@ -200,8 +200,8 @@ python -m trending_winning.cli single-backtest \
 保存目录只包含单策略产物：`config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
-`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，避免参数对比时再手工汇总月度收益和连续亏损风险。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动。
-单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio`。
+`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，避免参数对比时再手工汇总月度收益、最差月份和连续亏损风险。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动。
+单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio / max_drawdown_start_at / max_drawdown_trough_at / max_drawdown_recovery_at / current_drawdown / current_underwater_bars`，可直接定位最大回撤从哪根净值高点开始、在哪根触底、是否修复，以及当前是否仍在水下。
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个形态识别事件和哪类信号形态。
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
@@ -254,7 +254,7 @@ python -m trending_winning.cli portfolio-backtest \
 保存目录会包含 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
-`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_worst_drawdown / monthly_max_consecutive_losses / monthly_max_recovery_periods`，用于比较不同形态、仓位参数和大周期方向过滤下的月度稳定性。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动。
+`stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，用于比较不同形态、仓位参数和大周期方向过滤下的月度稳定性。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动。
 组合仓位容量按实际 `entry_date` 分配，不按信号时间提前占用资金；风险预算按真实 `entry_price / risk_per_share` 计算，不用计划挂单价低估跳空成交风险。
 `--capital-per-trade` 是固定单笔名义仓位，`--risk-per-trade` 是按真实入场风险反推仓位；两者都为空时按最大持仓数均分。
 `--reserve-cash` 预留现金，`--allow-same-symbol-overlap` 允许同一股票多策略重叠持仓。
@@ -268,7 +268,7 @@ python -m trending_winning.cli portfolio-backtest \
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、
 `annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_drawdown`、`ulcer_index`、`time_under_water_ratio`、`avg_gross_exposure`、`max_gross_exposure`、
-`exposure_bar_ratio`、`avg_open_positions`、`max_open_positions`、`avg_cash_ratio`、`min_cash_ratio`、`max_cash_ratio`、`avg_net_exposure`、`min_net_exposure`、`max_net_exposure`、`avg_r_multiple`、`r_profit_factor`、`system_quality_number`、`avg_mae_pct`、`avg_mfe_pct`、
+`exposure_bar_ratio`、`avg_open_positions`、`max_open_positions`、`avg_cash_ratio`、`min_cash_ratio`、`max_cash_ratio`、`avg_net_exposure`、`min_net_exposure`、`max_net_exposure`、`max_drawdown_start_at`、`max_drawdown_trough_at`、`max_drawdown_recovery_at`、`current_drawdown`、`current_underwater_bars`、`avg_r_multiple`、`r_profit_factor`、`system_quality_number`、`avg_mae_pct`、`avg_mfe_pct`、
 `return_p05`、`return_p25`、`return_p50`、`return_p75`、`return_p95`、`cvar_95`、`win_rate_ci_lower`、`win_rate_ci_upper`、`avg_return_standard_error`、`avg_return_ci_lower`、`avg_return_ci_upper`、`positive_expectancy_probability`、`capital_exposure_bars`、`margin_exposure_bars`、
 以及 `order_count / accepted_order_count / rejected_order_count / acceptance_rate / rejection_rate /
 rejected_invalid_order_count / rejected_duplicate_order_id_count / rejected_max_open_positions_count / rejected_no_capital_count / rejected_actual_risk_too_high_count / rejected_chase_too_far_count / rejected_target_not_favorable_count /

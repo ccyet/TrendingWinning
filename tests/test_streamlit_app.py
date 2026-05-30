@@ -525,6 +525,19 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "monthly_max_consecutive_losses" in guide
     assert "monthly_max_recovery_periods" in readme
     assert "monthly_max_recovery_periods" in guide
+    for field in [
+        "max_drawdown_start_at",
+        "max_drawdown_trough_at",
+        "max_drawdown_recovery_at",
+        "current_drawdown",
+        "current_underwater_bars",
+        "monthly_best_return_period",
+        "monthly_worst_return_period",
+        "monthly_worst_drawdown_period",
+        "monthly_current_underwater_periods",
+    ]:
+        assert field in readme
+        assert field in guide
     assert "按收益、回撤、月度稳定性、交易数和 case 名稳定排序" in readme
     assert "按收益、回撤、月度稳定性、交易数和 case 名稳定排序" in guide
     assert "data_coverage_p05" in readme
