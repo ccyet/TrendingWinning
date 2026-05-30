@@ -350,3 +350,37 @@ def test_single_strategy_backtest_records_order_decisions_for_unfilled_and_overl
     assert result.stats["rejected_order_count"] == 2.0
     assert result.stats["rejected_already_open_count"] == 1.0
     assert result.stats["rejected_no_fill_count"] == 1.0
+
+
+def test_single_strategy_backtest_rejects_cross_symbol_entries_while_full_position_is_open() -> None:
+    bars = _two_symbol_bars()
+    strategy = FixedOrderStrategy(
+        [
+            _fixed_order(
+                order_id="first-full-position",
+                symbol="000002.SZ",
+                signal_date="2026-05-25 09:30:00",
+                signal_bar_index=0,
+                entry_price=20.5,
+                stop_price=19.5,
+                target_price=22.0,
+            ),
+            _fixed_order(
+                order_id="second-before-first-close",
+                symbol="000001.SZ",
+                signal_date="2026-05-25 10:00:00",
+                signal_bar_index=1,
+                entry_price=10.0,
+                stop_price=9.5,
+                target_price=11.0,
+            ),
+        ]
+    )
+
+    result = run_single_strategy_backtest(bars, strategy, BacktestConfig(max_holding_bars=2))
+    decisions = result.order_decisions.set_index("order_id")
+
+    assert result.trades["order_id"].tolist() == ["first-full-position"]
+    assert decisions.loc["first-full-position", "status"] == "accepted"
+    assert decisions.loc["second-before-first-close", "status"] == "rejected"
+    assert decisions.loc["second-before-first-close", "reason"] == "already_open"

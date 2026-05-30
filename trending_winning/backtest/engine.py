@@ -302,7 +302,9 @@ def run_order_backtest(
         symbol: group.reset_index(drop=True)
         for symbol, group in normalized.sort_values(["stock_code", "date"]).groupby("stock_code", sort=False)
     }
-    open_until: dict[str, int] = {}
+    # 单策略回测当前按全仓进出处理：一笔交易未退出前，不允许任何股票再开新仓。
+    open_until_date: pd.Timestamp | None = None
+    open_signal_date: pd.Timestamp | None = None
     for order in sorted_orders:
         duplicate_rejection = order_duplicate_reject_reason(order, seen_order_ids)
         if duplicate_rejection:
@@ -317,10 +319,17 @@ def run_order_backtest(
         if group is None or group.empty:
             decisions.append(order_decision_record(order, "rejected", "no_bars"))
             continue
-        signal_index = int(order["signal_bar_index"])
-        if signal_index < open_until.get(symbol, -1):
+        signal_date = pd.to_datetime(order.get("signal_date", pd.NaT), errors="coerce")
+        if (
+            open_until_date is not None
+            and open_signal_date is not None
+            and pd.notna(signal_date)
+            and signal_date > open_signal_date
+            and signal_date < open_until_date
+        ):
             decisions.append(order_decision_record(order, "rejected", "already_open"))
             continue
+        signal_index = int(order["signal_bar_index"])
         execution = coerce_order_execution_result(
             simulate_order_trade_with_rejection(group, order, signal_index, cfg),
             order=order,
@@ -328,6 +337,10 @@ def run_order_backtest(
         trade = execution.trade
         if trade is None:
             decisions.append(order_decision_record(order, "rejected", execution.reject_reason or "no_fill", execution=execution))
+            continue
+        entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
+        if open_until_date is not None and pd.notna(entry_date) and entry_date <= open_until_date:
+            decisions.append(order_decision_record(order, "rejected", "already_open", execution=execution))
             continue
         trades.append(trade)
         decisions.append(
@@ -342,7 +355,8 @@ def run_order_backtest(
                 margin_fraction=1.0,
             )
         )
-        open_until[symbol] = int(trade["_exit_index"])
+        open_until_date = pd.Timestamp(trade["exit_date"])
+        open_signal_date = signal_date
 
     decisions_df = pd.DataFrame(decisions, columns=ORDER_DECISION_COLUMNS)
     trades_df = pd.DataFrame(trades)

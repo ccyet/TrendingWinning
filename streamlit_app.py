@@ -231,9 +231,14 @@ DISPLAY_VALUE_MAP = {
     "reason": {
         "": "",
         "no_fill": "未成交",
+        "no_bars": "无K线数据",
+        "no_liquidity": "无有效成交区间",
+        "already_open": "已有持仓未平仓",
         "risk_too_large": "实际风险过大",
         "chase_too_large": "追价过远",
         "same_symbol_overlap": "同票已有持仓",
+        "max_open_positions": "达到最大持仓数",
+        "no_capital": "资金不足",
         "capital_limit": "资金上限",
         "sector_limit": "行业上限",
         "side_mode_filtered": "交易方向过滤",
@@ -922,13 +927,14 @@ def _strategy_kline_symbol_options(bars: pd.DataFrame, trades: pd.DataFrame) -> 
 
 def _strategy_kline_chart_frame(bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
     """把单只股票的完整回测窗口 K 线转成图表字段，不因交易区间裁剪样本。"""
+    columns = ["K序号", "时间", "时间文本", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"]
     normalized = normalize_bars(bars)
     normalized_symbol = normalize_symbol(symbol)
     if normalized.empty or not normalized_symbol:
-        return pd.DataFrame(columns=["时间", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"])
+        return pd.DataFrame(columns=columns)
     frame = normalized.loc[normalized["stock_code"].eq(normalized_symbol)].copy()
     if frame.empty:
-        return pd.DataFrame(columns=["时间", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"])
+        return pd.DataFrame(columns=columns)
     frame = frame.sort_values("date")
     chart = frame.rename(
         columns={
@@ -940,97 +946,208 @@ def _strategy_kline_chart_frame(bars: pd.DataFrame, symbol: str) -> pd.DataFrame
             "close": "收盘",
         }
     )[["时间", "股票代码", "开盘", "最高", "最低", "收盘"]]
+    chart.insert(0, "K序号", range(len(chart)))
+    chart["时间文本"] = pd.to_datetime(chart["时间"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
     chart["涨跌"] = chart["收盘"].ge(chart["开盘"]).map({True: "上涨", False: "下跌"})
-    return chart.reset_index(drop=True)
+    return chart[columns].reset_index(drop=True)
 
 
-def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str) -> pd.DataFrame:
-    """把成交表转成 K 线图上的开多、开空和真实止损标注。"""
-    columns = ["时间", "价格", "标注", "方向", "订单ID"]
+def _kline_index_for_time(chart_data: pd.DataFrame, value: object) -> int | None:
+    """把真实时间映射到连续 K 序号；非精确时间落到不晚于该时间的最近 K。"""
+    if chart_data.empty or not {"时间", "K序号"}.issubset(chart_data.columns):
+        return None
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    lookup = pd.DataFrame(
+        {
+            "时间": pd.to_datetime(chart_data["时间"], errors="coerce"),
+            "K序号": pd.to_numeric(chart_data["K序号"], errors="coerce"),
+        }
+    ).dropna()
+    if lookup.empty:
+        return None
+    lookup = lookup.sort_values("时间")
+    exact = lookup.loc[lookup["时间"].eq(timestamp), "K序号"]
+    if not exact.empty:
+        return int(exact.iloc[-1])
+    prior = lookup.loc[lookup["时间"].le(timestamp), "K序号"]
+    if prior.empty:
+        return None
+    return int(prior.iloc[-1])
+
+
+def _trade_direction_label(side: str) -> str:
+    return "空头" if side == "short" else "多头"
+
+
+def _trade_entry_label(side: str) -> str:
+    return "开空" if side == "short" else "开多"
+
+
+def _trade_exit_label(side: str, exit_reason: str) -> str:
+    if exit_reason == "stop_loss":
+        return "止损"
+    return "平空" if side == "short" else "平多"
+
+
+def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
+    """把成交表转成连续 K 线图上的开仓、平仓和止损标注。"""
+    columns = ["K序号", "时间", "价格", "标注", "方向", "订单ID"]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "entry_price", "exit_date", "exit_price", "exit_reason"}
-    if trades.empty or not normalized_symbol or not required.issubset(trades.columns):
+    if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
         return pd.DataFrame(columns=columns)
 
     records: list[dict[str, object]] = []
     trade_rows = trades.loc[trades["stock_code"].map(normalize_symbol).eq(normalized_symbol)]
     for row in trade_rows.to_dict("records"):
         side = str(row.get("side", "")).lower()
-        entry_date = pd.Timestamp(row.get("entry_date"))
+        direction = _trade_direction_label(side)
+        entry_date = pd.to_datetime(row.get("entry_date"), errors="coerce")
         entry_price = pd.to_numeric(row.get("entry_price"), errors="coerce")
-        if pd.notna(entry_date) and pd.notna(entry_price):
-            label = "开空" if side == "short" else "开多"
+        entry_index = _kline_index_for_time(chart_data, entry_date)
+        if entry_index is not None and pd.notna(entry_date) and pd.notna(entry_price):
             records.append(
                 {
+                    "K序号": entry_index,
                     "时间": entry_date,
                     "价格": float(entry_price),
-                    "标注": label,
-                    "方向": "空头" if side == "short" else "多头",
+                    "标注": _trade_entry_label(side),
+                    "方向": direction,
+                    "订单ID": str(row.get("order_id", "")),
+                    "_priority": 1,
+                }
+            )
+        exit_date = pd.to_datetime(row.get("exit_date"), errors="coerce")
+        exit_price = pd.to_numeric(row.get("exit_price"), errors="coerce")
+        exit_index = _kline_index_for_time(chart_data, exit_date)
+        if exit_index is not None and pd.notna(exit_date) and pd.notna(exit_price):
+            records.append(
+                {
+                    "K序号": exit_index,
+                    "时间": exit_date,
+                    "价格": float(exit_price),
+                    "标注": _trade_exit_label(side, str(row.get("exit_reason", ""))),
+                    "方向": direction,
                     "订单ID": str(row.get("order_id", "")),
                     "_priority": 0,
                 }
             )
-        if str(row.get("exit_reason", "")) == "stop_loss":
-            exit_date = pd.Timestamp(row.get("exit_date"))
-            exit_price = pd.to_numeric(row.get("exit_price"), errors="coerce")
-            if pd.notna(exit_date) and pd.notna(exit_price):
-                records.append(
-                    {
-                        "时间": exit_date,
-                        "价格": float(exit_price),
-                        "标注": "止损",
-                        "方向": "空头" if side == "short" else "多头",
-                        "订单ID": str(row.get("order_id", "")),
-                        "_priority": 1,
-                    }
-                )
     if not records:
         return pd.DataFrame(columns=columns)
-    frame = pd.DataFrame(records).sort_values(["时间", "_priority"]).drop(columns=["_priority"])
+    frame = pd.DataFrame(records).sort_values(["K序号", "_priority", "价格"]).drop(columns=["_priority"])
     return frame[columns].reset_index(drop=True)
 
 
-def _strategy_stop_segment_frame(trades: pd.DataFrame, symbol: str) -> pd.DataFrame:
+def _strategy_stop_segment_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
     """每笔交易的止损价横线，从入场延伸到退出，辅助检查策略风险边界。"""
-    columns = ["开始时间", "结束时间", "止损价", "方向", "订单ID"]
+    columns = ["开始K序号", "结束K序号", "开始时间", "结束时间", "止损价", "方向", "订单ID"]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "exit_date", "stop_price"}
-    if trades.empty or not normalized_symbol or not required.issubset(trades.columns):
+    if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
         return pd.DataFrame(columns=columns)
 
     records: list[dict[str, object]] = []
     trade_rows = trades.loc[trades["stock_code"].map(normalize_symbol).eq(normalized_symbol)]
     for row in trade_rows.to_dict("records"):
-        start = pd.Timestamp(row.get("entry_date"))
-        end = pd.Timestamp(row.get("exit_date"))
+        start = pd.to_datetime(row.get("entry_date"), errors="coerce")
+        end = pd.to_datetime(row.get("exit_date"), errors="coerce")
         stop_price = pd.to_numeric(row.get("stop_price"), errors="coerce")
-        if pd.isna(start) or pd.isna(end) or pd.isna(stop_price):
+        start_index = _kline_index_for_time(chart_data, start)
+        end_index = _kline_index_for_time(chart_data, end)
+        if start_index is None or end_index is None or pd.isna(start) or pd.isna(end) or pd.isna(stop_price):
             continue
         side = str(row.get("side", "")).lower()
         records.append(
             {
+                "开始K序号": start_index,
+                "结束K序号": max(start_index, end_index),
                 "开始时间": start,
                 "结束时间": end,
                 "止损价": float(stop_price),
-                "方向": "空头" if side == "short" else "多头",
+                "方向": _trade_direction_label(side),
                 "订单ID": str(row.get("order_id", "")),
             }
         )
     if not records:
         return pd.DataFrame(columns=columns)
-    return pd.DataFrame(records, columns=columns).reset_index(drop=True)
+    return pd.DataFrame(records, columns=columns).sort_values(["开始K序号", "结束K序号"]).reset_index(drop=True)
+
+
+def _strategy_holding_interval_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
+    """持仓区间阴影层：只展示实际开仓到实际平仓的完整占用窗口。"""
+    columns = [
+        "开始K序号",
+        "结束K序号",
+        "开始绘图K序号",
+        "结束绘图K序号",
+        "开始时间",
+        "结束时间",
+        "区间低价",
+        "区间高价",
+        "方向",
+        "订单ID",
+    ]
+    normalized_symbol = normalize_symbol(symbol)
+    required = {"stock_code", "side", "entry_date", "exit_date"}
+    if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
+        return pd.DataFrame(columns=columns)
+
+    low = pd.to_numeric(chart_data["最低"], errors="coerce").min()
+    high = pd.to_numeric(chart_data["最高"], errors="coerce").max()
+    if pd.isna(low) or pd.isna(high):
+        return pd.DataFrame(columns=columns)
+    padding = max((float(high) - float(low)) * 0.04, abs(float(high)) * 0.002, 0.01)
+    y_low = float(low) - padding
+    y_high = float(high) + padding
+
+    records: list[dict[str, object]] = []
+    trade_rows = trades.loc[trades["stock_code"].map(normalize_symbol).eq(normalized_symbol)]
+    for row in trade_rows.to_dict("records"):
+        start = pd.to_datetime(row.get("entry_date"), errors="coerce")
+        end = pd.to_datetime(row.get("exit_date"), errors="coerce")
+        start_index = _kline_index_for_time(chart_data, start)
+        end_index = _kline_index_for_time(chart_data, end)
+        if start_index is None or end_index is None or pd.isna(start) or pd.isna(end):
+            continue
+        end_index = max(start_index, end_index)
+        side = str(row.get("side", "")).lower()
+        records.append(
+            {
+                "开始K序号": start_index,
+                "结束K序号": end_index,
+                "开始绘图K序号": start_index - 0.45,
+                "结束绘图K序号": end_index + 0.45,
+                "开始时间": start,
+                "结束时间": end,
+                "区间低价": y_low,
+                "区间高价": y_high,
+                "方向": _trade_direction_label(side),
+                "订单ID": str(row.get("order_id", "")),
+            }
+        )
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(records, columns=columns).sort_values(["开始K序号", "结束K序号"]).reset_index(drop=True)
 
 
 def _build_strategy_kline_altair_chart(
     chart_data: pd.DataFrame,
     markers: pd.DataFrame,
     stops: pd.DataFrame,
+    intervals: pd.DataFrame,
 ) -> alt.LayerChart | None:
     if chart_data.empty:
         return None
 
+    candle_size = max(2.0, min(8.0, 560.0 / max(len(chart_data), 1)))
     base = alt.Chart(chart_data).encode(
-        x=alt.X("时间:T", title="时间"),
+        x=alt.X(
+            "K序号:Q",
+            title="K线序号（连续压缩）",
+            axis=alt.Axis(labelAngle=0, tickCount=8),
+        ),
         tooltip=[
             alt.Tooltip("时间:T", title="时间"),
             alt.Tooltip("开盘:Q", format=".3f"),
@@ -1043,7 +1160,7 @@ def _build_strategy_kline_altair_chart(
         y=alt.Y("最低:Q", title="价格", scale=alt.Scale(zero=False)),
         y2="最高:Q",
     )
-    body = base.mark_bar(size=5).encode(
+    body = base.mark_bar(size=candle_size).encode(
         y=alt.Y("开盘:Q", title="价格", scale=alt.Scale(zero=False)),
         y2="收盘:Q",
         color=alt.Color(
@@ -1052,15 +1169,38 @@ def _build_strategy_kline_altair_chart(
             scale=alt.Scale(domain=["上涨", "下跌"], range=["#dc2626", "#16a34a"]),
         ),
     )
-    layers: list[alt.Chart] = [wick, body]
+    layers: list[alt.Chart] = [wick]
+    if not intervals.empty:
+        layers.append(
+            alt.Chart(intervals)
+            .mark_rect(opacity=0.12)
+            .encode(
+                x=alt.X("开始绘图K序号:Q", title="K线序号（连续压缩）"),
+                x2="结束绘图K序号:Q",
+                y=alt.Y("区间低价:Q", title="价格", scale=alt.Scale(zero=False)),
+                y2="区间高价:Q",
+                color=alt.Color(
+                    "方向:N",
+                    title="持仓区间",
+                    scale=alt.Scale(domain=["多头", "空头"], range=["#ef4444", "#2563eb"]),
+                ),
+                tooltip=[
+                    alt.Tooltip("订单ID:N", title="订单"),
+                    alt.Tooltip("方向:N", title="方向"),
+                    alt.Tooltip("开始时间:T", title="开仓"),
+                    alt.Tooltip("结束时间:T", title="平仓"),
+                ],
+            )
+        )
+    layers.append(body)
 
     if not stops.empty:
         layers.append(
             alt.Chart(stops)
             .mark_rule(color="#ea580c", strokeDash=[5, 4], strokeWidth=1.5)
             .encode(
-                x=alt.X("开始时间:T", title="时间"),
-                x2="结束时间:T",
+                x=alt.X("开始K序号:Q", title="K线序号（连续压缩）"),
+                x2="结束K序号:Q",
                 y=alt.Y("止损价:Q", title="价格", scale=alt.Scale(zero=False)),
                 tooltip=[
                     alt.Tooltip("订单ID:N", title="订单"),
@@ -1074,17 +1214,23 @@ def _build_strategy_kline_altair_chart(
 
     if not markers.empty:
         marker_base = alt.Chart(markers).encode(
-            x=alt.X("时间:T", title="时间"),
+            x=alt.X("K序号:Q", title="K线序号（连续压缩）"),
             y=alt.Y("价格:Q", title="价格", scale=alt.Scale(zero=False)),
             shape=alt.Shape(
                 "标注:N",
                 title="标注",
-                scale=alt.Scale(domain=["开多", "开空", "止损"], range=["triangle-up", "triangle-down", "cross"]),
+                scale=alt.Scale(
+                    domain=["开多", "开空", "止损", "平多", "平空"],
+                    range=["triangle-up", "triangle-down", "cross", "circle", "circle"],
+                ),
             ),
             color=alt.Color(
                 "标注:N",
                 title="标注",
-                scale=alt.Scale(domain=["开多", "开空", "止损"], range=["#dc2626", "#2563eb", "#ea580c"]),
+                scale=alt.Scale(
+                    domain=["开多", "开空", "止损", "平多", "平空"],
+                    range=["#dc2626", "#2563eb", "#ea580c", "#991b1b", "#1d4ed8"],
+                ),
             ),
             tooltip=[
                 alt.Tooltip("标注:N"),
@@ -1094,16 +1240,31 @@ def _build_strategy_kline_altair_chart(
                 alt.Tooltip("订单ID:N", title="订单"),
             ],
         )
-        layers.append(marker_base.mark_point(filled=True, size=120, stroke="#111827", strokeWidth=0.6))
+        layers.append(
+            alt.Chart(markers)
+            .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["开多", "开空"]))
+            .mark_rule(color="#0f172a", opacity=0.18, strokeDash=[2, 4])
+            .encode(x=alt.X("K序号:Q", title="K线序号（连续压缩）"))
+        )
+        layers.append(
+            alt.Chart(markers)
+            .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["止损", "平多", "平空"]))
+            .mark_rule(color="#0f172a", opacity=0.1, strokeDash=[1, 5])
+            .encode(x=alt.X("K序号:Q", title="K线序号（连续压缩）"))
+        )
+        layers.append(marker_base.mark_point(filled=True, size=105, stroke="#111827", strokeWidth=0.6))
         layers.append(
             alt.Chart(markers).mark_text(dy=-15, fontSize=11, fontWeight="bold").encode(
-                x=alt.X("时间:T", title="时间"),
+                x=alt.X("K序号:Q", title="K线序号（连续压缩）"),
                 y=alt.Y("价格:Q", title="价格", scale=alt.Scale(zero=False)),
                 text="标注:N",
                 color=alt.Color(
                     "标注:N",
                     title="标注",
-                    scale=alt.Scale(domain=["开多", "开空", "止损"], range=["#dc2626", "#2563eb", "#ea580c"]),
+                    scale=alt.Scale(
+                        domain=["开多", "开空", "止损", "平多", "平空"],
+                        range=["#dc2626", "#2563eb", "#ea580c", "#991b1b", "#1d4ed8"],
+                    ),
                 ),
             )
         )
@@ -1136,9 +1297,11 @@ def _render_strategy_kline_chart(
     chart_data = _strategy_kline_chart_frame(bars, selected_symbol)
     if chart_data.empty:
         return
-    markers = _strategy_trade_marker_frame(trades, selected_symbol)
-    stops = _strategy_stop_segment_frame(trades, selected_symbol)
-    chart = _build_strategy_kline_altair_chart(chart_data, markers, stops)
+    markers = _strategy_trade_marker_frame(trades, selected_symbol, chart_data)
+    stops = _strategy_stop_segment_frame(trades, selected_symbol, chart_data)
+    intervals = _strategy_holding_interval_frame(trades, selected_symbol, chart_data)
+    st.caption("横轴按连续 K 线序号压缩，午休、夜间和非交易日不留空；悬停可看真实时间。")
+    chart = _build_strategy_kline_altair_chart(chart_data, markers, stops, intervals)
     if chart is not None:
         st.altair_chart(chart, use_container_width=True)
 

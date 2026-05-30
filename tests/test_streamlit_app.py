@@ -16,6 +16,7 @@ from streamlit_app import (
     _prepare_display_frame,
     _resolve_native_directory_choice,
     _style_display_frame,
+    _strategy_holding_interval_frame,
     _strategy_kline_chart_frame,
     _strategy_kline_symbol_options,
     _strategy_stop_segment_frame,
@@ -337,12 +338,28 @@ def test_strategy_kline_chart_frame_keeps_full_symbol_backtest_window() -> None:
     chart = _strategy_kline_chart_frame(bars, "000001.SZ")
 
     assert chart["时间"].tolist() == bars["date"].tolist()
+    assert chart["K序号"].tolist() == [0, 1, 2]
     assert chart["开盘"].tolist() == [10.0, 10.2, 10.1]
     assert chart["收盘"].tolist() == [10.2, 10.1, 10.0]
     assert chart["涨跌"].tolist() == ["上涨", "下跌", "下跌"]
 
 
-def test_strategy_trade_markers_include_long_short_entries_and_stop_loss() -> None:
+def test_strategy_trade_markers_include_entries_exits_and_stop_loss_on_continuous_k_index() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2026-05-25 10:00", "2026-05-25 10:30", "2026-05-25 11:00", "2026-05-25 14:00"]
+            ),
+            "stock_code": ["000001.SZ"] * 4,
+            "open": [10.0, 10.2, 10.1, 9.9],
+            "high": [10.4, 10.5, 10.3, 10.2],
+            "low": [9.9, 10.0, 9.8, 9.7],
+            "close": [10.2, 10.1, 10.0, 9.8],
+            "volume": [1000.0, 1100.0, 1200.0, 1300.0],
+            "amount": [10200.0, 11110.0, 12000.0, 12740.0],
+        }
+    )
+    chart = _strategy_kline_chart_frame(bars, "000001.SZ")
     trades = pd.DataFrame(
         {
             "stock_code": ["000001.SZ", "000001.SZ"],
@@ -356,14 +373,17 @@ def test_strategy_trade_markers_include_long_short_entries_and_stop_loss() -> No
         }
     )
 
-    markers = _strategy_trade_marker_frame(trades, "000001.SZ")
-    stops = _strategy_stop_segment_frame(trades, "000001.SZ")
+    markers = _strategy_trade_marker_frame(trades, "000001.SZ", chart)
+    stops = _strategy_stop_segment_frame(trades, "000001.SZ", chart)
+    intervals = _strategy_holding_interval_frame(trades, "000001.SZ", chart)
 
-    assert markers["标注"].tolist() == ["开多", "开空", "止损"]
-    assert markers["价格"].tolist() == [10.5, 10.1, 10.0]
+    assert markers["标注"].tolist() == ["开多", "止损", "开空", "平空"]
+    assert markers["K序号"].tolist() == [1, 2, 2, 3]
     assert stops["止损价"].tolist() == [10.0, 10.6]
-    assert stops["开始时间"].tolist() == trades["entry_date"].tolist()
-    assert stops["结束时间"].tolist() == trades["exit_date"].tolist()
+    assert stops["开始K序号"].tolist() == [1, 2]
+    assert stops["结束K序号"].tolist() == [2, 3]
+    assert intervals["开始K序号"].tolist() == [1, 2]
+    assert intervals["结束K序号"].tolist() == [2, 3]
 
 
 def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() -> None:
@@ -394,13 +414,17 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
 
     chart = _build_strategy_kline_altair_chart(
         _strategy_kline_chart_frame(bars, "000001.SZ"),
-        _strategy_trade_marker_frame(trades, "000001.SZ"),
-        _strategy_stop_segment_frame(trades, "000001.SZ"),
+        _strategy_trade_marker_frame(trades, "000001.SZ", _strategy_kline_chart_frame(bars, "000001.SZ")),
+        _strategy_stop_segment_frame(trades, "000001.SZ", _strategy_kline_chart_frame(bars, "000001.SZ")),
+        _strategy_holding_interval_frame(trades, "000001.SZ", _strategy_kline_chart_frame(bars, "000001.SZ")),
     )
     spec = chart.to_dict()
 
     assert spec["height"] == 420
-    assert len(spec["layer"]) == 5
+    assert len(spec["layer"]) == 8
+    assert "K序号" in str(spec)
+    assert spec["layer"][0]["encoding"]["x"]["field"] == "K序号"
+    assert spec["layer"][0]["encoding"]["x"]["type"] == "quantitative"
     assert "开多" in str(spec)
     assert "止损" in str(spec)
 
