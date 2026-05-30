@@ -1004,6 +1004,54 @@ def test_order_execution_ignores_zero_liquidity_exit_bar() -> None:
 
 
 @pytest.mark.parametrize(
+    ("side", "target_price", "stop_price", "expected_exit"),
+    [
+        ("long", 13.0, 9.5, 11.6),
+        ("short", 7.0, 10.5, 8.4),
+    ],
+)
+def test_order_execution_trailing_take_profit_ignores_zero_liquidity_extreme(
+    side: str,
+    target_price: float,
+    stop_price: float,
+    expected_exit: float,
+) -> None:
+    if side == "long":
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+                {"open": 11.9, "high": 12.0, "low": 11.8, "close": 11.9, "volume": 0.0, "amount": 0.0},
+                {"open": 11.7, "high": 11.8, "low": 11.5, "close": 11.6},
+            ]
+        )
+    else:
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.1, "low": 9.8, "close": 9.9},
+                {"open": 8.1, "high": 8.2, "low": 8.0, "close": 8.1, "volume": 0.0, "amount": 0.0},
+                {"open": 8.5, "high": 8.6, "low": 8.3, "close": 8.4},
+            ]
+        )
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side=side, entry_price=10.0, stop_price=stop_price, target_price=target_price),
+        signal_index=0,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "max_holding"
+    assert trade["exit_price"] == pytest.approx(expected_exit)
+
+
+@pytest.mark.parametrize(
     ("side", "target_price", "expected_exit"),
     [
         ("long", 12.0, 10.67),

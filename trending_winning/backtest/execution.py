@@ -311,7 +311,7 @@ def _trailing_take_profit_masks(
         return empty_mask, empty_mask, empty_prices
 
     if side == "long":
-        peak = np.maximum.accumulate(highs)
+        peak = np.maximum.accumulate(np.where(liquid, highs, entry_price))
         previous_peak = np.concatenate(([entry_price], peak[:-1]))
         trailing_prices = previous_peak * (1.0 - drawdown_pct)
         armed = previous_peak >= entry_price * (1.0 + activation_pct)
@@ -320,7 +320,7 @@ def _trailing_take_profit_masks(
         hit_trailing = liquid & armed & profitable & (lows <= trailing_prices)
         return gap_trailing, hit_trailing, trailing_prices
 
-    trough = np.minimum.accumulate(lows)
+    trough = np.minimum.accumulate(np.where(liquid, lows, entry_price))
     previous_trough = np.concatenate(([entry_price], trough[:-1]))
     trailing_prices = previous_trough * (1.0 + drawdown_pct)
     armed = previous_trough <= entry_price * (1.0 - activation_pct)

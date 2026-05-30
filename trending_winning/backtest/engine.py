@@ -421,7 +421,7 @@ def _legacy_long_trailing_take_profit(
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
     liquid = liquid_bar_mask(path)
-    peak = np.maximum.accumulate(highs)
+    peak = np.maximum.accumulate(np.where(liquid, highs, entry_price))
     previous_peak = np.concatenate(([entry_price], peak[:-1]))
     trailing_prices = previous_peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
     armed = previous_peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
