@@ -639,7 +639,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
           <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature</code></td></tr>
           <tr><td>代码对应哪只股票？</td><td><code>symbol_metadata.csv</code></td><td><code>stock_code / stock_name / source</code></td></tr>
-          <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing</code></td></tr>
+          <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing / daily_read_error</code></td></tr>
           <tr><td>月度是否稳定？</td><td><code>monthly_returns.csv</code> 和 <code>stats.json</code></td><td><code>monthly_win_rate / monthly_worst_return / monthly_max_consecutive_losses</code></td></tr>
         </tbody>
       </table>
@@ -653,7 +653,7 @@ min_coverage_ratio = 0.95</code></pre>
           <ul>
             <li>确认行情根目录选的是 <code>market/daily</code>。</li>
             <li>确认回测周期是分钟级，不把 <code>1d</code> 放进策略周期。</li>
-            <li>确认日 K 存在，否则涨停开盘过滤无法严格执行。</li>
+            <li>确认日 K 存在且能读取，否则涨停开盘过滤无法严格执行。</li>
             <li>确认 K 线覆盖率不低于当前实验要求。</li>
             <li>先跑单策略，再跑组合策略。</li>
           </ul>

@@ -172,6 +172,10 @@ DISPLAY_COLUMN_LABELS = {
     "coverage_ratio": "K线覆盖率",
     "limit_pct": "涨跌停幅度",
     "limit_up_open": "涨停开盘",
+    "limit_filter_daily_missing_count": "日K缺失数",
+    "limit_filter_daily_read_error_count": "日K读取失败数",
+    "limit_filter_daily_missing_columns_count": "日K缺字段数",
+    "limit_filter_daily_quality_error_count": "日K质量异常数",
 }
 PERCENT_POINT_COLUMNS = {"return_pct", "raw_return_pct", "mae_pct", "mfe_pct", "avg_mae_pct", "avg_mfe_pct"}
 DISPLAY_VALUE_MAP = {
@@ -184,6 +188,10 @@ DISPLAY_VALUE_MAP = {
         "cached": "已有缓存",
         "missing": "缺失",
         "ok": "正常",
+        "daily_missing": "日K缺失",
+        "daily_read_error": "日K读取失败",
+        "daily_missing_columns": "日K缺字段",
+        "daily_quality_error": "日K质量异常",
     },
     "exit_reason": {
         "take_profit": "止盈",

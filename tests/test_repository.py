@@ -365,9 +365,9 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
     )
     filter_audit = pd.DataFrame(
         {
-            "status": ["ok", "daily_missing"],
-            "filter_enabled": [True, True],
-            "filtered_days": [2, 0],
+            "status": ["ok", "daily_missing", "daily_read_error"],
+            "filter_enabled": [True, True, True],
+            "filtered_days": [2, 0, 0],
         }
     )
 
@@ -398,11 +398,14 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
         "data_negative_volume_amount_rows": 1.0,
     }
     assert summarize_limit_filter_audit(filter_audit) == {
-        "limit_filter_audit_row_count": 2.0,
-        "limit_filter_enabled_count": 2.0,
+        "limit_filter_audit_row_count": 3.0,
+        "limit_filter_enabled_count": 3.0,
         "limit_filter_ok_count": 1.0,
-        "limit_filter_failed_count": 1.0,
+        "limit_filter_failed_count": 2.0,
         "limit_filter_daily_missing_count": 1.0,
+        "limit_filter_daily_read_error_count": 1.0,
+        "limit_filter_daily_missing_columns_count": 0.0,
+        "limit_filter_daily_quality_error_count": 0.0,
         "limit_filter_filtered_days": 2.0,
     }
 
@@ -522,6 +525,76 @@ def test_load_backtest_data_reports_limit_filter_skipped_when_daily_bars_are_mis
     assert audit.loc["000001.SZ", "daily_rows"] == 0
     assert audit.loc["000001.SZ", "filtered_days"] == 0
     assert "无法判断一字涨停开盘过滤" in audit.loc["000001.SZ", "message"]
+
+
+def test_load_backtest_data_reports_daily_read_error_when_quality_gate_disabled(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    daily_root = data_root / "qfq"
+    daily_root.mkdir(parents=True, exist_ok=True)
+    (daily_root / "000001.SZ.parquet").write_text("not a parquet file", encoding="utf-8")
+    intraday = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.3, 10.5],
+            "low": [9.9, 10.1],
+            "close": [10.2, 10.4],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11440.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=intraday)
+
+    bundle = load_backtest_data(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+        strict_data_quality=False,
+    )
+
+    audit = bundle.limit_filter_audit.set_index("stock_code")
+    assert bundle.bars["close"].tolist() == [10.2, 10.4]
+    assert bundle.daily_bars.empty
+    assert audit.loc["000001.SZ", "status"] == "daily_read_error"
+    assert "日K parquet 读取失败" in audit.loc["000001.SZ", "message"]
+
+
+def test_load_backtest_data_fails_explicitly_when_daily_file_is_unreadable(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    daily_root = data_root / "qfq"
+    daily_root.mkdir(parents=True, exist_ok=True)
+    (daily_root / "000001.SZ.parquet").write_text("not a parquet file", encoding="utf-8")
+    write_local_bars(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        bars=pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-05-25 10:00:00"]),
+                "stock_code": ["000001.SZ"],
+                "open": [10.0],
+                "high": [10.2],
+                "low": [9.9],
+                "close": [10.1],
+                "volume": [1000.0],
+                "amount": [10100.0],
+            }
+        ),
+    )
+
+    with pytest.raises(ValueError, match="000001\\.SZ/1d=read_error"):
+        load_backtest_data(
+            data_root=data_root,
+            timeframe="30m",
+            adjust="qfq",
+            symbols=("000001.SZ",),
+            start="2026-05-25",
+            end="2026-05-25",
+        )
 
 
 def test_load_backtest_data_fails_in_strict_mode_when_daily_filter_cannot_run(tmp_path: Path) -> None:
@@ -1877,6 +1950,49 @@ def test_load_multi_timeframe_backtest_data_skips_unreadable_timeframe_when_qual
     audit = bundle.data_audit.set_index(["timeframe", "stock_code"])
     assert audit.loc[("30m", "000001.SZ"), "status"] == "read_error"
     assert bundle.bars_by_timeframe["30m"].empty
+    assert bundle.bars_by_timeframe["60m"]["close"].tolist() == [10.2, 10.4]
+
+
+def test_load_multi_timeframe_backtest_data_reports_daily_read_error_when_quality_gate_disabled(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    daily_root = data_root / "qfq"
+    daily_root.mkdir(parents=True, exist_ok=True)
+    (daily_root / "000001.SZ.parquet").write_text("not a parquet file", encoding="utf-8")
+    for timeframe in ("30m", "60m"):
+        write_local_bars(
+            data_root=data_root,
+            timeframe=timeframe,
+            adjust="qfq",
+            bars=pd.DataFrame(
+                {
+                    "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+                    "stock_code": ["000001.SZ", "000001.SZ"],
+                    "open": [10.0, 10.2],
+                    "high": [10.3, 10.5],
+                    "low": [9.9, 10.1],
+                    "close": [10.2, 10.4],
+                    "volume": [1000.0, 1100.0],
+                    "amount": [10200.0, 11440.0],
+                }
+            ),
+        )
+
+    bundle = load_multi_timeframe_backtest_data(
+        data_root=data_root,
+        timeframes=("30m", "60m"),
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+        strict_data_quality=False,
+    )
+
+    audit = bundle.limit_filter_audit.set_index("stock_code")
+    assert bundle.daily_bars.empty
+    assert audit.loc["000001.SZ", "status"] == "daily_read_error"
+    assert bundle.bars_by_timeframe["30m"]["close"].tolist() == [10.2, 10.4]
     assert bundle.bars_by_timeframe["60m"]["close"].tolist() == [10.2, 10.4]
 
 

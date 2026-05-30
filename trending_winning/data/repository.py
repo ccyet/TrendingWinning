@@ -192,10 +192,24 @@ LIMIT_FILTER_SUMMARY_KEYS = [
     "limit_filter_ok_count",
     "limit_filter_failed_count",
     "limit_filter_daily_missing_count",
+    "limit_filter_daily_read_error_count",
+    "limit_filter_daily_missing_columns_count",
+    "limit_filter_daily_quality_error_count",
     "limit_filter_filtered_days",
 ]
 
 UNLOADABLE_AUDIT_STATUSES = frozenset({"read_error", "missing_columns"})
+DAILY_DEPENDENCY_FAILURE_STATUSES = frozenset({"read_error", "missing_columns", "quality_error"})
+DAILY_FILTER_AUDIT_STATUS_BY_DATA_STATUS = {
+    "read_error": "daily_read_error",
+    "missing_columns": "daily_missing_columns",
+    "quality_error": "daily_quality_error",
+}
+DAILY_FILTER_AUDIT_MESSAGE_BY_DATA_STATUS = {
+    "read_error": "日K parquet 读取失败",
+    "missing_columns": "日K parquet 缺少标准字段",
+    "quality_error": "日K parquet 存在质量异常",
+}
 
 
 @dataclass(frozen=True)
@@ -664,12 +678,13 @@ def load_backtest_data(
         raise ValueError("daily_lookback_days 至少需要 1。")
     min_coverage_ratio = _normalize_min_coverage_ratio(min_coverage_ratio)
     daily_start = pd.Timestamp(start).normalize() - pd.Timedelta(days=daily_lookback_days)
-    daily = load_daily_bars(
+    daily, daily_audit = _load_daily_dependency_for_backtest(
         data_root=data_root,
         adjust=adjust,
         symbols=symbols,
         start=daily_start,
         end=end,
+        strict_data_quality=strict_data_quality,
     )
 
     data_audit = audit_local_data(
@@ -707,6 +722,7 @@ def load_backtest_data(
         end=end,
         filter_enabled=filter_limit_open,
         blocked=blocked,
+        daily_audit=daily_audit,
     )
     if strict_data_quality:
         _raise_for_failed_limit_filter_audit(filter_audit)
@@ -750,12 +766,13 @@ def load_multi_timeframe_backtest_data(
     if not normalized_timeframes:
         raise ValueError("timeframes 不能为空。")
     daily_start = pd.Timestamp(start).normalize() - pd.Timedelta(days=daily_lookback_days)
-    daily = load_daily_bars(
+    daily, daily_audit = _load_daily_dependency_for_backtest(
         data_root=data_root,
         adjust=adjust,
         symbols=symbols,
         start=daily_start,
         end=end,
+        strict_data_quality=strict_data_quality,
     )
     expected_sessions_by_symbol = _daily_sessions_by_symbol(daily, start=start, end=end)
 
@@ -783,6 +800,7 @@ def load_multi_timeframe_backtest_data(
         end=end,
         filter_enabled=filter_limit_open,
         blocked=blocked,
+        daily_audit=daily_audit,
     )
     if strict_data_quality:
         _raise_for_failed_limit_filter_audit(filter_audit)
@@ -834,6 +852,46 @@ def _drop_zero_liquidity_bars(bars: pd.DataFrame) -> pd.DataFrame:
         return bars
     tradable = bars["volume"].gt(0) & bars["amount"].gt(0)
     return bars.loc[tradable].reset_index(drop=True)
+
+
+def _load_daily_dependency_for_backtest(
+    *,
+    data_root: str | Path,
+    adjust: str,
+    symbols: tuple[str, ...] | list[str],
+    start: str | pd.Timestamp,
+    end: str | pd.Timestamp,
+    strict_data_quality: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """先审计再读取日 K 依赖；损坏文件不能绕过审计直接让回测崩溃。"""
+    daily_audit = audit_local_data(
+        data_root=data_root,
+        timeframe="1d",
+        adjust=adjust,
+        symbols=symbols,
+        start=start,
+        end=end,
+    )
+    if strict_data_quality:
+        hard_failures = daily_audit.loc[
+            daily_audit["status"].astype(str).isin(DAILY_DEPENDENCY_FAILURE_STATUSES)
+        ]
+        _raise_for_failed_data_audit(hard_failures)
+
+    daily_symbols = _symbols_safe_for_backtest_load(
+        symbols=symbols,
+        audit=daily_audit,
+        timeframe="1d",
+        strict_data_quality=strict_data_quality,
+    )
+    daily = load_daily_bars(
+        data_root=data_root,
+        adjust=adjust,
+        symbols=daily_symbols,
+        start=start,
+        end=end,
+    )
+    return daily, daily_audit
 
 
 def _symbols_safe_for_backtest_load(
@@ -1029,6 +1087,9 @@ def summarize_limit_filter_audit(filter_audit: pd.DataFrame) -> dict[str, float]
         "limit_filter_ok_count": float(status.eq("ok").sum()),
         "limit_filter_failed_count": float(status.ne("ok").sum()),
         "limit_filter_daily_missing_count": float(status.eq("daily_missing").sum()),
+        "limit_filter_daily_read_error_count": float(status.eq("daily_read_error").sum()),
+        "limit_filter_daily_missing_columns_count": float(status.eq("daily_missing_columns").sum()),
+        "limit_filter_daily_quality_error_count": float(status.eq("daily_quality_error").sum()),
         "limit_filter_filtered_days": float(_audit_numeric_column(filter_audit, "filtered_days").sum()),
     }
 
@@ -1367,22 +1428,36 @@ def _limit_open_filter_audit(
     end: str | pd.Timestamp,
     filter_enabled: bool,
     blocked: pd.DataFrame,
+    daily_audit: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     daily = normalize_bars(daily_bars)
     start_day = pd.Timestamp(start).normalize()
     end_day = inclusive_end_timestamp(end).normalize()
     window = daily.loc[daily["date"].dt.normalize().between(start_day, end_day)].copy() if not daily.empty else daily
     blocked_frame = blocked.copy() if not blocked.empty else pd.DataFrame(columns=["stock_code", "session_date"])
+    audit_by_symbol = _daily_audit_by_symbol(daily_audit)
     rows = [
         _limit_open_filter_audit_row(
             symbol=symbol,
             window=window,
             blocked=blocked_frame,
             filter_enabled=filter_enabled,
+            daily_audit_row=audit_by_symbol.get(symbol),
         )
         for symbol in unique_symbols(tuple(symbols))
     ]
     return pd.DataFrame(rows, columns=LIMIT_FILTER_AUDIT_COLUMNS)
+
+
+def _daily_audit_by_symbol(daily_audit: pd.DataFrame | None) -> dict[str, Mapping[str, object]]:
+    if daily_audit is None or daily_audit.empty or "stock_code" not in daily_audit.columns:
+        return {}
+    result: dict[str, Mapping[str, object]] = {}
+    for row in daily_audit.to_dict("records"):
+        symbol = normalize_symbol(row.get("stock_code", ""))
+        if symbol:
+            result[symbol] = row
+    return result
 
 
 def _limit_open_dates_in_window(
@@ -1407,6 +1482,7 @@ def _limit_open_filter_audit_row(
     window: pd.DataFrame,
     blocked: pd.DataFrame,
     filter_enabled: bool,
+    daily_audit_row: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     symbol_daily = window.loc[window["stock_code"].eq(symbol)] if not window.empty else window
     filtered_days = int(blocked.loc[blocked.get("stock_code", pd.Series(dtype=str)).eq(symbol)].shape[0])
@@ -1420,6 +1496,19 @@ def _limit_open_filter_audit_row(
             "message": "日K一字涨停过滤已关闭。",
         }
     if symbol_daily.empty:
+        audit_status = str(daily_audit_row.get("status", "")) if daily_audit_row is not None else ""
+        status = DAILY_FILTER_AUDIT_STATUS_BY_DATA_STATUS.get(audit_status)
+        if status is not None:
+            detail = str(daily_audit_row.get("message", "")) if daily_audit_row is not None else ""
+            summary = DAILY_FILTER_AUDIT_MESSAGE_BY_DATA_STATUS[audit_status]
+            return {
+                "stock_code": symbol,
+                "status": status,
+                "filter_enabled": True,
+                "daily_rows": 0,
+                "filtered_days": 0,
+                "message": f"{summary}，无法判断一字涨停开盘过滤：{detail}",
+            }
         return {
             "stock_code": symbol,
             "status": "daily_missing",
