@@ -89,6 +89,35 @@ def test_compute_trade_statistics_reports_risk_adjusted_and_streak_metrics() -> 
     assert stats["avg_mfe_r"] == pytest.approx(0.82)
 
 
+def test_trade_statistics_orders_dated_trades_by_realized_time() -> None:
+    trades = pd.DataFrame(
+        {
+            "entry_date": pd.to_datetime(
+                ["2026-05-25 10:30:00", "2026-05-25 09:30:00", "2026-05-25 10:00:00"]
+            ),
+            "exit_date": pd.to_datetime(
+                ["2026-05-25 10:45:00", "2026-05-25 09:45:00", "2026-05-25 10:15:00"]
+            ),
+            "order_id": ["third-loss", "first-win", "second-loss"],
+            "return_pct": [-5.0, 10.0, -5.0],
+            "holding_bars": [1, 1, 1],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+    equity = build_equity_curve(trades)
+
+    assert stats["max_consecutive_losses"] == 2.0
+    assert stats["max_drawdown"] == pytest.approx(0.99275 / 1.1 - 1.0)
+    assert equity["date"].tolist() == [
+        pd.Timestamp("2026-05-25 09:30:00"),
+        pd.Timestamp("2026-05-25 09:45:00"),
+        pd.Timestamp("2026-05-25 10:15:00"),
+        pd.Timestamp("2026-05-25 10:45:00"),
+    ]
+    assert equity["net_value"].tolist() == pytest.approx([1.0, 1.1, 1.045, 0.99275])
+
+
 def test_compute_trade_statistics_uses_full_sample_downside_deviation_for_sortino() -> None:
     trades = pd.DataFrame(
         {

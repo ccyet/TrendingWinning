@@ -265,7 +265,8 @@ def build_equity_curve(trades: pd.DataFrame, initial_equity: float = 1.0) -> pd.
     """把逐笔收益转成净值曲线；有成交日期时同步保留时间轴。"""
     if trades.empty:
         return pd.DataFrame({"trade_no": [0], "net_value": [float(initial_equity)]})
-    returns = _returns_as_decimal(trades)
+    ordered = _trades_for_path_statistics(trades)
+    returns = _returns_as_decimal(ordered)
     net_values = pd.concat(
         [pd.Series([float(initial_equity)]), initial_equity * (1.0 + returns).cumprod()],
         ignore_index=True,
@@ -276,7 +277,7 @@ def build_equity_curve(trades: pd.DataFrame, initial_equity: float = 1.0) -> pd.
             "net_value": net_values,
         }
     )
-    dates = _trade_equity_dates(trades)
+    dates = _trade_equity_dates(ordered)
     if dates is not None:
         result.insert(1, "date", dates)
     return result
@@ -287,6 +288,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     if trades.empty:
         return {key: 0.0 for key in STAT_KEYS}
 
+    trades = _trades_for_path_statistics(trades)
     returns = _returns_as_decimal(trades)
     if returns.empty:
         return {key: 0.0 for key in STAT_KEYS}
@@ -766,6 +768,25 @@ def _trade_equity_dates(trades: pd.DataFrame) -> pd.Series | None:
     if start_pool.empty:
         return None
     return pd.Series([start_pool.min(), *trade_dates.tolist()])
+
+
+def _trades_for_path_statistics(trades: pd.DataFrame) -> pd.DataFrame:
+    """路径类统计按真实平仓时间排序；没有时间字段时保留调用方给定顺序。"""
+    realized_at = _coalesced_datetime_columns(trades, ("exit_date", "entry_date", "signal_date"))
+    if realized_at is None or realized_at.isna().all():
+        return trades
+    result = trades.copy()
+    result["_realized_at"] = realized_at.to_numpy()
+    result["_row_order"] = range(len(result))
+    sort_columns = ["_realized_at", "_row_order"]
+    if "trade_no" in result.columns:
+        result["_trade_no_sort"] = pd.to_numeric(result["trade_no"], errors="coerce")
+        sort_columns = ["_realized_at", "_trade_no_sort", "_row_order"]
+    return (
+        result.sort_values(sort_columns, kind="mergesort", na_position="last")
+        .drop(columns=[column for column in ("_realized_at", "_trade_no_sort", "_row_order") if column in result.columns])
+        .reset_index(drop=True)
+    )
 
 
 def _coalesced_datetime_columns(frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series | None:
