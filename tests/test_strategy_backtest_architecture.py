@@ -7,6 +7,7 @@ from trending_winning.backtest.engine import BacktestConfig, run_single_strategy
 from trending_winning.detectors.range import RangeDetector, RangeDetectorConfig
 from trending_winning.detectors.trend import TrendDetector, TrendDetectorConfig
 from trending_winning.strategies.base import ORDER_COLUMNS
+from trending_winning.strategies.runtime import StrategyRunResult
 from trending_winning.strategies.signal_bar import SignalBarStopStrategy, SignalBarStopStrategyConfig
 
 
@@ -18,6 +19,23 @@ class FixedOrderStrategy:
 
     def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
         return pd.DataFrame(self._orders, columns=ORDER_COLUMNS)
+
+
+class ExplicitPlanStrategy:
+    name = "explicit_plan"
+
+    def __init__(self, orders: list[dict[str, object]], filter_decisions: pd.DataFrame) -> None:
+        self._orders = orders
+        self._filter_decisions = filter_decisions
+
+    def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+        return StrategyRunResult(
+            orders=pd.DataFrame(self._orders, columns=ORDER_COLUMNS),
+            filter_decisions=self._filter_decisions,
+        )
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        raise AssertionError("单策略回测应优先消费显式策略运行结果。")
 
 
 def _trend_bars() -> pd.DataFrame:
@@ -134,6 +152,32 @@ def _fixed_order(
     }
 
 
+def _filter_decisions(reason: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "order_id": "filter-only",
+                "event_id": "event:filter-only",
+                "strategy_name": "explicit_plan",
+                "base_strategy_name": "explicit_plan",
+                "detector_name": "trend",
+                "event_type": "custom_event",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                "signal_bar_index": 0,
+                "side": "long",
+                "status": "rejected",
+                "reason": reason,
+                "filter_name": "pure_filter",
+                "context_timeframe": "",
+                "context_date": pd.NaT,
+                "context_state": "",
+            }
+        ]
+    )
+
+
 def test_detectors_emit_independent_standard_events() -> None:
     trend_events = TrendDetector(TrendDetectorConfig(lookback=5, min_trend_score=0.2)).detect(_trend_bars())
     range_events = RangeDetector(RangeDetectorConfig(lookback=6)).detect(_range_bars())
@@ -181,6 +225,29 @@ def test_single_strategy_backtest_consumes_only_bound_detector_and_reports_riche
     assert result.trades["detector_name"].eq("trend").all()
     assert {"profit_factor", "expectancy", "avg_win", "avg_loss", "exposure_bars"}.issubset(result.stats)
     assert result.stats["trade_count"] >= 1
+
+
+def test_single_strategy_backtest_consumes_explicit_strategy_run_result() -> None:
+    strategy = ExplicitPlanStrategy(
+        [
+            _fixed_order(
+                order_id="explicit-order",
+                symbol="000002.SZ",
+                signal_date="2026-05-25 09:30:00",
+                signal_bar_index=0,
+                entry_price=20.5,
+                stop_price=19.5,
+                target_price=21.0,
+            )
+        ],
+        _filter_decisions("custom_filter"),
+    )
+
+    result = run_single_strategy_backtest(_two_symbol_bars(), strategy, BacktestConfig(max_holding_bars=2))
+
+    assert result.trades["order_id"].tolist() == ["explicit-order"]
+    assert result.strategy_filter_decisions["reason"].tolist() == ["custom_filter"]
+    assert result.stats["strategy_rejected_custom_filter_count"] == 1.0
 
 
 def test_single_strategy_backtest_orders_multi_symbol_trades_by_entry_time() -> None:

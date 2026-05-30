@@ -52,9 +52,14 @@ def collect_strategy_filter_decisions(strategies: Sequence[object]) -> pd.DataFr
     return pd.concat(frames, ignore_index=True)[STRATEGY_FILTER_DECISION_COLUMNS]
 
 
-def _normalize_strategy_filter_decisions(decisions: pd.DataFrame) -> pd.DataFrame:
+def normalize_strategy_filter_decisions(decisions: pd.DataFrame) -> pd.DataFrame:
+    """把任意策略过滤日志补齐成统一字段，避免回测层依赖具体策略实现。"""
     result = decisions.copy()
     for column in STRATEGY_FILTER_DECISION_COLUMNS:
         if column not in result.columns:
             result[column] = pd.NA
     return result[STRATEGY_FILTER_DECISION_COLUMNS]
+
+
+def _normalize_strategy_filter_decisions(decisions: pd.DataFrame) -> pd.DataFrame:
+    return normalize_strategy_filter_decisions(decisions)

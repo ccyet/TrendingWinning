@@ -14,6 +14,7 @@ from trending_winning.backtest.portfolio import (
     run_portfolio_order_backtest,
 )
 from trending_winning.strategies.base import ORDER_COLUMNS
+from trending_winning.strategies.runtime import StrategyRunResult
 
 
 class FixedOrderStrategy:
@@ -25,6 +26,23 @@ class FixedOrderStrategy:
         if not self._orders:
             return pd.DataFrame(columns=ORDER_COLUMNS)
         return pd.DataFrame(self._orders, columns=ORDER_COLUMNS)
+
+
+class ExplicitPlanStrategy:
+    name = "explicit_portfolio"
+
+    def __init__(self, orders: list[dict[str, object]], filter_decisions: pd.DataFrame) -> None:
+        self._orders = orders
+        self._filter_decisions = filter_decisions
+
+    def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+        return StrategyRunResult(
+            orders=pd.DataFrame(self._orders, columns=ORDER_COLUMNS),
+            filter_decisions=self._filter_decisions,
+        )
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        raise AssertionError("组合回测应优先消费显式策略运行结果。")
 
 
 def _portfolio_bars() -> pd.DataFrame:
@@ -187,6 +205,32 @@ def _order(
     }
 
 
+def _portfolio_filter_decisions(reason: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "order_id": "portfolio-filter",
+                "event_id": "event:portfolio-filter",
+                "strategy_name": "explicit_portfolio",
+                "base_strategy_name": "explicit_portfolio",
+                "detector_name": "trend",
+                "event_type": "custom_event",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                "signal_bar_index": 0,
+                "side": "long",
+                "status": "rejected",
+                "reason": reason,
+                "filter_name": "pure_filter",
+                "context_timeframe": "",
+                "context_date": pd.NaT,
+                "context_state": "",
+            }
+        ]
+    )
+
+
 def test_portfolio_backtest_allocates_capital_across_independent_strategies() -> None:
     strategies = [
         FixedOrderStrategy(
@@ -214,6 +258,32 @@ def test_portfolio_backtest_allocates_capital_across_independent_strategies() ->
     assert result.trades["order_id"].tolist() == ["trend_strategy:000001.SZ", "range_strategy:000002.SZ"]
     assert result.trades["event_id"].tolist() == ["event:trend_strategy:000001.SZ", "event:range_strategy:000002.SZ"]
     assert (result.trades["return_pct"] == result.trades["raw_return_pct"] * result.trades["capital_fraction"]).all()
+
+
+def test_portfolio_backtest_consumes_explicit_strategy_run_results() -> None:
+    strategy = ExplicitPlanStrategy(
+        [
+            _order(
+                strategy_name="explicit_portfolio",
+                symbol="000001.SZ",
+                entry_price=10.4,
+                stop_price=9.8,
+                target_price=11.6,
+            )
+        ],
+        _portfolio_filter_decisions("custom_portfolio_filter"),
+    )
+
+    result = run_portfolio_backtest(
+        _portfolio_bars(),
+        [strategy],
+        BacktestConfig(max_holding_bars=3),
+        PortfolioConfig(max_open_positions=1),
+    )
+
+    assert result.trades["order_id"].tolist() == ["explicit_portfolio:000001.SZ"]
+    assert result.strategy_filter_decisions["reason"].tolist() == ["custom_portfolio_filter"]
+    assert result.stats["strategy_rejected_custom_portfolio_filter_count"] == 1.0
 
 
 def test_portfolio_backtest_marks_equity_to_market_on_each_bar() -> None:

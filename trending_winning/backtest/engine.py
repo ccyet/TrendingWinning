@@ -23,7 +23,8 @@ from trending_winning.backtest.stats import (
 )
 from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.strategies.base import Strategy
-from trending_winning.strategies.diagnostics import collect_strategy_filter_decisions, empty_strategy_filter_decisions
+from trending_winning.strategies.diagnostics import empty_strategy_filter_decisions
+from trending_winning.strategies.runtime import execute_strategy
 
 
 @dataclass(frozen=True)
@@ -251,10 +252,9 @@ def run_single_strategy_backtest(
     *,
     timeframe: str = "",
 ) -> BacktestResult:
-    orders = strategy.generate_orders(bars, timeframe=timeframe)
-    strategy_filter_decisions = collect_strategy_filter_decisions([strategy])
-    result = run_order_backtest(bars, orders, config or BacktestConfig())
-    return _with_strategy_filter_decisions(result, strategy_filter_decisions)
+    strategy_run = execute_strategy(strategy, bars, timeframe=timeframe)
+    result = run_order_backtest(bars, strategy_run.orders, config or BacktestConfig())
+    return _with_strategy_filter_decisions(result, strategy_run.filter_decisions)
 
 
 def run_order_backtest(

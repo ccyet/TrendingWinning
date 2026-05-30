@@ -28,8 +28,9 @@ from trending_winning.backtest.stats import (
     summarize_strategy_filter_decisions,
 )
 from trending_winning.data.schema import normalize_bars, normalize_symbol
-from trending_winning.strategies.base import ORDER_COLUMNS, Strategy
-from trending_winning.strategies.diagnostics import collect_strategy_filter_decisions, empty_strategy_filter_decisions
+from trending_winning.strategies.base import Strategy
+from trending_winning.strategies.diagnostics import empty_strategy_filter_decisions
+from trending_winning.strategies.runtime import execute_strategies
 
 PORTFOLIO_COLUMNS = TRADE_COLUMNS + [
     "raw_return_pct",
@@ -82,9 +83,14 @@ def run_portfolio_backtest(
     _validate_portfolio_config(pcfg)
 
     normalized = normalize_bars(bars)
-    orders = _collect_strategy_orders(normalized, strategies, timeframe=timeframe)
-    strategy_filter_decisions = collect_strategy_filter_decisions(strategies)
-    return _run_portfolio_orders(normalized, orders, cfg, pcfg, strategy_filter_decisions=strategy_filter_decisions)
+    strategy_runs = execute_strategies(strategies, normalized, timeframe=timeframe)
+    return _run_portfolio_orders(
+        normalized,
+        strategy_runs.orders,
+        cfg,
+        pcfg,
+        strategy_filter_decisions=strategy_runs.filter_decisions,
+    )
 
 
 def collect_strategy_orders(
@@ -237,17 +243,7 @@ def _portfolio_statistics(
 
 
 def _collect_strategy_orders(bars: pd.DataFrame, strategies: Sequence[Strategy], *, timeframe: str) -> pd.DataFrame:
-    frames: list[pd.DataFrame] = []
-    for strategy in strategies:
-        orders = strategy.generate_orders(bars, timeframe=timeframe)
-        if orders.empty:
-            continue
-        frame = orders.copy()
-        frame["strategy_name"] = frame["strategy_name"].replace("", strategy.name).fillna(strategy.name)
-        frames.append(frame)
-    if not frames:
-        return pd.DataFrame(columns=ORDER_COLUMNS)
-    return pd.concat(frames, ignore_index=True)
+    return execute_strategies(strategies, bars, timeframe=timeframe).orders
 
 
 def _prepare_portfolio_candidates_from_normalized(
