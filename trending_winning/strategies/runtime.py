@@ -75,7 +75,7 @@ def execute_strategies(
     )
     return StrategyBatchRunResult(
         orders=_normalize_order_frame(orders),
-        filter_decisions=normalize_strategy_filter_decisions(filters),
+        filter_decisions=_sort_strategy_filter_decisions(normalize_strategy_filter_decisions(filters)),
         runs=runs,
     )
 
@@ -103,3 +103,18 @@ def _normalize_order_frame(orders: pd.DataFrame) -> pd.DataFrame:
         if column not in result.columns:
             result[column] = pd.NA
     return result[ORDER_COLUMNS]
+
+
+def _sort_strategy_filter_decisions(decisions: pd.DataFrame) -> pd.DataFrame:
+    """批量策略过滤日志按全市场信号时间排序，便于和订单决策日志对齐复盘。"""
+    if decisions.empty or "signal_date" not in decisions.columns:
+        return decisions
+    result = decisions.copy()
+    result["_signal_date_sort"] = pd.to_datetime(result["signal_date"], errors="coerce")
+    result["_signal_bar_sort"] = pd.to_numeric(result["signal_bar_index"], errors="coerce")
+    sorted_result = result.sort_values(
+        ["_signal_date_sort", "stock_code", "_signal_bar_sort", "order_id"],
+        kind="mergesort",
+        na_position="last",
+    )
+    return sorted_result.drop(columns=["_signal_date_sort", "_signal_bar_sort"]).reset_index(drop=True)
