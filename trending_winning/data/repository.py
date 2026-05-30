@@ -473,7 +473,7 @@ def available_symbols(data_root: str | Path, timeframe: str, adjust: str = "qfq"
     root = resolve_timeframe_root(data_root, timeframe) / adjust
     if not root.exists():
         return []
-    return sorted({symbol for path in root.glob("*.parquet") if (symbol := normalize_symbol(path.stem))})
+    return _parquet_file_symbols(root)
 
 
 def inventory_local_data(
@@ -528,13 +528,16 @@ def _discover_inventory_symbols(
         root = resolve_timeframe_root(data_root, timeframe) / adjust
         if not root.exists():
             continue
-        for path in sorted(root.glob("*.parquet")):
-            symbol = normalize_symbol(path.stem)
-            if not symbol or symbol in seen:
+        for symbol in _parquet_file_symbols(root):
+            if symbol in seen:
                 continue
             seen.add(symbol)
             symbols.append(symbol)
     return sorted(symbols)
+
+
+def _parquet_file_symbols(root: Path) -> list[str]:
+    return sorted({symbol for path in root.glob("*.parquet") if path.is_file() and (symbol := normalize_symbol(path.stem))})
 
 
 def _inventory_symbol_file(

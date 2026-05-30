@@ -279,6 +279,31 @@ def test_available_symbols_filters_invalid_and_duplicate_cache_names(tmp_path: P
     assert available_symbols(tmp_path / "market" / "daily", "30m", "qfq") == ["000001.SZ"]
 
 
+def test_symbol_discovery_ignores_parquet_named_directories(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    root = tmp_path / "market" / "30m" / "qfq"
+    root.mkdir(parents=True)
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ"],
+            "open": [10.0],
+            "high": [10.3],
+            "low": [9.9],
+            "close": [10.2],
+            "volume": [1000.0],
+            "amount": [10200.0],
+        }
+    )
+    bars.to_parquet(root / "000001.SZ.parquet", index=False)
+    (root / "000002.SZ.parquet").mkdir()
+
+    assert available_symbols(data_root, "30m", "qfq") == ["000001.SZ"]
+    inventory = inventory_local_data(data_root=data_root, adjust="qfq", timeframes=("30m",))
+    assert inventory["stock_code"].tolist() == ["000001.SZ"]
+    assert inventory["status"].tolist() == ["cached"]
+
+
 def test_market_data_repository_exposes_symbol_names_from_metadata(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     data_root.mkdir(parents=True)
