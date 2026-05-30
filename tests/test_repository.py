@@ -1755,6 +1755,39 @@ def test_audit_local_data_rejects_invalid_date_or_symbol_rows(tmp_path: Path) ->
     assert "日期或标的代码异常" in row["message"]
 
 
+def test_audit_local_data_ignores_invalid_symbol_rows_outside_requested_window(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    root = resolve_timeframe_root(data_root, "30m") / "qfq"
+    root.mkdir(parents=True)
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-24 10:00:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["bad-symbol", "000001.SZ"],
+            "open": [9.8, 10.0],
+            "high": [10.0, 10.4],
+            "low": [9.7, 9.9],
+            "close": [9.9, 10.2],
+            "volume": [900.0, 1000.0],
+            "amount": [8910.0, 10200.0],
+        }
+    )
+    bars.to_parquet(root / "000001.SZ.parquet", index=False)
+
+    audit = audit_local_data(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25",
+        end="2026-05-25",
+    )
+
+    row = audit.iloc[0]
+    assert row["status"] == "ok"
+    assert row["invalid_symbol_rows"] == 0
+    assert row["rows_in_window"] == 1
+
+
 def test_audit_local_data_reports_intraday_session_coverage_gaps(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

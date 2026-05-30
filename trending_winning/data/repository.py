@@ -1326,8 +1326,8 @@ def _audit_symbol_file(
     for column in ["open", "high", "low", "close", "volume", "amount"]:
         checked[column] = pd.to_numeric(checked[column], errors="coerce")
     invalid_date_rows = int(checked["date"].isna().sum())
-    invalid_symbol_rows = int(checked["stock_code"].eq("").sum())
     window = checked.loc[checked["date"].between(start_ts, end_ts)].copy()
+    invalid_symbol_rows = int(window["stock_code"].eq("").sum())
     duplicate_rows = int(window.duplicated(subset=["stock_code", "date"]).sum())
     null_ohlc_rows = int(window[["open", "high", "low", "close"]].isna().any(axis=1).sum())
     non_positive_price_rows = int((window[["open", "high", "low", "close"]] <= 0).any(axis=1).sum())
