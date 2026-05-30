@@ -2759,6 +2759,8 @@ def test_single_strategy_experiment_keeps_zero_setup_stats_for_rejected_orders(
 
     assert result.backtest.trades.empty
     assert result.backtest.order_decisions["reason"].tolist() == ["no_fill"]
+    detector = result.detector_stats.set_index("detector_name")
+    assert detector.loc["range", "trade_count"] == 0.0
     setup = result.setup_stats.set_index(["detector_name", "event_type", "side"])
     assert setup.loc[("range", "range_failed_breakdown", "long"), "trade_count"] == 0.0
 

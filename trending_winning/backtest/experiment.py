@@ -477,7 +477,12 @@ def run_single_strategy_experiment(
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
-        detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
+        detector_stats=_detector_trade_statistics(
+            backtest.trades,
+            config,
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         setup_stats=_setup_trade_statistics(
             backtest.trades,
             backtest.order_decisions,
@@ -550,7 +555,12 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
-        detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
+        detector_stats=_detector_trade_statistics(
+            backtest.trades,
+            config,
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         setup_stats=_setup_trade_statistics(
             backtest.trades,
             backtest.order_decisions,
@@ -2079,6 +2089,83 @@ def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) 
     if missing:
         return pd.DataFrame(columns=pd.Index([*fields, *STAT_KEYS]))
     return compute_grouped_trade_statistics(trades, by=by)
+
+
+def _detector_trade_statistics(
+    trades: pd.DataFrame,
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按识别模块汇总成交表现；保留已启用但没有成交的 detector。"""
+    columns = pd.Index(["detector_name", *STAT_KEYS])
+    stats = _grouped_trade_statistics(trades, by="detector_name").reindex(columns=columns)
+    detector_names = _detector_names_for_statistics(config, order_decisions, filter_decisions)
+    if not detector_names:
+        return stats
+    existing_names = set()
+    if not stats.empty and "detector_name" in stats.columns:
+        existing_names = {name for name in stats["detector_name"].map(_setup_label) if name}
+    missing_names = [name for name in detector_names if name not in existing_names]
+    if not missing_names:
+        return _sort_detector_statistics(stats, detector_names)
+    zero_rows = pd.DataFrame(
+        [
+            {
+                "detector_name": detector_name,
+                **{stat_key: 0.0 for stat_key in STAT_KEYS},
+            }
+            for detector_name in missing_names
+        ],
+        columns=columns,
+    )
+    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=columns)
+    return _sort_detector_statistics(pd.concat(frames, ignore_index=True), detector_names)
+
+
+def _detector_names_for_statistics(
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    *decision_frames: pd.DataFrame | None,
+) -> tuple[str, ...]:
+    """生成 detector 统计行的稳定顺序，优先使用实验配置。"""
+    configured = config.detectors if isinstance(config, PortfolioExperimentConfig) else (config.detector,)
+    names: list[str] = []
+    for detector_name in configured:
+        name = _setup_label(detector_name)
+        if name and name not in names:
+            names.append(name)
+    for detector_name in _detector_names_from_decisions(*decision_frames):
+        if detector_name not in names:
+            names.append(detector_name)
+    return tuple(names)
+
+
+def _detector_names_from_decisions(*decision_frames: pd.DataFrame | None) -> tuple[str, ...]:
+    names: list[str] = []
+    for frame in decision_frames:
+        if frame is None or frame.empty or "detector_name" not in frame.columns:
+            continue
+        for detector_name in frame["detector_name"].map(_setup_label):
+            if detector_name and detector_name not in names:
+                names.append(detector_name)
+    return tuple(names)
+
+
+def _sort_detector_statistics(stats: pd.DataFrame, detector_names: Sequence[str]) -> pd.DataFrame:
+    columns = pd.Index(["detector_name", *STAT_KEYS])
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    order = {name: index for index, name in enumerate(detector_names)}
+    result = stats.reindex(columns=columns).copy()
+    result["_detector_label"] = result["detector_name"].map(_setup_label)
+    result["_detector_order"] = result["_detector_label"].map(lambda name: order.get(name, len(order)))
+    return (
+        result.sort_values(["_detector_order", "_detector_label"], kind="mergesort")
+        .drop(columns=["_detector_order", "_detector_label"])
+        .reset_index(drop=True)
+    )
 
 
 def _setup_trade_statistics(
