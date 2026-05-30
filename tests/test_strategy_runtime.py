@@ -91,6 +91,29 @@ class FilterOnlyStrategy:
         raise AssertionError("显式策略运行结果可用时，不应回退到 generate_orders。")
 
 
+class MissingFilterNameStrategy:
+    name = "missing_filter_strategy"
+
+    def generate_order_plan(self, bars: pd.DataFrame, *, timeframe: str = "") -> StrategyRunResult:
+        filters = pd.DataFrame(
+            [
+                {
+                    "order_id": "missing-filter-name",
+                    "event_id": "event:missing-filter-name",
+                    "strategy_name": "",
+                    "detector_name": "trend",
+                    "status": "rejected",
+                    "reason": "custom_filter",
+                    "filter_name": "pure_strategy",
+                }
+            ]
+        )
+        return StrategyRunResult(filter_decisions=filters)
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        raise AssertionError("显式策略运行结果可用时，不应回退到 generate_orders。")
+
+
 def test_execute_strategy_prefers_explicit_strategy_run_result() -> None:
     strategy = ExplicitPlanStrategy()
 
@@ -102,6 +125,14 @@ def test_execute_strategy_prefers_explicit_strategy_run_result() -> None:
     assert result.orders["timeframe"].tolist() == ["15m"]
     assert result.filter_decisions.columns.tolist() == STRATEGY_FILTER_DECISION_COLUMNS
     assert result.filter_decisions.loc[0, "reason"] == "custom_filter"
+
+
+def test_execute_strategy_fills_missing_filter_strategy_names() -> None:
+    result = execute_strategy(MissingFilterNameStrategy(), pd.DataFrame(), timeframe="15m")
+
+    assert result.strategy_name == "missing_filter_strategy"
+    assert result.filter_decisions.loc[0, "strategy_name"] == "missing_filter_strategy"
+    assert result.filter_decisions.loc[0, "base_strategy_name"] == "missing_filter_strategy"
 
 
 def test_execute_strategies_orders_filter_decisions_by_signal_time_across_strategies() -> None:

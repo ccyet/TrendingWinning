@@ -89,7 +89,7 @@ def _normalize_strategy_run_result(result: StrategyRunResult, *, strategy_name: 
         orders["strategy_name"] = orders["strategy_name"].replace("", normalized_name).fillna(normalized_name)
     return StrategyRunResult(
         orders=orders,
-        filter_decisions=normalize_strategy_filter_decisions(result.filter_decisions),
+        filter_decisions=_normalize_filter_decision_frame(result.filter_decisions, strategy_name=normalized_name),
         strategy_name=normalized_name,
     )
 
@@ -103,6 +103,18 @@ def _normalize_order_frame(orders: pd.DataFrame) -> pd.DataFrame:
         if column not in result.columns:
             result[column] = pd.NA
     return result[ORDER_COLUMNS]
+
+
+def _normalize_filter_decision_frame(decisions: pd.DataFrame, *, strategy_name: str) -> pd.DataFrame:
+    """补齐策略过滤日志字段；缺少策略名时用当前运行策略名兜底，便于统计归组。"""
+    result = normalize_strategy_filter_decisions(decisions)
+    if not strategy_name or result.empty:
+        return result
+    result = result.copy()
+    for column in ("strategy_name", "base_strategy_name"):
+        missing = result[column].isna() | result[column].astype("string").str.strip().eq("")
+        result.loc[missing.fillna(False), column] = strategy_name
+    return result
 
 
 def _sort_strategy_filter_decisions(decisions: pd.DataFrame) -> pd.DataFrame:
