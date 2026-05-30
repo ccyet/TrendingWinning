@@ -10,6 +10,7 @@ from trending_winning.backtest.portfolio import (
     PortfolioConfig,
     _build_portfolio_equity_curve_from_normalized,
     _candidate_trades_by_entry_time,
+    build_portfolio_equity_curve,
     run_portfolio_backtest,
     run_portfolio_order_backtest,
     run_portfolio_order_backtest_from_normalized,
@@ -442,6 +443,60 @@ def test_portfolio_backtest_limits_short_notional_by_margin_rate() -> None:
     assert result.trades.loc[0, "capital_fraction"] == pytest.approx(0.5)
     assert result.trades.loc[0, "margin_fraction"] == pytest.approx(1.0)
     assert result.trades.loc[0, "return_pct"] == pytest.approx(result.trades.loc[0, "raw_return_pct"] * 0.5)
+
+
+def test_portfolio_equity_curve_reports_marked_margin_exposure_for_shorts() -> None:
+    strategies = [
+        FixedOrderStrategy(
+            "channel_strategy",
+            [
+                _order(
+                    strategy_name="channel_strategy",
+                    symbol="000002.SZ",
+                    entry_price=19.5,
+                    stop_price=20.5,
+                    target_price=18.7,
+                    side="short",
+                )
+            ],
+        )
+    ]
+
+    result = run_portfolio_backtest(
+        _short_bars(),
+        strategies,
+        BacktestConfig(max_holding_bars=2),
+        PortfolioConfig(max_open_positions=1, capital_per_trade=1.0, short_margin_rate=2.0),
+    )
+
+    open_row = result.equity_curve.loc[result.equity_curve["open_positions"] == 1].iloc[0]
+    expected_margin_exposure = abs(open_row["position_value"]) * 2.0 / open_row["net_value"]
+    assert "margin_exposure" in result.equity_curve.columns
+    assert open_row["margin_exposure"] == pytest.approx(expected_margin_exposure)
+    assert open_row["margin_exposure"] > open_row["gross_exposure"]
+    assert result.stats["max_margin_exposure"] == pytest.approx(result.equity_curve["margin_exposure"].max())
+
+
+def test_portfolio_equity_curve_defaults_margin_exposure_to_gross_when_margin_column_missing() -> None:
+    trades = pd.DataFrame(
+        [
+            {
+                "stock_code": "000001.SZ",
+                "side": "long",
+                "entry_date": pd.Timestamp("2026-05-25 10:00:00"),
+                "entry_price": 10.4,
+                "exit_date": pd.Timestamp("2026-05-25 10:30:00"),
+                "raw_return_pct": 0.0,
+                "capital_fraction": 0.5,
+                "portfolio_priority": 0,
+            }
+        ]
+    )
+
+    equity = build_portfolio_equity_curve(_portfolio_bars(), trades)
+
+    open_row = equity.loc[equity["open_positions"] == 1].iloc[0]
+    assert open_row["margin_exposure"] == pytest.approx(open_row["gross_exposure"])
 
 
 def test_portfolio_backtest_normalizes_short_side_before_margin_allocation() -> None:

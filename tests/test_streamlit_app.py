@@ -303,6 +303,8 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "market_bar_count": [120, 80],
             "exposure_bars": [30, 20],
             "exposure_bar_ratio": [0.25, 0.25],
+            "avg_margin_exposure": [0.45, 0.0],
+            "max_margin_exposure": [1.5, 0.0],
             "take_profit_exit_count": [2, 0],
             "trailing_take_profit_exit_rate": [0.25, 0.0],
             "stop_loss_exit_rate": [0.5, 1.0],
@@ -336,6 +338,8 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["市场K数"].tolist() == ["120", "80"]
     assert display["场内K数"].tolist() == ["30", "20"]
     assert display["场内时间比例"].tolist() == ["25.00%", "25.00%"]
+    assert display["平均保证金暴露"].tolist() == ["45.00%", "0.00%"]
+    assert display["最大保证金暴露"].tolist() == ["150.00%", "0.00%"]
     assert display["止盈退出次数"].tolist() == ["2", "0"]
     assert display["回撤止盈退出比例"].tolist() == ["25.00%", "0.00%"]
     assert display["止损退出比例"].tolist() == ["50.00%", "100.00%"]

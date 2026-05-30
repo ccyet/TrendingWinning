@@ -95,6 +95,8 @@ EQUITY_STAT_KEYS = [
     "time_under_water_ratio",
     "avg_gross_exposure",
     "max_gross_exposure",
+    "avg_margin_exposure",
+    "max_margin_exposure",
     "exposure_bar_ratio",
     "avg_open_positions",
     "max_open_positions",
@@ -449,6 +451,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     annualized_sharpe = _annualized_ratio(returns, std, annual_periods)
     annualized_sortino = _annualized_ratio(returns, downside_std, annual_periods)
     gross_exposure = _numeric_column(data, "gross_exposure")
+    margin_exposure = _numeric_column(data, "margin_exposure")
     open_positions = _numeric_column(data, "open_positions")
     cash_ratio = _ratio_column_to_net_value(data, "cash", net_value)
     net_exposure = _ratio_column_to_net_value(data, "position_value", net_value)
@@ -470,6 +473,8 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         "time_under_water_ratio": time_under_water_ratio,
         "avg_gross_exposure": _mean_or_zero(gross_exposure),
         "max_gross_exposure": _round_float(gross_exposure.max()) if not gross_exposure.empty else 0.0,
+        "avg_margin_exposure": _mean_or_zero(margin_exposure),
+        "max_margin_exposure": _round_float(margin_exposure.max()) if not margin_exposure.empty else 0.0,
         "exposure_bar_ratio": _round_float((gross_exposure > 0).mean()) if not gross_exposure.empty else 0.0,
         "avg_open_positions": _mean_or_zero(open_positions),
         "max_open_positions": _round_float(open_positions.max()) if not open_positions.empty else 0.0,

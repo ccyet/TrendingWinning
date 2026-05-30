@@ -294,6 +294,7 @@ def test_compute_equity_statistics_reports_annualized_return_and_exposure_metric
             "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29"]),
             "net_value": [1.0, 1.02, 1.01, 1.05, 1.04],
             "gross_exposure": [0.0, 0.5, 1.0, 0.25, 0.0],
+            "margin_exposure": [0.0, 0.5, 1.5, 0.25, 0.0],
             "open_positions": [0, 1, 2, 1, 0],
         }
     )
@@ -313,6 +314,8 @@ def test_compute_equity_statistics_reports_annualized_return_and_exposure_metric
     assert stats["time_under_water_ratio"] == pytest.approx(2 / 5)
     assert stats["avg_gross_exposure"] == pytest.approx(0.35)
     assert stats["max_gross_exposure"] == pytest.approx(1.0)
+    assert stats["avg_margin_exposure"] == pytest.approx(0.45)
+    assert stats["max_margin_exposure"] == pytest.approx(1.5)
     assert stats["exposure_bar_ratio"] == pytest.approx(0.6)
     assert stats["avg_open_positions"] == pytest.approx(0.8)
     assert stats["max_open_positions"] == pytest.approx(2.0)
