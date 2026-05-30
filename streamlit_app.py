@@ -102,6 +102,24 @@ DISPLAY_COLUMN_LABELS = {
     "exit_reason": "退出原因",
     "status": "状态",
     "reason": "原因",
+    "parameter": "参数",
+    "value": "取值",
+    "case_count": "参数组数",
+    "pareto_case_count": "Pareto候选数",
+    "pareto_hit_rate": "Pareto命中率",
+    "positive_return_case_count": "正收益组数",
+    "positive_return_rate": "正收益率",
+    "avg_total_return": "平均总收益",
+    "median_total_return": "中位总收益",
+    "std_total_return": "总收益标准差",
+    "best_total_return": "最好总收益",
+    "worst_total_return": "最差总收益",
+    "avg_max_drawdown": "平均最大回撤",
+    "avg_monthly_worst_return": "平均月度最差收益",
+    "avg_monthly_return_std": "平均月度收益波动",
+    "best_sweep_rank": "最佳排名",
+    "best_case_name": "最佳参数组",
+    "best_case_config_hash": "最佳配置指纹",
     "timeframe": "周期",
     "date": "日期",
     "period": "周期",
@@ -721,7 +739,7 @@ def _format_date_value(value: object) -> str | None:
 
 def _is_percent_column(column: str) -> bool:
     name = column.lower()
-    if name.endswith("_pct") or name.endswith("_return") or name.endswith("_drawdown"):
+    if name.endswith("_pct") or name.endswith("_rate") or name.endswith("_return") or name.endswith("_drawdown"):
         return True
     return name in {
         "return",
@@ -782,7 +800,7 @@ def _format_percent_value(column: str, numeric: float) -> str:
 
 def _is_integer_column(column: str) -> bool:
     name = column.lower()
-    if name.endswith("_id"):
+    if name.endswith("_id") or name.endswith("_count"):
         return True
     return name in {
         "trade_no",

@@ -243,6 +243,12 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     frame = pd.DataFrame(
         {
             "stock_code": ["000001.SZ", "600519.SH"],
+            "case_count": [2, 10],
+            "pareto_hit_rate": [0.25, 1.0],
+            "positive_return_rate": [0.5, 0.9],
+            "std_total_return": [0.0312, 0.12],
+            "best_total_return": [0.2, 1.0],
+            "worst_total_return": [-0.1, 0.2],
             "trade_count": [3, 4],
             "win_rate": [0.096, 1.0],
             "total_return": [0.096, 1.0],
@@ -260,6 +266,12 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert "stock_code" not in display.columns
     assert display["股票名称"].tolist() == ["平安银行", "贵州茅台"]
     assert custom_display["股票名称"].tolist()[0] == "自定义银行"
+    assert display["参数组数"].tolist() == ["2", "10"]
+    assert display["Pareto命中率"].tolist() == ["25.00%", "100.00%"]
+    assert display["正收益率"].tolist() == ["50.00%", "90.00%"]
+    assert display["总收益标准差"].tolist() == ["3.12%", "12.00%"]
+    assert display["最好总收益"].tolist() == ["20.00%", "100.00%"]
+    assert display["最差总收益"].tolist() == ["-10.00%", "20.00%"]
     assert display["交易次数"].tolist() == ["3", "4"]
     assert display["胜率"].tolist() == ["9.60%", "100.00%"]
     assert display["总收益"].tolist() == ["9.60%", "100.00%"]

@@ -1446,6 +1446,12 @@ def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepR
         "value",
         "case_count",
         "pareto_case_count",
+        "pareto_hit_rate",
+        "positive_return_case_count",
+        "positive_return_rate",
+        "std_total_return",
+        "best_total_return",
+        "worst_total_return",
         "best_sweep_rank",
         "best_case_name",
         "best_case_config_hash",
@@ -1462,11 +1468,14 @@ def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepR
         labels = table[parameter].map(_parameter_value_label)
         for value, group in table.groupby(labels, sort=False, dropna=False):
             best = group.sort_values("sweep_rank", ascending=True, kind="mergesort").iloc[0]
+            case_count = int(len(group))
+            pareto_case_count = _truthy_column_count(group, "is_pareto_efficient")
             row: dict[str, object] = {
                 "parameter": str(parameter),
                 "value": str(value),
-                "case_count": int(len(group)),
-                "pareto_case_count": _truthy_column_count(group, "is_pareto_efficient"),
+                "case_count": case_count,
+                "pareto_case_count": pareto_case_count,
+                **_parameter_robustness_metrics(group, case_count=case_count, pareto_case_count=pareto_case_count),
                 "best_sweep_rank": _json_scalar(best.get("sweep_rank")),
                 "best_case_name": str(best.get("case_name", "")),
                 "best_case_config_hash": str(best.get("case_config_hash", "")),
@@ -1478,6 +1487,25 @@ def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepR
         return pd.DataFrame(columns=columns)
     summary = pd.DataFrame(rows, columns=columns)
     return summary.sort_values(["parameter", "best_sweep_rank", "value"], kind="mergesort").reset_index(drop=True)
+
+
+def _parameter_robustness_metrics(
+    group: pd.DataFrame,
+    *,
+    case_count: int,
+    pareto_case_count: int,
+) -> dict[str, float]:
+    """汇总单个参数值的稳健性，避免只按平均收益选参数。"""
+    total_return = _numeric_group_values(group, "total_return")
+    positive_return_count = int(total_return.gt(0).sum()) if not total_return.empty else 0
+    return {
+        "pareto_hit_rate": float(pareto_case_count / case_count) if case_count else 0.0,
+        "positive_return_case_count": float(positive_return_count),
+        "positive_return_rate": float(positive_return_count / case_count) if case_count else 0.0,
+        "std_total_return": float(total_return.std(ddof=0)) if not total_return.empty else 0.0,
+        "best_total_return": float(total_return.max()) if not total_return.empty else 0.0,
+        "worst_total_return": float(total_return.min()) if not total_return.empty else 0.0,
+    }
 
 
 def _case_setup_statistics(trades: pd.DataFrame, *, case_name: str, case_config_hash: str) -> pd.DataFrame:
@@ -1572,14 +1600,18 @@ def _ranked_case_decision_columns(group_fields: tuple[str, ...]) -> pd.Index:
 
 
 def _numeric_group_metric(group: pd.DataFrame, column: str, method: str) -> float:
-    if column not in group.columns:
-        return 0.0
-    values = pd.to_numeric(group[column], errors="coerce").dropna()
+    values = _numeric_group_values(group, column)
     if values.empty:
         return 0.0
     if method == "median":
         return float(values.median())
     return float(values.mean())
+
+
+def _numeric_group_values(group: pd.DataFrame, column: str) -> pd.Series:
+    if column not in group.columns:
+        return pd.Series(dtype=float)
+    return pd.to_numeric(group[column], errors="coerce").dropna()
 
 
 def _parameter_value_label(value: object) -> str:
