@@ -398,7 +398,15 @@ def test_strategy_trade_markers_include_entries_exits_and_stop_loss_on_continuou
 
     assert markers["标注"].tolist() == ["开多", "止损", "开空", "平空"]
     assert markers["K序号"].tolist() == [1, 2, 2, 3]
-    assert markers["原因"].tolist() == ["H2 多头二次入场", "止损", "L2 空头二次入场", "止盈"]
+    assert markers["开仓/平仓原因"].tolist() == ["H2 多头二次入场", "止损", "L2 空头二次入场", "止盈"]
+    assert markers["开仓/平仓时间"].tolist() == [
+        "2026-05-25 10:30",
+        "2026-05-25 11:30",
+        "2026-05-25 11:00",
+        "2026-05-25 14:00",
+    ]
+    assert "原因" not in markers.columns
+    assert "时间文本" not in markers.columns
     assert "订单ID" not in markers.columns
     assert stops["止损价"].tolist() == [10.0, 10.6]
     assert stops["开始K序号"].tolist() == [1, 2]
@@ -442,16 +450,21 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
     )
     spec = chart.to_dict()
 
-    assert spec["height"] == 420
+    assert spec["height"] == 520
+    assert spec["width"] == "container"
     assert len(spec["layer"]) == 8
     assert "params" in spec
+    assert spec["params"][0]["bind"] == "scales"
+    assert spec["params"][0]["select"]["encodings"] == ["x"]
     assert "K序号" in str(spec)
     assert spec["layer"][0]["encoding"]["x"]["field"] == "K序号"
     assert spec["layer"][0]["encoding"]["x"]["type"] == "quantitative"
     assert "开多" in str(spec)
     assert "止损" in str(spec)
     assert "开仓/平仓原因" in str(spec)
+    assert "开仓/平仓时间" in str(spec)
     assert "订单" not in str(spec)
+    assert "时间文本" not in str(spec)
 
 
 def test_strategy_kline_symbol_options_prioritize_symbols_with_trades() -> None:

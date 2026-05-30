@@ -976,7 +976,7 @@ def _strategy_kline_symbol_options(bars: pd.DataFrame, trades: pd.DataFrame) -> 
 
 def _strategy_kline_chart_frame(bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
     """把单只股票的完整回测窗口 K 线转成图表字段，不因交易区间裁剪样本。"""
-    columns = ["K序号", "时间", "时间文本", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"]
+    columns = ["K序号", "时间", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"]
     normalized = normalize_bars(bars)
     normalized_symbol = normalize_symbol(symbol)
     if normalized.empty or not normalized_symbol:
@@ -996,7 +996,6 @@ def _strategy_kline_chart_frame(bars: pd.DataFrame, symbol: str) -> pd.DataFrame
         }
     )[["时间", "股票代码", "开盘", "最高", "最低", "收盘"]]
     chart.insert(0, "K序号", range(len(chart)))
-    chart["时间文本"] = pd.to_datetime(chart["时间"], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
     chart["涨跌"] = chart["收盘"].ge(chart["开盘"]).map({True: "上涨", False: "下跌"})
     return chart[columns].reset_index(drop=True)
 
@@ -1065,7 +1064,7 @@ def _marker_time_text(value: object) -> str:
 
 def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: pd.DataFrame) -> pd.DataFrame:
     """把成交表转成连续 K 线图上的开仓、平仓和止损标注。"""
-    columns = ["K序号", "时间", "时间文本", "价格", "标注", "方向", "原因"]
+    columns = ["K序号", "时间", "开仓/平仓时间", "价格", "标注", "方向", "开仓/平仓原因"]
     normalized_symbol = normalize_symbol(symbol)
     required = {"stock_code", "side", "entry_date", "entry_price", "exit_date", "exit_price", "exit_reason"}
     if trades.empty or chart_data.empty or not normalized_symbol or not required.issubset(trades.columns):
@@ -1084,11 +1083,11 @@ def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: 
                 {
                     "K序号": entry_index,
                     "时间": entry_date,
-                    "时间文本": _marker_time_text(entry_date),
+                    "开仓/平仓时间": _marker_time_text(entry_date),
                     "价格": float(entry_price),
                     "标注": _trade_entry_label(side),
                     "方向": direction,
-                    "原因": _trade_entry_reason(row),
+                    "开仓/平仓原因": _trade_entry_reason(row),
                     "_priority": 1,
                 }
             )
@@ -1100,11 +1099,11 @@ def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str, chart_data: 
                 {
                     "K序号": exit_index,
                     "时间": exit_date,
-                    "时间文本": _marker_time_text(exit_date),
+                    "开仓/平仓时间": _marker_time_text(exit_date),
                     "价格": float(exit_price),
                     "标注": _trade_exit_label(side, str(row.get("exit_reason", ""))),
                     "方向": direction,
-                    "原因": _trade_exit_reason(row),
+                    "开仓/平仓原因": _trade_exit_reason(row),
                     "_priority": 0,
                 }
             )
@@ -1219,6 +1218,7 @@ def _build_strategy_kline_altair_chart(
         return None
 
     candle_size = max(2.0, min(8.0, 560.0 / max(len(chart_data), 1)))
+    zoom = alt.selection_interval(bind="scales", encodings=["x"], name="kline_zoom")
     base = alt.Chart(chart_data).encode(
         x=alt.X(
             "K序号:Q",
@@ -1313,10 +1313,9 @@ def _build_strategy_kline_altair_chart(
             ),
             tooltip=[
                 alt.Tooltip("标注:N"),
-                alt.Tooltip("方向:N"),
                 alt.Tooltip("价格:Q", format=".3f"),
-                alt.Tooltip("时间文本:N", title="开仓/平仓时间"),
-                alt.Tooltip("原因:N", title="开仓/平仓原因"),
+                alt.Tooltip("开仓/平仓时间:N"),
+                alt.Tooltip("开仓/平仓原因:N"),
             ],
         )
         layers.append(
@@ -1327,7 +1326,7 @@ def _build_strategy_kline_altair_chart(
         )
         layers.append(
             alt.Chart(markers)
-            .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["止损", "平多", "平空"]))
+            .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["止损", "回撤止盈", "平多", "平空"]))
             .mark_rule(color="#0f172a", opacity=0.1, strokeDash=[1, 5])
             .encode(x=alt.X("K序号:Q", title="K线序号（连续压缩）"))
         )
@@ -1351,10 +1350,10 @@ def _build_strategy_kline_altair_chart(
     return (
         alt.layer(*layers)
         .resolve_scale(y="shared")
-        .properties(height=420)
-        .interactive()
+        .properties(width="container", height=520)
+        .add_params(zoom)
         .configure_axis(labelFontSize=11, titleFontSize=12)
-        .configure_view(strokeWidth=0)
+        .configure_view(continuousWidth=900, continuousHeight=520, strokeWidth=0)
     )
 
 
