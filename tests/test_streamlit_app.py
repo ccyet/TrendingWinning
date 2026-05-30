@@ -477,7 +477,7 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
     assert len(spec["layer"]) == 8
     assert "params" in spec
     assert spec["params"][0]["bind"] == "scales"
-    assert spec["params"][0]["select"]["encodings"] == ["x"]
+    assert spec["params"][0]["select"]["encodings"] == ["x", "y"]
     assert "K序号" in str(spec)
     assert spec["layer"][0]["encoding"]["x"]["field"] == "K序号"
     assert spec["layer"][0]["encoding"]["x"]["type"] == "quantitative"

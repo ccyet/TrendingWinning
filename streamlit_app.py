@@ -1234,7 +1234,7 @@ def _build_strategy_kline_altair_chart(
         return None
 
     candle_size = max(2.0, min(8.0, 560.0 / max(len(chart_data), 1)))
-    zoom = alt.selection_interval(bind="scales", encodings=["x"], name="kline_zoom")
+    zoom = alt.selection_interval(bind="scales", encodings=["x", "y"], name="kline_zoom")
     base = alt.Chart(chart_data).encode(
         x=alt.X(
             "K序号:Q",

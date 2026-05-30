@@ -371,15 +371,30 @@ def _first_legacy_long_exit(
 ) -> tuple[int, float, str]:
     """旧版突破回测的长仓退出；保持 stop 优先于 target 的原始语义。"""
     path = group.loc[first_exit_index:last_exit_index]
+    opens = pd.to_numeric(path["open"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
+    gap_stop = opens <= stop_price
+    gap_target = opens >= target_price
     hit_stop = lows <= stop_price
     hit_target = highs >= target_price
     hit_trailing, trailing_prices = _legacy_long_trailing_take_profit(path, entry_price, cfg)
+    gap_trailing = hit_trailing & (opens <= trailing_prices)
     reasons = np.full(len(path), "", dtype=object)
     prices = np.full(len(path), np.nan)
-    reasons[hit_stop] = "stop_loss"
-    prices[hit_stop] = stop_price
+
+    reasons[gap_stop] = "stop_loss"
+    prices[gap_stop] = opens[gap_stop]
+    gap_target_only = (reasons == "") & gap_target
+    reasons[gap_target_only] = "take_profit"
+    prices[gap_target_only] = opens[gap_target_only]
+    gap_trailing_only = (reasons == "") & gap_trailing
+    reasons[gap_trailing_only] = "trailing_take_profit"
+    prices[gap_trailing_only] = opens[gap_trailing_only]
+
+    stop_only = (reasons == "") & hit_stop
+    reasons[stop_only] = "stop_loss"
+    prices[stop_only] = stop_price
     target_only = (reasons == "") & hit_target
     reasons[target_only] = "take_profit"
     prices[target_only] = target_price

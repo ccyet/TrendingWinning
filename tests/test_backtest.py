@@ -93,7 +93,7 @@ def test_legacy_backtest_applies_fee_and_slippage_to_actual_trade_prices() -> No
     trade = result.trades.iloc[0]
     expected_entry = 10.0 * 1.01
     expected_target = expected_entry * 1.10
-    expected_exit = expected_target * 0.99
+    expected_exit = 11.2 * 0.99
     expected_return_pct = ((expected_exit / expected_entry - 1.0) - 0.002) * 100.0
 
     assert trade["planned_entry_price"] == pytest.approx(10.0)
@@ -102,6 +102,41 @@ def test_legacy_backtest_applies_fee_and_slippage_to_actual_trade_prices() -> No
     assert trade["exit_price"] == pytest.approx(expected_exit)
     assert trade["return_pct"] == pytest.approx(expected_return_pct)
     assert result.stats["total_return"] == pytest.approx(expected_return_pct / 100.0)
+
+
+def test_legacy_backtest_trailing_take_profit_gap_exits_at_open() -> None:
+    scanned = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                ["2026-05-25 09:30:00", "2026-05-25 10:00:00", "2026-05-25 10:30:00"]
+            ),
+            "stock_code": ["000001.SZ"] * 3,
+            "open": [10.0, 10.8, 10.4],
+            "high": [10.2, 11.0, 10.5],
+            "low": [9.8, 10.7, 10.3],
+            "close": [10.0, 10.9, 10.4],
+            "volume": [1000.0, 1000.0, 1000.0],
+            "amount": [10000.0, 10900.0, 10400.0],
+            "breakout_trigger": [True, False, False],
+            "trigger_price": [10.0, pd.NA, pd.NA],
+        }
+    )
+
+    result = run_backtest(
+        scanned,
+        BacktestConfig(
+            take_profit_pct=0.50,
+            stop_loss_pct=0.10,
+            max_holding_bars=2,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx(10.4)
+    assert trade["return_pct"] == pytest.approx(4.0)
 
 
 def test_legacy_backtest_uses_single_full_position_across_symbols() -> None:
