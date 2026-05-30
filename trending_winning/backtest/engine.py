@@ -397,6 +397,9 @@ def _first_legacy_long_exit(
     stop_only = (reasons == "") & hit_stop
     reasons[stop_only] = "stop_loss"
     prices[stop_only] = stop_price
+    target_trailing_conflict = (reasons == "") & hit_target & hit_trailing
+    reasons[target_trailing_conflict] = "trailing_take_profit"
+    prices[target_trailing_conflict] = trailing_prices[target_trailing_conflict]
     target_only = (reasons == "") & hit_target
     reasons[target_only] = "take_profit"
     prices[target_only] = target_price

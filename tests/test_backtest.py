@@ -250,6 +250,45 @@ def test_legacy_backtest_trailing_take_profit_ignores_zero_liquidity_extreme() -
     assert trade["exit_price"] == pytest.approx(11.6)
 
 
+def test_legacy_backtest_resolves_target_and_trailing_hit_in_same_bar_conservatively() -> None:
+    scanned = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2026-05-25 09:30:00",
+                    "2026-05-25 10:00:00",
+                    "2026-05-25 10:30:00",
+                    "2026-05-25 11:00:00",
+                ]
+            ),
+            "stock_code": ["000001.SZ"] * 4,
+            "open": [10.0, 10.2, 10.8, 11.0],
+            "high": [10.1, 10.3, 11.0, 11.6],
+            "low": [9.9, 10.1, 10.7, 10.6],
+            "close": [10.0, 10.2, 10.9, 11.2],
+            "volume": [1000.0, 1200.0, 1300.0, 1400.0],
+            "amount": [10000.0, 12240.0, 14170.0, 15680.0],
+            "breakout_trigger": [True, False, False, False],
+            "trigger_price": [10.0, pd.NA, pd.NA, pd.NA],
+        }
+    )
+
+    result = run_backtest(
+        scanned,
+        BacktestConfig(
+            take_profit_pct=0.15,
+            stop_loss_pct=0.05,
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.05,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx(10.67)
+
+
 def test_legacy_backtest_uses_single_full_position_across_symbols() -> None:
     rows: list[dict[str, object]] = []
     for symbol, base_price in (("000001.SZ", 10.0), ("000002.SZ", 20.0)):
