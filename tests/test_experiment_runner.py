@@ -837,6 +837,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "parameter_summary.csv").exists()
     assert (output_dir / "case_setup_stats.csv").exists()
+    assert (output_dir / "case_symbol_stats.csv").exists()
     assert (output_dir / "case_setup_order_decision_stats.csv").exists()
     assert (output_dir / "case_setup_strategy_filter_stats.csv").exists()
     assert (output_dir / "summary.json").exists()
@@ -851,6 +852,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
     saved_case_setup = pd.read_csv(output_dir / "case_setup_stats.csv")
+    saved_case_symbol = pd.read_csv(output_dir / "case_symbol_stats.csv")
     saved_case_setup_order_decisions = pd.read_csv(output_dir / "case_setup_order_decision_stats.csv")
     saved_case_setup_strategy_filters = pd.read_csv(output_dir / "case_setup_strategy_filter_stats.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
@@ -906,6 +908,22 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_parameter_summary["best_sweep_rank"].min() == 1
     _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="risk_reward")
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "stock_name",
+        "stock_code",
+        "trade_count",
+    }.issubset(saved_case_symbol.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "stock_name", "stock_code"}.issubset(
+        result.symbol_stats.columns
+    )
+    assert "平安银行" in saved_case_symbol["stock_name"].tolist()
+    assert "万科A" in saved_case_symbol["stock_name"].tolist()
+    assert set(saved_case_symbol["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
     assert {
         "sweep_rank",
         "pareto_rank",
@@ -1581,6 +1599,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert (output_dir / "pareto.csv").exists()
     assert (output_dir / "parameter_summary.csv").exists()
     assert (output_dir / "case_setup_stats.csv").exists()
+    assert (output_dir / "case_symbol_stats.csv").exists()
     assert (output_dir / "case_setup_order_decision_stats.csv").exists()
     assert (output_dir / "case_setup_strategy_filter_stats.csv").exists()
     assert (output_dir / "summary.json").exists()
@@ -1594,6 +1613,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     saved_pareto = pd.read_csv(output_dir / "pareto.csv")
     saved_parameter_summary = pd.read_csv(output_dir / "parameter_summary.csv")
     saved_case_setup = pd.read_csv(output_dir / "case_setup_stats.csv")
+    saved_case_symbol = pd.read_csv(output_dir / "case_symbol_stats.csv")
     saved_case_setup_order_decisions = pd.read_csv(output_dir / "case_setup_order_decision_stats.csv")
     saved_case_setup_strategy_filters = pd.read_csv(output_dir / "case_setup_strategy_filter_stats.csv")
     saved_inventory = pd.read_csv(output_dir / "data_inventory.csv")
@@ -1643,6 +1663,21 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_parameter_summary["best_sweep_rank"].min() == 1
     _assert_parameter_summary_decision_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
     _assert_parameter_summary_robustness_metrics(saved_parameter_summary, saved_sweep, parameter="fee_rate")
+    assert {
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        "stock_name",
+        "stock_code",
+        "trade_count",
+    }.issubset(saved_case_symbol.columns)
+    assert {"sweep_rank", "pareto_rank", "case_name", "case_config_hash", "stock_name", "stock_code"}.issubset(
+        result.symbol_stats.columns
+    )
+    assert saved_case_symbol["stock_name"].eq("平安银行").all()
+    assert set(saved_case_symbol["case_config_hash"]).issubset(set(saved_sweep["case_config_hash"]))
     assert {
         "sweep_rank",
         "pareto_rank",

@@ -184,6 +184,16 @@ SWEEP_CASE_SETUP_COLUMNS = (
     *SETUP_STAT_FIELDS,
     *STAT_KEYS,
 )
+SWEEP_CASE_SYMBOL_COLUMNS = (
+    "sweep_rank",
+    "pareto_rank",
+    "is_pareto_efficient",
+    "case_name",
+    "case_config_hash",
+    "stock_name",
+    "stock_code",
+    *STAT_KEYS,
+)
 
 
 @dataclass(frozen=True)
@@ -382,6 +392,7 @@ class PortfolioSweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -400,6 +411,7 @@ class SingleStrategySweepResult:
     filtered_limit_open_count: int
     elapsed_seconds: float
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -561,8 +573,10 @@ def run_portfolio_parameter_sweep(
 
     rows: list[dict[str, object]] = []
     setup_frames: list[pd.DataFrame] = []
+    symbol_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
     setup_strategy_filter_frames: list[pd.DataFrame] = []
+    symbol_name_by_code = _symbol_name_map_for_config(config)
     data_stats = summarize_data_management(
         data.data_audit,
         data.limit_filter_audit,
@@ -644,6 +658,15 @@ def run_portfolio_parameter_sweep(
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
         setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        symbol_frames.append(
+            _case_symbol_statistics(
+                backtest.trades,
+                variant,
+                symbol_name_by_code=symbol_name_by_code,
+                case_name=case_name,
+                case_config_hash=case_hash,
+            )
+        )
         setup_order_decision_frames.append(
             _case_decision_statistics(
                 backtest.order_decisions,
@@ -663,6 +686,7 @@ def run_portfolio_parameter_sweep(
 
     table = _rank_sweep_table(pd.DataFrame(rows))
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
+    symbol_stats = _ranked_case_symbol_statistics(_concat_case_symbol_statistics(symbol_frames), table)
     setup_order_decision_stats = _ranked_case_decision_statistics(
         _concat_case_decision_statistics(setup_order_decision_frames, group_fields=SETUP_ORDER_DECISION_FIELDS),
         table,
@@ -684,6 +708,7 @@ def run_portfolio_parameter_sweep(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         setup_stats=setup_stats,
+        symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
         setup_strategy_filter_stats=setup_strategy_filter_stats,
     )
@@ -707,8 +732,10 @@ def run_single_strategy_parameter_sweep(
 
     rows: list[dict[str, object]] = []
     setup_frames: list[pd.DataFrame] = []
+    symbol_frames: list[pd.DataFrame] = []
     setup_order_decision_frames: list[pd.DataFrame] = []
     setup_strategy_filter_frames: list[pd.DataFrame] = []
+    symbol_name_by_code = _symbol_name_map_for_config(config)
     data_stats = summarize_data_management(
         data.data_audit,
         data.limit_filter_audit,
@@ -762,6 +789,15 @@ def run_single_strategy_parameter_sweep(
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
         setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        symbol_frames.append(
+            _case_symbol_statistics(
+                backtest.trades,
+                variant,
+                symbol_name_by_code=symbol_name_by_code,
+                case_name=case_name,
+                case_config_hash=case_hash,
+            )
+        )
         setup_order_decision_frames.append(
             _case_decision_statistics(
                 backtest.order_decisions,
@@ -781,6 +817,7 @@ def run_single_strategy_parameter_sweep(
 
     table = _rank_sweep_table(pd.DataFrame(rows))
     setup_stats = _ranked_case_setup_statistics(_concat_case_setup_statistics(setup_frames), table)
+    symbol_stats = _ranked_case_symbol_statistics(_concat_case_symbol_statistics(symbol_frames), table)
     setup_order_decision_stats = _ranked_case_decision_statistics(
         _concat_case_decision_statistics(setup_order_decision_frames, group_fields=SETUP_ORDER_DECISION_FIELDS),
         table,
@@ -802,6 +839,7 @@ def run_single_strategy_parameter_sweep(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         setup_stats=setup_stats,
+        symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
         setup_strategy_filter_stats=setup_strategy_filter_stats,
     )
@@ -1157,9 +1195,18 @@ def _symbol_metadata_for_config(
     return pd.DataFrame(rows, columns=pd.Index(SYMBOL_METADATA_COLUMNS))
 
 
+def _symbol_name_map_for_config(
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+) -> dict[str, str]:
+    metadata = _symbol_metadata_for_config(config)
+    return {str(row.stock_code): str(row.stock_name) for row in metadata.itertuples(index=False)}
+
+
 def _symbol_grouped_trade_statistics(
     trades: pd.DataFrame,
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    *,
+    symbol_name_by_code: Mapping[str, str] | None = None,
 ) -> pd.DataFrame:
     """标的维度统计优先带股票名称；代码保留为复核键，不再让用户只看 stock_code。"""
     stats = _grouped_trade_statistics(trades, by="stock_code")
@@ -1167,24 +1214,37 @@ def _symbol_grouped_trade_statistics(
         return stats
     if "stock_code" not in stats.columns:
         return stats
-    name_by_symbol = {
-        str(row.stock_code): str(row.stock_name)
-        for row in _symbol_metadata_for_config(config).itertuples(index=False)
-    }
+    symbols = unique_symbols(tuple(config.symbols))
+    name_by_symbol = symbol_name_by_code or _symbol_name_map_for_config(config)
     if stats.empty:
-        rows = [
-            {
-                "stock_name": name_by_symbol.get(symbol, symbol),
-                "stock_code": symbol,
-                **{key: 0.0 for key in STAT_KEYS},
-            }
-            for symbol in unique_symbols(tuple(config.symbols))
-        ]
-        return pd.DataFrame(rows, columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
+        return _zero_symbol_statistics(symbols, name_by_symbol)
     result = stats.copy()
     names = result["stock_code"].astype(str).map(lambda symbol: name_by_symbol.get(symbol, symbol))
     result.insert(0, "stock_name", names)
-    return result
+    existing_symbols = set(result["stock_code"].astype(str))
+    missing = [symbol for symbol in symbols if symbol not in existing_symbols]
+    if missing:
+        result = pd.concat([result, _zero_symbol_statistics(missing, name_by_symbol)], ignore_index=True)
+    symbol_order = {symbol: index for index, symbol in enumerate(symbols)}
+    result["_symbol_order"] = result["stock_code"].astype(str).map(lambda symbol: symbol_order.get(symbol, len(symbol_order)))
+    return (
+        result.sort_values(["_symbol_order", "stock_code"], kind="mergesort")
+        .drop(columns=["_symbol_order"])
+        .reset_index(drop=True)
+        .reindex(columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
+    )
+
+
+def _zero_symbol_statistics(symbols: Sequence[str], symbol_name_by_code: Mapping[str, str]) -> pd.DataFrame:
+    rows = [
+        {
+            "stock_name": symbol_name_by_code.get(symbol, symbol),
+            "stock_code": symbol,
+            **{key: 0.0 for key in STAT_KEYS},
+        }
+        for symbol in symbols
+    ]
+    return pd.DataFrame(rows, columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
 
 
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
@@ -1285,6 +1345,7 @@ def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
+    result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
@@ -1306,6 +1367,7 @@ def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
+    result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
     _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
@@ -1450,6 +1512,27 @@ def _case_setup_statistics(trades: pd.DataFrame, *, case_name: str, case_config_
     return stats
 
 
+def _case_symbol_statistics(
+    trades: pd.DataFrame,
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    *,
+    symbol_name_by_code: Mapping[str, str],
+    case_name: str,
+    case_config_hash: str,
+) -> pd.DataFrame:
+    """按 case 汇总标的表现；没有成交的样本股票也保留零值行。"""
+    stats = _symbol_grouped_trade_statistics(
+        trades,
+        config,
+        symbol_name_by_code=symbol_name_by_code,
+    )
+    if stats.empty:
+        return pd.DataFrame(columns=pd.Index(["case_name", "case_config_hash", "stock_name", "stock_code", *STAT_KEYS]))
+    stats.insert(0, "case_config_hash", case_config_hash)
+    stats.insert(0, "case_name", case_name)
+    return stats
+
+
 def _case_decision_statistics(
     decisions: pd.DataFrame,
     *,
@@ -1469,6 +1552,14 @@ def _case_decision_statistics(
 
 def _concat_case_setup_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
     columns = pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS])
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
+
+
+def _concat_case_symbol_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    columns = pd.Index(["case_name", "case_config_hash", "stock_name", "stock_code", *STAT_KEYS])
     non_empty = [frame for frame in frames if not frame.empty]
     if not non_empty:
         return pd.DataFrame(columns=columns)
@@ -1495,6 +1586,22 @@ def _ranked_case_setup_statistics(case_setup: pd.DataFrame, table: pd.DataFrame)
     return (
         merged.reindex(columns=pd.Index(SWEEP_CASE_SETUP_COLUMNS))
         .sort_values(["sweep_rank", "case_name", *SETUP_STAT_FIELDS], kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _ranked_case_symbol_statistics(case_symbol: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
+    if case_symbol.empty:
+        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_SYMBOL_COLUMNS))
+    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
+    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
+    merged = case_symbol.merge(ranks, on="case_config_hash", how="left")
+    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
+        if column not in merged.columns:
+            merged[column] = pd.NA
+    return (
+        merged.reindex(columns=pd.Index(SWEEP_CASE_SYMBOL_COLUMNS))
+        .sort_values(["sweep_rank", "case_name", "stock_name", "stock_code"], kind="mergesort")
         .reset_index(drop=True)
     )
 
