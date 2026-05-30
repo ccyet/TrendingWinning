@@ -113,6 +113,18 @@ def _partial_direct_30m_payload() -> dict[str, pd.DataFrame]:
     }
 
 
+def _direct_payload_omits_second_symbol() -> dict[str, pd.DataFrame]:
+    index = pd.to_datetime(["2026-05-25 10:00:00"])
+    return {
+        "Open": pd.DataFrame({"000001.SZ": [20.0]}, index=index),
+        "High": pd.DataFrame({"000001.SZ": [21.0]}, index=index),
+        "Low": pd.DataFrame({"000001.SZ": [19.5]}, index=index),
+        "Close": pd.DataFrame({"000001.SZ": [20.5]}, index=index),
+        "Volume": pd.DataFrame({"000001.SZ": [1000.0]}, index=index),
+        "Amount": pd.DataFrame({"000001.SZ": [20500.0]}, index=index),
+    }
+
+
 def test_fetch_tdx_bars_supports_60m_batch_payload() -> None:
     fake = FakeTq(_payload())
 
@@ -180,6 +192,25 @@ def test_fetch_tdx_bars_derives_30m_from_tdx_5m_when_direct_period_has_no_data()
 
 def test_fetch_tdx_bars_derives_only_missing_symbols_from_5m_fallback() -> None:
     fake = PeriodPayloadTq({"30m": _partial_direct_30m_payload(), "5m": _five_min_payload("000002.SZ")})
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ", "000002.SZ"),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 10:30:00",
+        timeframe="30m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert [call["period"] for call in fake.market_calls] == ["30m", "5m"]
+    assert fake.market_calls[1]["stock_list"] == ["000002.SZ"]
+    by_symbol = out.groupby("stock_code")["close"].apply(list).to_dict()
+    assert by_symbol["000001.SZ"] == [20.5]
+    assert by_symbol["000002.SZ"] == pytest.approx([10.55, 11.15])
+
+
+def test_fetch_tdx_bars_derives_symbol_omitted_by_direct_payload_from_5m_fallback() -> None:
+    fake = PeriodPayloadTq({"30m": _direct_payload_omits_second_symbol(), "5m": _five_min_payload("000002.SZ")})
 
     out = fetch_tdx_bars(
         symbols=("000001.SZ", "000002.SZ"),

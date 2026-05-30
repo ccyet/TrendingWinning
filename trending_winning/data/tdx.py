@@ -481,6 +481,7 @@ def _normalize_tdx_payload(raw_data: Any, *, symbol: str, start: str, end: str) 
         raise ValueError(f"TDX 返回错误：{raw_data.get('msg')}")
 
     selected_frames: dict[str, pd.DataFrame] = {}
+    symbol_presence: list[bool] = []
     for field in REQUIRED_FIELDS:
         key = first_present(dict(raw_data), FIELD_ALIASES[field])
         if key is None:
@@ -489,9 +490,17 @@ def _normalize_tdx_payload(raw_data: Any, *, symbol: str, start: str, end: str) 
         if not isinstance(value, pd.DataFrame):
             raise ValueError(f"TDX 字段 {key} 应为 DataFrame，实际为 {type(value).__name__}。")
         columns = {str(column): column for column in value.columns}
-        if normalized_symbol not in columns:
-            raise ValueError(f"TDX 字段 {key} 缺少标的列：{normalized_symbol}")
+        symbol_presence.append(normalized_symbol in columns)
         selected_frames[field] = value
+    if not any(symbol_presence):
+        return empty_bars()
+    if not all(symbol_presence):
+        missing_fields = [
+            field
+            for field, present in zip(REQUIRED_FIELDS, symbol_presence, strict=True)
+            if not present
+        ]
+        raise ValueError(f"TDX 标的 {normalized_symbol} 缺少部分字段列：{', '.join(missing_fields)}")
 
     if all(frame.empty for frame in selected_frames.values()):
         return empty_bars()
