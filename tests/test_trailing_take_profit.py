@@ -24,6 +24,7 @@ def test_trailing_take_profit_module_tracks_long_from_completed_profit_bar() -> 
 
     assert result.gap.tolist() == [False, False, False]
     assert result.hit.tolist() == [False, False, True]
+    assert result.armed.tolist() == [False, False, True]
     assert result.prices.tolist() == [9.7, 9.894, 10.67]
 
 
@@ -46,4 +47,5 @@ def test_trailing_take_profit_module_tracks_short_from_completed_profit_bar() ->
 
     assert result.gap.tolist() == [False, False, False]
     assert result.hit.tolist() == [False, False, True]
+    assert result.armed.tolist() == [False, False, True]
     assert result.prices.tolist() == [10.3, 10.094, 9.27]

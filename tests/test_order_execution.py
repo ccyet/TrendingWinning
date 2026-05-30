@@ -1329,6 +1329,37 @@ def test_backtest_config_rejects_invalid_trailing_take_profit_parameters() -> No
         )
 
 
+@pytest.mark.parametrize(
+    ("activation_pct", "drawdown_pct"),
+    [
+        (0.05, 0.0),
+        (0.0, 0.03),
+    ],
+)
+def test_backtest_config_rejects_half_enabled_trailing_take_profit(
+    activation_pct: float,
+    drawdown_pct: float,
+) -> None:
+    bars = _bars(
+        [
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+        ]
+    )
+
+    with pytest.raises(ValueError, match="trailing_take_profit.*同时"):
+        simulate_order_trade(
+            bars,
+            _order(side="long", entry_price=10.0, stop_price=9.5, target_price=11.5),
+            signal_index=0,
+            cfg=BacktestConfig(
+                max_holding_bars=1,
+                trailing_take_profit_activation_pct=activation_pct,
+                trailing_take_profit_drawdown_pct=drawdown_pct,
+            ),
+        )
+
+
 def test_order_execution_uses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(simulate_order_trade)
 

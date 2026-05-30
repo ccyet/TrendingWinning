@@ -322,7 +322,7 @@
         <div class="card"><b>选择目录</b><span>侧边栏选择行情根目录、复权方式；TDX 目录只在补数时使用，回测读取本地 parquet。</span></div>
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
-        <div class="card"><b>设置风控</b><span>设置最大持有 K 数、启用回撤止盈、交易方向、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
+        <div class="card"><b>设置风控</b><span>设置最大持有 K 数、启用盈利通道回撤止盈、交易方向、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
         <div class="card"><b>读取产物</b><span>先看策略K线运行区间里的开多、开空、止损标注，再看未成交原因、收益回撤、信号形态绩效和月度稳定性。</span></div>
       </div>
       <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
@@ -335,13 +335,13 @@
         <thead><tr><th>页面模块</th><th>作用</th><th>出现条件</th></tr></thead>
         <tbody>
           <tr><td>1. 样本范围</td><td>周期、标的代码、日期窗口、回测模式。</td><td>全部模式</td></tr>
-          <tr><td>2. 基础风控与成本</td><td>旧突破显示固定止盈止损；单策略和组合显示最大持有 K 数、回撤止盈开关、手续费、滑点和同 K 冲突规则。关闭回撤止盈时，启动浮盈和回撤幅度按 0 处理。</td><td>全部模式</td></tr>
+          <tr><td>2. 基础风控与成本</td><td>旧突破显示固定止盈止损；单策略和组合显示最大持有 K 数、盈利通道回撤止盈开关、手续费、滑点和同 K 冲突规则。关闭回撤止盈时，启动浮盈和回撤幅度都按 0 处理；启用时两个参数必须同时大于 0。</td><td>全部模式</td></tr>
           <tr><td>3. 数据质量检查</td><td>检查 K 线是否缺失、重复、价格异常，以及覆盖率是否足够。</td><td>全部模式</td></tr>
           <tr><td>4. 大周期方向过滤</td><td>用 60m 或 30m 判断主方向，只保留顺势入场。</td><td>现代单策略和组合策略重点使用</td></tr>
           <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、实际风险和追价过滤。</td><td>单策略回测</td></tr>
           <tr><td>5. 组合仓位与资金</td><td>组合形态、交易方向、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
-          <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，横轴和价格轴都可缩放；长样本不受 5000 行默认限制，SVG 矢量渲染放大后仍保持清晰，并标注开多、开空、止损横线、止损点和回撤止盈点。</td><td>运行后显示</td></tr>
+          <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，横轴和价格轴都可缩放；长样本不受 5000 行默认限制，SVG 矢量渲染放大后仍保持清晰，并标注开多、开空、止损横线、止损点和盈利通道回撤止盈点。</td><td>运行后显示</td></tr>
         </tbody>
       </table>
       <div class="grid">
@@ -640,8 +640,8 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>胜率和平均收益是否可信？</td><td><code>stats.json</code>、<code>setup_stats.csv</code></td><td><code>win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability</code></td></tr>
           <tr><td>哪类信号形态被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
-          <tr><td>止盈、回撤止盈和止损各占多少？</td><td><code>stats.json</code>、<code>sweep.csv</code>、<code>parameter_summary.csv</code></td><td><code>take_profit_exit_rate / trailing_take_profit_exit_rate / stop_loss_exit_rate / avg_trailing_take_profit_exit_rate</code></td></tr>
-          <tr><td>回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按上一根已完成 K 的峰值/谷值确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
+          <tr><td>止盈、盈利通道回撤止盈和止损各占多少？</td><td><code>stats.json</code>、<code>sweep.csv</code>、<code>parameter_summary.csv</code></td><td><code>take_profit_exit_rate / trailing_take_profit_exit_rate / stop_loss_exit_rate / avg_trailing_take_profit_exit_rate</code></td></tr>
+          <tr><td>盈利通道回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按实际成交价和上一根已完成 K 的峰值/谷值确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
           <tr><td>参数组在哪些股票有效？</td><td><code>case_symbol_stats.csv</code></td><td><code>sweep_rank / stock_name / stock_code / total_return / trade_count</code></td></tr>
           <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature</code></td></tr>
           <tr><td>哪只股票贡献了收益？</td><td><code>symbol_stats.csv</code></td><td><code>stock_name / stock_code / total_return / win_rate</code></td></tr>

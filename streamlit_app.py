@@ -42,9 +42,9 @@ BACKTEST_HELP_TEXT = {
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
     "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标价由信号K止损距离和盈亏比计算。",
     "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K止损价。",
-    "enable_trailing_take_profit": "开启后，所有回测模式都会在实际成交后叠加动态回撤止盈；关闭时下方两个回撤止盈参数强制按 0 处理。",
-    "trailing_take_profit_activation_pct": "回撤止盈启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
-    "trailing_take_profit_drawdown_pct": "回撤止盈触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
+    "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方两个参数强制按 0 处理。",
+    "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
+    "trailing_take_profit_drawdown_pct": "回撤平仓触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
@@ -1260,11 +1260,11 @@ def _build_strategy_kline_altair_chart(
             alt.Tooltip("收盘:Q", format=".3f"),
         ],
     )
-    wick = base.mark_rule(color="#475569", opacity=0.75).encode(
+    wick = base.mark_rule(color="#475569", opacity=0.75, clip=True).encode(
         y=alt.Y("最低:Q", title="价格", scale=alt.Scale(zero=False)),
         y2="最高:Q",
     )
-    body = base.mark_bar(size=candle_size).encode(
+    body = base.mark_bar(size=candle_size, clip=True).encode(
         y=alt.Y("开盘:Q", title="价格", scale=alt.Scale(zero=False)),
         y2="收盘:Q",
         color=alt.Color(
@@ -1277,7 +1277,7 @@ def _build_strategy_kline_altair_chart(
     if not intervals.empty:
         layers.append(
             alt.Chart(intervals)
-            .mark_rect(opacity=0.12)
+            .mark_rect(opacity=0.12, clip=True)
             .encode(
                 x=alt.X("开始绘图K序号:Q", title="K线序号（连续压缩）"),
                 x2="结束绘图K序号:Q",
@@ -1302,7 +1302,7 @@ def _build_strategy_kline_altair_chart(
     if not stops.empty:
         layers.append(
             alt.Chart(stops)
-            .mark_rule(color="#ea580c", strokeDash=[5, 4], strokeWidth=1.5)
+            .mark_rule(color="#ea580c", strokeDash=[5, 4], strokeWidth=1.5, clip=True)
             .encode(
                 x=alt.X("开始K序号:Q", title="K线序号（连续压缩）"),
                 x2="结束K序号:Q",
@@ -1348,18 +1348,18 @@ def _build_strategy_kline_altair_chart(
         layers.append(
             alt.Chart(markers)
             .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["开多", "开空"]))
-            .mark_rule(color="#0f172a", opacity=0.18, strokeDash=[2, 4])
+            .mark_rule(color="#0f172a", opacity=0.18, strokeDash=[2, 4], clip=True)
             .encode(x=alt.X("K序号:Q", title="K线序号（连续压缩）"))
         )
         layers.append(
             alt.Chart(markers)
             .transform_filter(alt.FieldOneOfPredicate(field="标注", oneOf=["止损", "回撤止盈", "平多", "平空"]))
-            .mark_rule(color="#0f172a", opacity=0.1, strokeDash=[1, 5])
+            .mark_rule(color="#0f172a", opacity=0.1, strokeDash=[1, 5], clip=True)
             .encode(x=alt.X("K序号:Q", title="K线序号（连续压缩）"))
         )
-        layers.append(marker_base.mark_point(filled=True, size=105, stroke="#111827", strokeWidth=0.6))
+        layers.append(marker_base.mark_point(filled=True, size=105, stroke="#111827", strokeWidth=0.6, clip=True))
         layers.append(
-            alt.Chart(markers).mark_text(dy=-15, fontSize=11, fontWeight="bold").encode(
+            alt.Chart(markers).mark_text(dy=-15, fontSize=11, fontWeight="bold", clip=True).encode(
                 x=alt.X("K序号:Q", title="K线序号（连续压缩）"),
                 y=alt.Y("价格:Q", title="价格", scale=alt.Scale(zero=False)),
                 text="标注:N",
@@ -1377,7 +1377,12 @@ def _build_strategy_kline_altair_chart(
     return (
         alt.layer(*layers)
         .resolve_scale(y="shared")
-        .properties(width="container", height=640, usermeta={"embedOptions": {"renderer": "svg"}})
+        .properties(
+            width="container",
+            height=640,
+            autosize={"type": "fit-x", "contains": "padding"},
+            usermeta={"embedOptions": {"renderer": "svg"}},
+        )
         .add_params(zoom)
         .configure_axis(labelFontSize=11, titleFontSize=12)
         .configure_view(continuousWidth=1100, continuousHeight=640, strokeWidth=0)
@@ -1980,7 +1985,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
         else:
             max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
         enable_trailing_take_profit = st.checkbox(
-            "启用回撤止盈",
+            "启用盈利通道回撤止盈",
             value=False,
             key="bt_enable_trailing_take_profit",
             help=BACKTEST_HELP_TEXT["enable_trailing_take_profit"],
@@ -1988,7 +1993,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
         trailing1, trailing2 = st.columns(2)
         with trailing1:
             trailing_take_profit_activation_pct = st.number_input(
-                "回撤止盈启动浮盈",
+                "盈利通道启动浮盈",
                 min_value=0.0,
                 max_value=1.0,
                 value=0.04,
@@ -2000,7 +2005,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             )
         with trailing2:
             trailing_take_profit_drawdown_pct = st.number_input(
-                "回撤止盈回撤幅度",
+                "盈利回撤平仓幅度",
                 min_value=0.0,
                 max_value=0.99,
                 value=0.015,

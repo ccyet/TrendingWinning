@@ -80,8 +80,8 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "手续费率" for item in app.number_input)
     assert any(item.label == "滑点bps" for item in app.number_input)
     assert any(item.label == "初始资金" for item in app.number_input)
-    assert any(item.label == "回撤止盈启动浮盈" for item in app.number_input)
-    assert any(item.label == "回撤止盈回撤幅度" for item in app.number_input)
+    assert any(item.label == "盈利通道启动浮盈" for item in app.number_input)
+    assert any(item.label == "盈利回撤平仓幅度" for item in app.number_input)
     assert not any(item.label == "止盈" for item in app.number_input)
     assert not any(item.label == "止损" for item in app.number_input)
     direction = next(item for item in app.selectbox if item.label == "组合交易方向")
@@ -270,7 +270,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     ]:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
-    assert "启用回撤止盈" in source
+    assert "启用盈利通道回撤止盈" in source
     assert "bt_enable_trailing_take_profit" in source
 
 
@@ -490,6 +490,7 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
 
     assert spec["height"] == 640
     assert spec["width"] == "container"
+    assert spec["autosize"] == {"type": "fit-x", "contains": "padding"}
     assert len(spec["layer"]) == 8
     assert "params" in spec
     assert spec["params"][0]["bind"] == "scales"
@@ -502,7 +503,47 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
     assert "开仓/平仓原因" in str(spec)
     assert "开仓/平仓时间" in str(spec)
     assert "订单" not in str(spec)
+    assert "order" not in str(spec).lower()
     assert "时间文本" not in str(spec)
+
+
+def test_strategy_kline_altair_chart_clips_layers_for_zoomed_windows() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00", "2026-05-25 10:30"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.4, 10.5],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.1],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11110.0],
+        }
+    )
+    trades = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ"],
+            "side": ["long"],
+            "event_type": ["bull_h2_setup"],
+            "entry_date": pd.to_datetime(["2026-05-25 10:30"]),
+            "entry_price": [10.5],
+            "stop_price": [10.0],
+            "exit_date": pd.to_datetime(["2026-05-25 11:00"]),
+            "exit_price": [10.0],
+            "exit_reason": ["stop_loss"],
+        }
+    )
+    chart_frame = _strategy_kline_chart_frame(bars, "000001.SZ")
+    chart = _build_strategy_kline_altair_chart(
+        chart_frame,
+        _strategy_trade_marker_frame(trades, "000001.SZ", chart_frame),
+        _strategy_stop_segment_frame(trades, "000001.SZ", chart_frame),
+        _strategy_holding_interval_frame(trades, "000001.SZ", chart_frame),
+    )
+    spec = chart.to_dict()
+
+    marks = [layer["mark"] for layer in spec["layer"]]
+    assert all(mark.get("clip") is True for mark in marks if isinstance(mark, dict))
 
 
 def test_strategy_kline_altair_chart_supports_large_zoomable_full_windows() -> None:
@@ -602,7 +643,9 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     html = (root / "docs" / "backtest_kline_guide.html").read_text(encoding="utf-8")
 
     assert "docs/backtest_kline_guide.html" in readme
+    assert "盈利通道回撤止盈" in readme
     assert "回测界面 K 线使用说明" in html
+    assert "盈利通道回撤止盈" in html
     assert "术语对照" in html
     assert "趋势回撤：H2 顺势做多" in html
     assert "下降趋势：L2 顺势做空" in html

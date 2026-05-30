@@ -44,6 +44,8 @@ def validate_backtest_config(cfg: Any) -> None:
     drawdown_pct = float(getattr(cfg, "trailing_take_profit_drawdown_pct", 0.0))
     if activation_pct < 0 or not 0 <= drawdown_pct < 1:
         raise ValueError("trailing_take_profit 参数必须非负，且回撤幅度必须小于 1。")
+    if (activation_pct == 0) != (drawdown_pct == 0):
+        raise ValueError("trailing_take_profit 启动浮盈和回撤幅度必须同时为 0 或同时大于 0。")
 
 
 def simulate_order_trade(

@@ -11,6 +11,7 @@ class TrailingTakeProfitMasks:
 
     gap: np.ndarray
     hit: np.ndarray
+    armed: np.ndarray
     prices: np.ndarray
 
 
@@ -58,6 +59,7 @@ def trailing_take_profit_masks(
         return TrailingTakeProfitMasks(
             gap=liquid & armed & profitable & (opens <= prices),
             hit=liquid & armed & profitable & (lows <= prices),
+            armed=armed & profitable,
             prices=prices,
         )
 
@@ -70,6 +72,7 @@ def trailing_take_profit_masks(
         return TrailingTakeProfitMasks(
             gap=liquid & armed & profitable & (opens >= prices),
             hit=liquid & armed & profitable & (highs >= prices),
+            armed=armed & profitable,
             prices=prices,
         )
 
@@ -80,6 +83,7 @@ def _empty_masks(length: int) -> TrailingTakeProfitMasks:
     return TrailingTakeProfitMasks(
         gap=np.full(length, False),
         hit=np.full(length, False),
+        armed=np.full(length, False),
         prices=np.full(length, np.nan),
     )
 
