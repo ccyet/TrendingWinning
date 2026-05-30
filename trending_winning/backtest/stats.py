@@ -356,7 +356,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "avg_mfe_pct": _mean_or_zero(mfe_pct),
         "avg_mae_r": _mean_or_zero(mae_r),
         "avg_mfe_r": _mean_or_zero(mfe_r),
-        "return_contribution": _round_float(returns.sum()) if not capital_fraction.empty else 0.0,
+        "return_contribution": _round_float(returns.sum()),
         "capital_turnover": capital_turnover,
         "avg_capital_fraction": _mean_or_zero(capital_fraction),
         "max_capital_fraction": _max_or_zero(capital_fraction),

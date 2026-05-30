@@ -197,6 +197,23 @@ def test_compute_trade_statistics_reports_portfolio_capital_contribution_metrics
     assert grouped.loc["range_signal_bar", "return_contribution"] == pytest.approx(-0.015)
 
 
+def test_compute_trade_statistics_reports_single_strategy_return_contribution() -> None:
+    trades = pd.DataFrame(
+        {
+            "event_type": ["bull_h2_setup", "bull_h2_setup", "failed_breakout"],
+            "return_pct": [5.0, -2.0, 1.0],
+            "holding_bars": [3, 2, 1],
+        }
+    )
+
+    stats = compute_trade_statistics(trades)
+    grouped = compute_grouped_trade_statistics(trades, by="event_type").set_index("event_type")
+
+    assert stats["return_contribution"] == pytest.approx(0.04)
+    assert grouped.loc["bull_h2_setup", "return_contribution"] == pytest.approx(0.03)
+    assert grouped.loc["failed_breakout", "return_contribution"] == pytest.approx(0.01)
+
+
 def test_compute_grouped_trade_statistics_reports_strategy_and_symbol_breakdowns() -> None:
     trades = pd.DataFrame(
         {
