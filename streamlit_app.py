@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
+import math
 from pathlib import Path
 import sys
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -25,6 +27,174 @@ DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
+STOCK_NAME_BY_CODE = {
+    "000001.SZ": "平安银行",
+    "000002.SZ": "万科A",
+    "000003.SZ": "PT金田A",
+    "000333.SZ": "美的集团",
+    "002415.SZ": "海康威视",
+    "300059.SZ": "东方财富",
+    "300750.SZ": "宁德时代",
+    "600000.SH": "浦发银行",
+    "600036.SH": "招商银行",
+    "600519.SH": "贵州茅台",
+    "601318.SH": "中国平安",
+    "688001.SH": "华兴源创",
+}
+BACKTEST_HELP_TEXT = {
+    "take_profit": "单笔交易达到该收益率后止盈，例如 0.060 表示 6%。",
+    "stop_loss": "单笔交易触及该亏损率后止损，例如 0.030 表示 3%。",
+    "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
+    "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
+    "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
+    "initial_equity": "净值曲线起始资金，默认 1.0，便于比较不同策略。",
+    "intrabar_exit_policy": "同一根 K 线同时打到止盈和止损时的处理方式。",
+    "strict_data_quality": "开启后会拒绝明显缺失、重复或异常的本地 K 线样本。",
+    "min_coverage_ratio": "样本窗口内实际 K 线数量占理论数量的最低比例，0 表示不额外限制。",
+    "higher_timeframe": "用更大周期判断主方向，只过滤逆大周期方向的订单，不改形态识别结果。",
+    "higher_timeframe_max_age": "大周期信号允许滞后的最长分钟数，0 表示不限制信号年龄。",
+    "single_detector": "只测试一种形态识别模块，便于单独评估趋势、区间、通道或反转。",
+    "risk_reward": "目标盈利与初始风险的倍数，用来计算挂单后的目标价。",
+    "trend_lookback": "趋势评分使用的回看 K 线数量，越大越重视较长结构。",
+    "trend_min_score": "趋势形态入选的最低评分，越高越严格。",
+    "trend_h2_min_pullback_legs": "H2/L2 是二次顺势入场：H2 为上涨趋势回调后第二次向上突破，L2 为下跌趋势反弹后第二次向下跌破；这里限制回调/反弹至少有几段摆动。",
+    "range_lookback": "判断交易区间上下沿时使用的回看 K 线数量。",
+    "channel_lookback": "计算趋势通道或摆动点通道时使用的回看 K 线数量。",
+    "channel_method": "回归通道适合连续斜率，摆动点通道更贴近人工画高低点连线。",
+    "channel_sigma": "回归通道宽度倍数，越大通道越宽、突破越少。",
+    "max_actual_risk_pct": "入场价到止损价的最大允许距离，0 表示不限制。",
+    "max_chase_pct": "信号 K 突破价到实际成交价的最大追价距离，0 表示不限制。",
+    "reversal_lookback": "识别旧高/旧低、二次测试和结构确认时使用的回看 K 线数量。",
+    "reversal_old_extreme_tolerance_pct": "价格接近旧高/旧低的容忍范围，例如 0.010 表示 1%。",
+    "reversal_require_old_extreme_test": "开启后，反转必须先测试旧高/旧低并失败。",
+    "reversal_require_structure_confirmation": "开启后，反转必须先出现结构确认，不做第一次反转。",
+    "trend_strong_close_pos": "强收盘阈值，按收盘价在当根 K 线高低区间的位置计算。",
+    "trend_min_body_ratio": "实体占整根 K 线振幅的最低比例，用来过滤影线过长的弱信号。",
+    "trend_pullback_lookback": "统计 H/L 回撤腿时向前观察的 K 线数量。",
+    "range_middle_low": "交易区间中部的下边界，区间策略避开中部，只看上下沿。",
+    "range_middle_high": "交易区间中部的上边界，价格落在中部时不做同级别策略。",
+    "range_false_break_buffer": "失败突破需要越过区间边界的最小幅度，0 表示只要破位即可。",
+    "range_strong_close_pos": "区间反向信号的强收盘阈值。",
+    "range_min_score": "区间形态入选的最低评分，越高越严格。",
+    "channel_break_buffer": "通道突破需要超过通道边界的最小幅度。",
+    "channel_swing_left_bars": "摆动高/低点左侧需要多少根 K 线确认。",
+    "channel_swing_right_bars": "摆动高/低点右侧需要多少根 K 线确认。",
+    "reversal_strong_close_pos": "反转信号 K 的强收盘阈值。",
+    "reversal_min_body_ratio": "反转信号 K 的最小实体比例。",
+    "max_open_positions": "组合最多同时持有的订单数量。",
+    "risk_per_trade": "每笔交易最多亏损的资金比例，0 表示不用风险预算自动定仓。",
+    "short_margin_rate": "做空时占用保证金的倍数。",
+    "capital_per_trade": "固定每笔交易使用的资金比例，0 表示由其他规则决定。",
+    "max_capital_per_trade": "单笔交易最多占用的资金比例。",
+    "reserve_cash": "组合始终保留的现金比例，不参与开仓。",
+    "allow_same_symbol_overlap": "关闭时，同一只股票同一时间只允许一笔持仓。",
+    "strategy_priority": "多个策略同 K 竞争资金时的优先级，数字越小越优先。",
+    "strategy_capital_limit": "单个策略最多可占用的组合资金比例。",
+    "sector_capital_limit": "单个行业最多可占用的组合资金比例。",
+    "symbol_sector_map": "股票到行业的映射，用于行业资金上限。",
+    "landmark_lookback": "旧突破策略用于识别标志 K 的回看窗口。",
+    "landmark_range_multiple": "标志 K 的振幅需要达到近期平均振幅的倍数。",
+    "trigger_volume_multiple": "突破 K 的成交量需要达到近期均量的倍数。",
+    "close_buffer": "突破收盘价需要超过关键价位的最小幅度。",
+    "require_landmark": "开启后，突破 K 本身也必须满足标志 K 条件。",
+}
+DISPLAY_COLUMN_LABELS = {
+    "stock_code": "股票名称",
+    "symbol": "股票名称",
+    "strategy_name": "策略",
+    "detector_name": "形态模块",
+    "event_type": "信号形态",
+    "side": "方向",
+    "exit_reason": "退出原因",
+    "status": "状态",
+    "reason": "原因",
+    "timeframe": "周期",
+    "date": "日期",
+    "period": "周期",
+    "start": "开始",
+    "end": "结束",
+    "signal_date": "信号时间",
+    "entry_date": "入场时间",
+    "exit_date": "出场时间",
+    "trade_no": "交易序号",
+    "order_id": "订单ID",
+    "event_id": "信号ID",
+    "trade_count": "交易次数",
+    "win_rate": "胜率",
+    "total_return": "总收益",
+    "avg_return": "平均收益",
+    "return_pct": "收益率",
+    "raw_return_pct": "原始收益率",
+    "return": "收益率",
+    "max_drawdown": "最大回撤",
+    "profit_factor": "盈亏因子",
+    "expectancy": "期望收益",
+    "avg_win": "平均盈利",
+    "avg_loss": "平均亏损",
+    "payoff_ratio": "盈亏比",
+    "holding_bars": "持有K数",
+    "avg_holding_bars": "平均持有K数",
+    "best_trade": "最好单笔",
+    "worst_trade": "最差单笔",
+    "net_value": "净值",
+    "start_net_value": "期初净值",
+    "end_net_value": "期末净值",
+    "observation_count": "观察点数",
+    "mae_pct": "最大不利波动",
+    "mfe_pct": "最大有利波动",
+    "r_multiple": "R倍数",
+    "avg_r_multiple": "平均R倍数",
+    "actual_risk_pct": "实际风险",
+    "actual_chase_pct": "追价距离",
+    "actual_reward_to_risk": "实际盈亏比",
+    "capital_fraction": "资金占用",
+    "risk_fraction": "风险占用",
+    "margin_fraction": "保证金占用",
+    "coverage_ratio": "K线覆盖率",
+    "limit_pct": "涨跌停幅度",
+    "limit_up_open": "涨停开盘",
+}
+PERCENT_POINT_COLUMNS = {"return_pct", "raw_return_pct", "mae_pct", "mfe_pct", "avg_mae_pct", "avg_mfe_pct"}
+DISPLAY_VALUE_MAP = {
+    "side": {"long": "多头", "short": "空头"},
+    "status": {
+        "accepted": "已接受",
+        "rejected": "已拒绝",
+        "filled": "已成交",
+        "no_fill": "未成交",
+        "cached": "已有缓存",
+        "missing": "缺失",
+        "ok": "正常",
+    },
+    "exit_reason": {
+        "take_profit": "止盈",
+        "stop_loss": "止损",
+        "max_holding": "持有到期",
+        "end_of_data": "样本结束",
+    },
+    "detector_name": {"trend": "趋势", "range": "区间", "channel": "通道", "reversal": "反转"},
+    "strategy_name": {
+        "trend_signal_bar": "趋势形态",
+        "range_signal_bar": "区间形态",
+        "channel_signal_bar": "通道形态",
+        "reversal_signal_bar": "反转形态",
+    },
+    "event_type": {
+        "trend_signal_bar": "趋势信号K",
+        "range_signal_bar": "区间信号K",
+        "channel_signal_bar": "通道信号K",
+        "reversal_signal_bar": "反转信号K",
+    },
+    "reason": {
+        "": "",
+        "no_fill": "未成交",
+        "risk_too_large": "实际风险过大",
+        "chase_too_large": "追价过远",
+        "same_symbol_overlap": "同票已有持仓",
+        "capital_limit": "资金上限",
+        "sector_limit": "行业上限",
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -351,6 +521,280 @@ def _display_path(value: str) -> str:
     return "~" if str(relative) == "." else f"~/{relative}"
 
 
+def _stock_name_label(value: object) -> str:
+    """把证券代码转成界面可读名称；未知代码保留在名称后方，便于追溯原始样本。"""
+    code = str(value).strip().upper()
+    if not code:
+        return ""
+    name = STOCK_NAME_BY_CODE.get(code)
+    return f"{name}（{code}）" if name else f"未知名称（{code}）"
+
+
+def _prepare_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """把回测展示表转成中文列名、中文枚举和已格式化字符串。"""
+    if frame.empty:
+        return frame.copy()
+    used_labels: set[str] = set()
+    display = pd.DataFrame(index=frame.index)
+    for column in frame.columns:
+        label = _unique_display_label(_display_column_label(str(column)), used_labels)
+        display[label] = [_format_display_value(str(column), value) for value in frame[column]]
+    return display.reset_index(drop=True)
+
+
+def _style_display_frame(frame: pd.DataFrame):
+    """表格只做展示样式，不修改底层回测数据。"""
+    return frame.style.set_properties(**{"text-align": "center"}).set_table_styles(
+        [
+            {
+                "selector": "th",
+                "props": [
+                    ("text-align", "center"),
+                    ("background-color", "#f8fafc"),
+                    ("font-weight", "700"),
+                ],
+            },
+            {
+                "selector": "td",
+                "props": [("text-align", "center")],
+            },
+        ]
+    )
+
+
+def _render_display_table(title: str, frame: pd.DataFrame, *, tail: int | None = None) -> None:
+    if frame.empty:
+        return
+    data = frame.tail(tail) if tail is not None else frame
+    st.markdown(f"##### {title}")
+    st.dataframe(_style_display_frame(_prepare_display_frame(data)), use_container_width=True, hide_index=True)
+
+
+def _display_column_label(column: str) -> str:
+    if column in DISPLAY_COLUMN_LABELS:
+        return DISPLAY_COLUMN_LABELS[column]
+    label = column
+    for raw, translated in [
+        ("monthly_", "月度"),
+        ("avg_", "平均"),
+        ("max_", "最大"),
+        ("min_", "最小"),
+        ("p05", "5%分位"),
+        ("p25", "25%分位"),
+        ("p50", "中位数"),
+        ("p75", "75%分位"),
+        ("p95", "95%分位"),
+        ("return", "收益"),
+        ("drawdown", "回撤"),
+        ("count", "次数"),
+        ("rate", "比例"),
+        ("ratio", "比例"),
+        ("bars", "K数"),
+        ("price", "价格"),
+        ("capital", "资金"),
+        ("margin", "保证金"),
+    ]:
+        label = label.replace(raw, translated)
+    return label.replace("_", "")
+
+
+def _unique_display_label(label: str, used_labels: set[str]) -> str:
+    if label not in used_labels:
+        used_labels.add(label)
+        return label
+    index = 2
+    while f"{label}{index}" in used_labels:
+        index += 1
+    unique = f"{label}{index}"
+    used_labels.add(unique)
+    return unique
+
+
+def _format_display_value(column: str, value: object) -> str:
+    if _is_missing(value):
+        return ""
+    if column in {"stock_code", "symbol"}:
+        return _stock_name_label(value)
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    mapped = DISPLAY_VALUE_MAP.get(column, {}).get(str(value))
+    if mapped is not None:
+        return mapped
+    if _is_date_column(column):
+        formatted_date = _format_date_value(value)
+        if formatted_date is not None:
+            return formatted_date
+    numeric = _coerce_float(value)
+    if numeric is None:
+        return str(value)
+    if _is_percent_column(column):
+        return _format_percent_value(column, numeric)
+    if _is_integer_column(column):
+        return f"{numeric:.0f}"
+    if column in {"planned_entry_price", "actual_entry_price", "entry_price", "stop_price", "target_price", "exit_price"}:
+        return f"{numeric:.4f}"
+    if column in {"net_value", "start_net_value", "end_net_value"}:
+        return f"{numeric:.4f}"
+    if math.isinf(numeric):
+        return "∞" if numeric > 0 else "-∞"
+    return f"{numeric:.2f}"
+
+
+def _is_missing(value: object) -> bool:
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    return bool(missing) if isinstance(missing, bool) else False
+
+
+def _coerce_float(value: object) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric
+
+
+def _is_date_column(column: str) -> bool:
+    return column in {"date", "period", "start", "end", "signal_date", "entry_date", "exit_date"} or column.endswith("_date")
+
+
+def _format_date_value(value: object) -> str | None:
+    if isinstance(value, pd.Period):
+        return str(value)
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    if timestamp.hour or timestamp.minute or timestamp.second:
+        return timestamp.strftime("%Y-%m-%d %H:%M")
+    return timestamp.strftime("%Y-%m-%d")
+
+
+def _is_percent_column(column: str) -> bool:
+    name = column.lower()
+    if name.endswith("_pct") or name.endswith("_return") or name.endswith("_drawdown"):
+        return True
+    return name in {
+        "return",
+        "win_rate",
+        "acceptance_rate",
+        "rejection_rate",
+        "decision_rate",
+        "group_decision_rate",
+        "strategy_filter_acceptance_rate",
+        "strategy_filter_rejection_rate",
+        "total_return",
+        "avg_return",
+        "max_drawdown",
+        "avg_drawdown",
+        "best_trade",
+        "worst_trade",
+        "return_std",
+        "best_return",
+        "worst_return",
+        "underwater_ratio",
+        "coverage_ratio",
+        "avg_cash_ratio",
+        "min_cash_ratio",
+        "max_cash_ratio",
+        "avg_capital_fraction",
+        "max_capital_fraction",
+        "avg_margin_fraction",
+        "max_margin_fraction",
+        "capital_fraction",
+        "risk_fraction",
+        "margin_fraction",
+        "capital_turnover",
+        "margin_turnover",
+        "avg_gross_exposure",
+        "max_gross_exposure",
+        "avg_net_exposure",
+        "min_net_exposure",
+        "max_net_exposure",
+        "exposure_bar_ratio",
+        "time_under_water_ratio",
+        "annualized_return",
+        "annualized_volatility",
+    }
+
+
+def _format_percent_value(column: str, numeric: float) -> str:
+    if math.isinf(numeric):
+        return "∞" if numeric > 0 else "-∞"
+    percent = numeric if column.lower() in PERCENT_POINT_COLUMNS else numeric * 100
+    return f"{percent:.2f}%"
+
+
+def _is_integer_column(column: str) -> bool:
+    name = column.lower()
+    if name.endswith("_id"):
+        return True
+    return name in {
+        "trade_no",
+        "order_id",
+        "event_id",
+        "trade_count",
+        "count",
+        "positive_count",
+        "negative_count",
+        "decision_count",
+        "group_decision_count",
+        "holding_bars",
+        "max_holding_bars",
+        "signal_bar_index",
+        "observation_count",
+        "max_consecutive_wins",
+        "max_consecutive_losses",
+        "max_consecutive_gains",
+        "monthly_max_consecutive_losses",
+        "monthly_max_recovery_periods",
+        "filtered_limit_open_count",
+        "rejected_no_fill_count",
+    }
+
+
+def _equity_y_domain(values: pd.Series) -> tuple[float, float]:
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return 1.0, 1.02
+    lower_value = min(1.0, float(numeric.min()))
+    upper_value = max(1.0, float(numeric.max()))
+    spread = max(upper_value - lower_value, 0.02)
+    lower = 1.0 if lower_value >= 1.0 else lower_value - spread * 0.08
+    upper = upper_value + spread * 0.08
+    if upper <= lower:
+        upper = lower + 0.02
+    return float(lower), float(upper)
+
+
+def _render_equity_chart(equity_curve: pd.DataFrame) -> None:
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return
+    x_column = "date" if "date" in equity_curve.columns else "trade_no"
+    chart_data = equity_curve[[x_column, "net_value"]].copy()
+    chart_data["net_value"] = pd.to_numeric(chart_data["net_value"], errors="coerce")
+    chart_data = chart_data.dropna(subset=["net_value"])
+    if chart_data.empty:
+        return
+    if x_column == "date":
+        chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
+    chart_data = chart_data.rename(columns={x_column: "时间" if x_column == "date" else "交易序号", "net_value": "净值"})
+    x_label = "时间" if x_column == "date" else "交易序号"
+    lower, upper = _equity_y_domain(chart_data["净值"])
+    line = (
+        alt.Chart(chart_data)
+        .mark_line(color="#0f766e", strokeWidth=2)
+        .encode(
+            x=alt.X(f"{x_label}:T" if x_column == "date" else f"{x_label}:Q", title=x_label),
+            y=alt.Y("净值:Q", title="净值", scale=alt.Scale(domain=[lower, upper]), axis=alt.Axis(format=".2f")),
+            tooltip=[x_label, alt.Tooltip("净值:Q", format=".4f")],
+        )
+    )
+    baseline = alt.Chart(pd.DataFrame({"净值": [1.0]})).mark_rule(color="#64748b", strokeDash=[4, 4]).encode(y="净值:Q")
+    st.altair_chart(line + baseline, use_container_width=True)
+
+
 def _symbol_input(label: str, default: str = "000001.SZ", *, key: str) -> list[str]:
     raw = st.text_input(label, default, key=key)
     return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
@@ -426,6 +870,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_trend_strong_close_pos",
+                help=BACKTEST_HELP_TEXT["trend_strong_close_pos"],
             )
         with trend_c2:
             trend_min_body_ratio = st.number_input(
@@ -436,6 +881,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_trend_min_body_ratio",
+                help=BACKTEST_HELP_TEXT["trend_min_body_ratio"],
             )
         with trend_c3:
             trend_pullback_lookback = st.number_input(
@@ -443,6 +889,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 min_value=1,
                 value=5,
                 key=f"{prefix}_trend_pullback_lookback",
+                help=BACKTEST_HELP_TEXT["trend_pullback_lookback"],
             )
         range_c1, range_c2, range_c3, range_c4, range_c5 = st.columns(5)
         with range_c1:
@@ -454,6 +901,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_range_middle_low",
+                help=BACKTEST_HELP_TEXT["range_middle_low"],
             )
         with range_c2:
             range_middle_high = st.number_input(
@@ -464,6 +912,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_range_middle_high",
+                help=BACKTEST_HELP_TEXT["range_middle_high"],
             )
         with range_c3:
             range_false_break_buffer = st.number_input(
@@ -473,6 +922,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.005,
                 format="%.3f",
                 key=f"{prefix}_range_false_break_buffer",
+                help=BACKTEST_HELP_TEXT["range_false_break_buffer"],
             )
         with range_c4:
             range_strong_close_pos = st.number_input(
@@ -483,6 +933,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_range_strong_close_pos",
+                help=BACKTEST_HELP_TEXT["range_strong_close_pos"],
             )
         with range_c5:
             range_min_score = st.number_input(
@@ -492,6 +943,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.1,
                 format="%.2f",
                 key=f"{prefix}_range_min_score",
+                help=BACKTEST_HELP_TEXT["range_min_score"],
             )
         channel_c1, channel_c2, channel_c3 = st.columns(3)
         with channel_c1:
@@ -502,6 +954,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.005,
                 format="%.3f",
                 key=f"{prefix}_channel_break_buffer",
+                help=BACKTEST_HELP_TEXT["channel_break_buffer"],
             )
         with channel_c2:
             channel_swing_left_bars = st.number_input(
@@ -509,6 +962,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 min_value=1,
                 value=2,
                 key=f"{prefix}_channel_swing_left_bars",
+                help=BACKTEST_HELP_TEXT["channel_swing_left_bars"],
             )
         with channel_c3:
             channel_swing_right_bars = st.number_input(
@@ -516,6 +970,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 min_value=1,
                 value=2,
                 key=f"{prefix}_channel_swing_right_bars",
+                help=BACKTEST_HELP_TEXT["channel_swing_right_bars"],
             )
         reversal_c1, reversal_c2 = st.columns(2)
         with reversal_c1:
@@ -527,6 +982,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_reversal_strong_close_pos",
+                help=BACKTEST_HELP_TEXT["reversal_strong_close_pos"],
             )
         with reversal_c2:
             reversal_min_body_ratio = st.number_input(
@@ -537,6 +993,7 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
                 step=0.05,
                 format="%.2f",
                 key=f"{prefix}_reversal_min_body_ratio",
+                help=BACKTEST_HELP_TEXT["reversal_min_body_ratio"],
             )
     return {
         "trend_strong_close_pos": float(trend_strong_close_pos),
@@ -650,14 +1107,53 @@ def _load_backtest_bundle(
 def _strategy_controls(prefix: str) -> StrategyConfig:
     c1, c2, c3 = st.columns(3)
     with c1:
-        landmark_lookback = st.number_input("标志K回看", min_value=2, value=20, key=f"{prefix}_landmark_lookback")
-        landmark_range_multiple = st.number_input("标志K振幅倍数", min_value=0.1, value=1.8, step=0.1, key=f"{prefix}_range")
+        landmark_lookback = st.number_input(
+            "标志K回看",
+            min_value=2,
+            value=20,
+            key=f"{prefix}_landmark_lookback",
+            help=BACKTEST_HELP_TEXT["landmark_lookback"],
+        )
+        landmark_range_multiple = st.number_input(
+            "标志K振幅倍数",
+            min_value=0.1,
+            value=1.8,
+            step=0.1,
+            key=f"{prefix}_range",
+            help=BACKTEST_HELP_TEXT["landmark_range_multiple"],
+        )
     with c2:
-        channel_lookback = st.number_input("通道回看", min_value=3, value=40, key=f"{prefix}_channel")
-        trigger_volume_multiple = st.number_input("突破量能倍数", min_value=0.1, value=1.5, step=0.1, key=f"{prefix}_volume")
+        channel_lookback = st.number_input(
+            "通道回看",
+            min_value=3,
+            value=40,
+            key=f"{prefix}_channel",
+            help=BACKTEST_HELP_TEXT["channel_lookback"],
+        )
+        trigger_volume_multiple = st.number_input(
+            "突破量能倍数",
+            min_value=0.1,
+            value=1.5,
+            step=0.1,
+            key=f"{prefix}_volume",
+            help=BACKTEST_HELP_TEXT["trigger_volume_multiple"],
+        )
     with c3:
-        close_buffer = st.number_input("突破收盘缓冲", min_value=0.0, value=0.0, step=0.005, format="%.3f", key=f"{prefix}_buffer")
-        require_landmark = st.checkbox("突破必须同时是标志K", value=True, key=f"{prefix}_require_landmark")
+        close_buffer = st.number_input(
+            "突破收盘缓冲",
+            min_value=0.0,
+            value=0.0,
+            step=0.005,
+            format="%.3f",
+            key=f"{prefix}_buffer",
+            help=BACKTEST_HELP_TEXT["close_buffer"],
+        )
+        require_landmark = st.checkbox(
+            "突破必须同时是标志K",
+            value=True,
+            key=f"{prefix}_require_landmark",
+            help=BACKTEST_HELP_TEXT["require_landmark"],
+        )
     return StrategyConfig(
         landmark_lookback=int(landmark_lookback),
         landmark_range_multiple=float(landmark_range_multiple),
@@ -762,23 +1258,62 @@ def _backtest_risk_module() -> BacktestRiskInputs:
     with _backtest_module_container("2. 基础风控与成本", "止盈止损、持有周期、手续费和滑点是所有回测共用的撮合参数。"):
         c1, c2, c3 = st.columns(3)
         with c1:
-            take_profit = st.number_input("止盈", min_value=0.001, value=0.06, step=0.005, format="%.3f")
+            take_profit = st.number_input(
+                "止盈",
+                min_value=0.001,
+                value=0.06,
+                step=0.005,
+                format="%.3f",
+                help=BACKTEST_HELP_TEXT["take_profit"],
+            )
         with c2:
-            stop_loss = st.number_input("止损", min_value=0.001, value=0.03, step=0.005, format="%.3f")
+            stop_loss = st.number_input(
+                "止损",
+                min_value=0.001,
+                value=0.03,
+                step=0.005,
+                format="%.3f",
+                help=BACKTEST_HELP_TEXT["stop_loss"],
+            )
         with c3:
-            max_holding = st.number_input("最大持有K数", min_value=1, value=12)
+            max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
         cost1, cost2, cost3 = st.columns(3)
         with cost1:
-            fee_rate = st.number_input("手续费率", min_value=0.0, value=0.0, step=0.0001, format="%.4f", key="bt_fee_rate")
+            fee_rate = st.number_input(
+                "手续费率",
+                min_value=0.0,
+                value=0.0,
+                step=0.0001,
+                format="%.4f",
+                key="bt_fee_rate",
+                help=BACKTEST_HELP_TEXT["fee_rate"],
+            )
         with cost2:
-            slippage_bps = st.number_input("滑点bps", min_value=0.0, value=0.0, step=1.0, format="%.1f", key="bt_slippage_bps")
+            slippage_bps = st.number_input(
+                "滑点bps",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                format="%.1f",
+                key="bt_slippage_bps",
+                help=BACKTEST_HELP_TEXT["slippage_bps"],
+            )
         with cost3:
-            initial_equity = st.number_input("初始资金", min_value=0.0001, value=1.0, step=0.1, format="%.4f", key="bt_initial_equity")
+            initial_equity = st.number_input(
+                "初始资金",
+                min_value=0.0001,
+                value=1.0,
+                step=0.1,
+                format="%.4f",
+                key="bt_initial_equity",
+                help=BACKTEST_HELP_TEXT["initial_equity"],
+            )
         intrabar_exit_policy = st.selectbox(
             "同K止盈止损冲突",
             ["conservative", "optimistic"],
             format_func=lambda value: "保守：止损优先" if value == "conservative" else "乐观：止盈优先",
             key="bt_intrabar_policy",
+            help=BACKTEST_HELP_TEXT["intrabar_exit_policy"],
         )
     return BacktestRiskInputs(
         take_profit=float(take_profit),
@@ -795,7 +1330,12 @@ def _backtest_data_quality_module() -> BacktestDataQualityInputs:
     with _backtest_module_container("3. 数据质量检查", "先过滤低质量本地 K 线，再进入形态识别和撮合。"):
         q1, q2 = st.columns(2)
         with q1:
-            strict_data_quality = st.checkbox("严格数据质量检查", value=True, key="bt_strict_quality")
+            strict_data_quality = st.checkbox(
+                "严格数据质量检查",
+                value=True,
+                key="bt_strict_quality",
+                help=BACKTEST_HELP_TEXT["strict_data_quality"],
+            )
         with q2:
             min_coverage_ratio_input = st.number_input(
                 "最低K线覆盖率",
@@ -805,6 +1345,7 @@ def _backtest_data_quality_module() -> BacktestDataQualityInputs:
                 step=0.05,
                 format="%.2f",
                 key="bt_min_coverage_ratio",
+                help=BACKTEST_HELP_TEXT["min_coverage_ratio"],
             )
     min_coverage_ratio = float(min_coverage_ratio_input) if float(min_coverage_ratio_input) > 0 else None
     return BacktestDataQualityInputs(
@@ -823,6 +1364,7 @@ def _backtest_higher_timeframe_module(timeframe: str) -> HigherTimeframeInputs:
                 higher_timeframe_options,
                 format_func=lambda value: "关闭" if value == "" else value,
                 key="bt_higher_timeframe",
+                help=BACKTEST_HELP_TEXT["higher_timeframe"],
             )
         with mtf2:
             higher_timeframe_max_age = st.number_input(
@@ -831,6 +1373,7 @@ def _backtest_higher_timeframe_module(timeframe: str) -> HigherTimeframeInputs:
                 value=0,
                 step=15,
                 key="bt_higher_timeframe_max_age",
+                help=BACKTEST_HELP_TEXT["higher_timeframe_max_age"],
             )
     max_age = int(higher_timeframe_max_age) if int(higher_timeframe_max_age) > 0 else None
     return HigherTimeframeInputs(higher_timeframe=str(higher_timeframe), higher_timeframe_max_age_minutes=max_age)
@@ -876,23 +1419,68 @@ def _legacy_backtest_module(
 
 def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
     with _backtest_module_container("5. 单策略参数", "只绑定一个形态识别模块，用于验证单一交易形态。"):
-        detector = st.selectbox("单策略形态", ["trend", "range", "channel", "reversal"], index=0, key="single_detector")
+        detector = st.selectbox(
+            "单策略形态",
+            ["trend", "range", "channel", "reversal"],
+            index=0,
+            key="single_detector",
+            help=BACKTEST_HELP_TEXT["single_detector"],
+        )
         experiment_name = _experiment_name(f"single-{detector}", scope.timeframe, scope.start, scope.end)
         s1, s2, s3 = st.columns(3)
         with s1:
-            risk_reward = st.number_input("单策略盈亏比", min_value=0.1, value=2.0, step=0.1, key="single_rr")
-            trend_lookback = st.number_input("趋势回看", min_value=3, value=20, key="single_trend_lookback")
+            risk_reward = st.number_input(
+                "单策略盈亏比",
+                min_value=0.1,
+                value=2.0,
+                step=0.1,
+                key="single_rr",
+                help=BACKTEST_HELP_TEXT["risk_reward"],
+            )
+            trend_lookback = st.number_input(
+                "趋势回看",
+                min_value=3,
+                value=20,
+                key="single_trend_lookback",
+                help=BACKTEST_HELP_TEXT["trend_lookback"],
+            )
         with s2:
-            trend_min_score = st.number_input("趋势最低评分", min_value=0.0, value=1.0, step=0.1, key="single_trend_score")
-            range_lookback = st.number_input("区间回看", min_value=3, value=20, key="single_range_lookback")
+            trend_min_score = st.number_input(
+                "趋势最低评分",
+                min_value=0.0,
+                value=1.0,
+                step=0.1,
+                key="single_trend_score",
+                help=BACKTEST_HELP_TEXT["trend_min_score"],
+            )
+            range_lookback = st.number_input(
+                "区间回看",
+                min_value=3,
+                value=20,
+                key="single_range_lookback",
+                help=BACKTEST_HELP_TEXT["range_lookback"],
+            )
         with s3:
-            trend_h2_min_pullback_legs = st.number_input("H2/L2最少回撤腿数", min_value=1, value=2, key="single_h2_legs")
-            channel_lookback = st.number_input("通道回看", min_value=3, value=40, key="single_channel_lookback")
+            trend_h2_min_pullback_legs = st.number_input(
+                "H2/L2最少回撤腿数",
+                min_value=1,
+                value=2,
+                key="single_h2_legs",
+                help=BACKTEST_HELP_TEXT["trend_h2_min_pullback_legs"],
+            )
+            channel_lookback = st.number_input(
+                "通道回看",
+                min_value=3,
+                value=40,
+                key="single_channel_lookback",
+                help=BACKTEST_HELP_TEXT["channel_lookback"],
+            )
         channel_method = st.selectbox(
             "通道算法",
             ["regression", "swing"],
             format_func=lambda value: "回归通道" if value == "regression" else "摆动点通道",
             key="single_channel_method",
+            help=BACKTEST_HELP_TEXT["channel_method"],
         )
         risk_c1, risk_c2 = st.columns(2)
         with risk_c1:
@@ -903,6 +1491,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
                 step=0.005,
                 format="%.3f",
                 key="single_max_actual_risk_pct",
+                help=BACKTEST_HELP_TEXT["max_actual_risk_pct"],
             )
         with risk_c2:
             max_chase_pct = st.number_input(
@@ -912,9 +1501,23 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
                 step=0.005,
                 format="%.3f",
                 key="single_max_chase_pct",
+                help=BACKTEST_HELP_TEXT["max_chase_pct"],
             )
-        reversal_lookback = st.number_input("反转回看", min_value=3, value=20, key="single_reversal_lookback")
-        channel_sigma = st.number_input("通道带宽倍数", min_value=0.1, value=2.0, step=0.1, key="single_channel_sigma")
+        reversal_lookback = st.number_input(
+            "反转回看",
+            min_value=3,
+            value=20,
+            key="single_reversal_lookback",
+            help=BACKTEST_HELP_TEXT["reversal_lookback"],
+        )
+        channel_sigma = st.number_input(
+            "通道带宽倍数",
+            min_value=0.1,
+            value=2.0,
+            step=0.1,
+            key="single_channel_sigma",
+            help=BACKTEST_HELP_TEXT["channel_sigma"],
+        )
         advanced_detector = _detector_parameter_controls("single")
         r1, r2, r3 = st.columns(3)
         with r1:
@@ -925,18 +1528,21 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
                 step=0.005,
                 format="%.3f",
                 key="single_reversal_old_extreme_tolerance_pct",
+                help=BACKTEST_HELP_TEXT["reversal_old_extreme_tolerance_pct"],
             )
         with r2:
             reversal_require_old_extreme_test = st.checkbox(
                 "要求旧极端失败测试",
                 value=True,
                 key="single_reversal_require_old_extreme_test",
+                help=BACKTEST_HELP_TEXT["reversal_require_old_extreme_test"],
             )
         with r3:
             reversal_require_structure_confirmation = st.checkbox(
                 "要求结构确认",
                 value=True,
                 key="single_reversal_require_structure_confirmation",
+                help=BACKTEST_HELP_TEXT["reversal_require_structure_confirmation"],
             )
     return SingleStrategyInputs(
         detector=str(detector),
@@ -961,33 +1567,121 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
 
 def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocationInputs:
     with _backtest_module_container("5. 组合仓位与资金", "组合层只处理多个单策略订单之间的资金、容量和暴露约束。"):
-        detectors = st.multiselect("组合形态", ["trend", "range", "channel", "reversal"], default=["trend", "range", "channel"])
+        detectors = st.multiselect(
+            "组合形态",
+            ["trend", "range", "channel", "reversal"],
+            default=["trend", "range", "channel"],
+            help=BACKTEST_HELP_TEXT["single_detector"],
+        )
         experiment_name = _experiment_name("portfolio", scope.timeframe, scope.start, scope.end)
         p1, p2, p3, p4 = st.columns(4)
         with p1:
-            risk_reward = st.number_input("组合盈亏比", min_value=0.1, value=2.0, step=0.1, key="pf_rr")
+            risk_reward = st.number_input(
+                "组合盈亏比",
+                min_value=0.1,
+                value=2.0,
+                step=0.1,
+                key="pf_rr",
+                help=BACKTEST_HELP_TEXT["risk_reward"],
+            )
         with p2:
-            max_open_positions = st.number_input("最大组合持仓", min_value=1, value=5, key="pf_max_open")
+            max_open_positions = st.number_input(
+                "最大组合持仓",
+                min_value=1,
+                value=5,
+                key="pf_max_open",
+                help=BACKTEST_HELP_TEXT["max_open_positions"],
+            )
         with p3:
-            risk_per_trade = st.number_input("单笔风险预算", min_value=0.0, value=0.0, step=0.0025, format="%.4f", key="pf_risk")
+            risk_per_trade = st.number_input(
+                "单笔风险预算",
+                min_value=0.0,
+                value=0.0,
+                step=0.0025,
+                format="%.4f",
+                key="pf_risk",
+                help=BACKTEST_HELP_TEXT["risk_per_trade"],
+            )
         with p4:
-            short_margin_rate = st.number_input("空头保证金倍数", min_value=0.1, value=1.0, step=0.1, key="pf_short_margin")
+            short_margin_rate = st.number_input(
+                "空头保证金倍数",
+                min_value=0.1,
+                value=1.0,
+                step=0.1,
+                key="pf_short_margin",
+                help=BACKTEST_HELP_TEXT["short_margin_rate"],
+            )
         alloc1, alloc2, alloc3, alloc4 = st.columns(4)
         with alloc1:
-            capital_per_trade = st.number_input("固定单笔仓位", min_value=0.0, value=0.0, step=0.05, format="%.3f", key="pf_capital")
+            capital_per_trade = st.number_input(
+                "固定单笔仓位",
+                min_value=0.0,
+                value=0.0,
+                step=0.05,
+                format="%.3f",
+                key="pf_capital",
+                help=BACKTEST_HELP_TEXT["capital_per_trade"],
+            )
         with alloc2:
-            max_capital_per_trade = st.number_input("最大单笔仓位", min_value=0.001, max_value=1.0, value=1.0, step=0.05, format="%.3f", key="pf_max_capital")
+            max_capital_per_trade = st.number_input(
+                "最大单笔仓位",
+                min_value=0.001,
+                max_value=1.0,
+                value=1.0,
+                step=0.05,
+                format="%.3f",
+                key="pf_max_capital",
+                help=BACKTEST_HELP_TEXT["max_capital_per_trade"],
+            )
         with alloc3:
-            reserve_cash = st.number_input("预留现金", min_value=0.0, max_value=0.99, value=0.0, step=0.05, format="%.3f", key="pf_reserve_cash")
+            reserve_cash = st.number_input(
+                "预留现金",
+                min_value=0.0,
+                max_value=0.99,
+                value=0.0,
+                step=0.05,
+                format="%.3f",
+                key="pf_reserve_cash",
+                help=BACKTEST_HELP_TEXT["reserve_cash"],
+            )
         with alloc4:
-            allow_same_symbol_overlap = st.checkbox("允许同票重叠", value=False, key="pf_allow_overlap")
+            allow_same_symbol_overlap = st.checkbox(
+                "允许同票重叠",
+                value=False,
+                key="pf_allow_overlap",
+                help=BACKTEST_HELP_TEXT["allow_same_symbol_overlap"],
+            )
         map1, map2 = st.columns(2)
         with map1:
-            strategy_priority_text = st.text_area("策略优先级", value="", placeholder="trend_signal_bar=1,range_signal_bar=2", key="pf_strategy_priority")
-            strategy_capital_limit_text = st.text_area("策略资金上限", value="", placeholder="trend_signal_bar=0.6", key="pf_strategy_limit")
+            strategy_priority_text = st.text_area(
+                "策略优先级",
+                value="",
+                placeholder="trend_signal_bar=1,range_signal_bar=2",
+                key="pf_strategy_priority",
+                help=BACKTEST_HELP_TEXT["strategy_priority"],
+            )
+            strategy_capital_limit_text = st.text_area(
+                "策略资金上限",
+                value="",
+                placeholder="trend_signal_bar=0.6",
+                key="pf_strategy_limit",
+                help=BACKTEST_HELP_TEXT["strategy_capital_limit"],
+            )
         with map2:
-            sector_capital_limit_text = st.text_area("行业资金上限", value="", placeholder="银行=0.5,新能源=0.4", key="pf_sector_limit")
-            symbol_sector_map_text = st.text_area("股票行业映射", value="", placeholder="000001.SZ=银行,300750.SZ=新能源", key="pf_symbol_sector")
+            sector_capital_limit_text = st.text_area(
+                "行业资金上限",
+                value="",
+                placeholder="银行=0.5,新能源=0.4",
+                key="pf_sector_limit",
+                help=BACKTEST_HELP_TEXT["sector_capital_limit"],
+            )
+            symbol_sector_map_text = st.text_area(
+                "股票行业映射",
+                value="",
+                placeholder="000001.SZ=银行,300750.SZ=新能源",
+                key="pf_symbol_sector",
+                help=BACKTEST_HELP_TEXT["symbol_sector_map"],
+            )
         pf_r1, pf_r2 = st.columns(2)
         with pf_r1:
             max_actual_risk_pct = st.number_input(
@@ -997,6 +1691,7 @@ def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocat
                 step=0.005,
                 format="%.3f",
                 key="pf_max_actual_risk_pct",
+                help=BACKTEST_HELP_TEXT["max_actual_risk_pct"],
             )
         with pf_r2:
             max_chase_pct = st.number_input(
@@ -1006,6 +1701,7 @@ def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocat
                 step=0.005,
                 format="%.3f",
                 key="pf_max_chase_pct",
+                help=BACKTEST_HELP_TEXT["max_chase_pct"],
             )
     return PortfolioAllocationInputs(
         detectors=tuple(str(item) for item in detectors),
@@ -1031,20 +1727,65 @@ def _portfolio_detector_module() -> PortfolioDetectorInputs:
     with _backtest_module_container("6. 组合形态识别参数", "这里仍只配置各类形态的识别阈值，不配置仓位。"):
         detector_c1, detector_c2, detector_c3 = st.columns(3)
         with detector_c1:
-            trend_lookback = st.number_input("组合趋势回看", min_value=3, value=20, key="pf_trend_lookback")
-            channel_lookback = st.number_input("组合通道回看", min_value=3, value=40, key="pf_channel_lookback")
+            trend_lookback = st.number_input(
+                "组合趋势回看",
+                min_value=3,
+                value=20,
+                key="pf_trend_lookback",
+                help=BACKTEST_HELP_TEXT["trend_lookback"],
+            )
+            channel_lookback = st.number_input(
+                "组合通道回看",
+                min_value=3,
+                value=40,
+                key="pf_channel_lookback",
+                help=BACKTEST_HELP_TEXT["channel_lookback"],
+            )
         with detector_c2:
-            trend_min_score = st.number_input("组合趋势最低评分", min_value=0.0, value=1.0, step=0.1, key="pf_trend_score")
-            channel_sigma = st.number_input("组合通道带宽倍数", min_value=0.1, value=2.0, step=0.1, key="pf_channel_sigma")
+            trend_min_score = st.number_input(
+                "组合趋势最低评分",
+                min_value=0.0,
+                value=1.0,
+                step=0.1,
+                key="pf_trend_score",
+                help=BACKTEST_HELP_TEXT["trend_min_score"],
+            )
+            channel_sigma = st.number_input(
+                "组合通道带宽倍数",
+                min_value=0.1,
+                value=2.0,
+                step=0.1,
+                key="pf_channel_sigma",
+                help=BACKTEST_HELP_TEXT["channel_sigma"],
+            )
         with detector_c3:
-            range_lookback = st.number_input("组合区间回看", min_value=3, value=20, key="pf_range_lookback")
-            reversal_lookback = st.number_input("组合反转回看", min_value=3, value=20, key="pf_reversal_lookback")
-        trend_h2_min_pullback_legs = st.number_input("组合H2/L2最少回撤腿数", min_value=1, value=2, key="pf_h2_legs")
+            range_lookback = st.number_input(
+                "组合区间回看",
+                min_value=3,
+                value=20,
+                key="pf_range_lookback",
+                help=BACKTEST_HELP_TEXT["range_lookback"],
+            )
+            reversal_lookback = st.number_input(
+                "组合反转回看",
+                min_value=3,
+                value=20,
+                key="pf_reversal_lookback",
+                help=BACKTEST_HELP_TEXT["reversal_lookback"],
+            )
+        trend_h2_min_pullback_legs = st.number_input(
+            "组合H2/L2最少回撤腿数",
+            min_value=1,
+            value=2,
+            key="pf_h2_legs",
+            help=BACKTEST_HELP_TEXT["trend_h2_min_pullback_legs"],
+        )
         channel_method = st.selectbox(
             "组合通道算法",
             ["regression", "swing"],
             format_func=lambda value: "回归通道" if value == "regression" else "摆动点通道",
             key="pf_channel_method",
+            help=BACKTEST_HELP_TEXT["channel_method"],
         )
         advanced_detector = _detector_parameter_controls("pf", "组合")
         pr1, pr2, pr3 = st.columns(3)
@@ -1056,18 +1797,21 @@ def _portfolio_detector_module() -> PortfolioDetectorInputs:
                 step=0.005,
                 format="%.3f",
                 key="pf_reversal_old_extreme_tolerance_pct",
+                help=BACKTEST_HELP_TEXT["reversal_old_extreme_tolerance_pct"],
             )
         with pr2:
             reversal_require_old_extreme_test = st.checkbox(
                 "组合要求旧极端失败测试",
                 value=True,
                 key="pf_reversal_require_old_extreme_test",
+                help=BACKTEST_HELP_TEXT["reversal_require_old_extreme_test"],
             )
         with pr3:
             reversal_require_structure_confirmation = st.checkbox(
                 "组合要求结构确认",
                 value=True,
                 key="pf_reversal_require_structure_confirmation",
+                help=BACKTEST_HELP_TEXT["reversal_require_structure_confirmation"],
             )
     return PortfolioDetectorInputs(
         trend_lookback=int(trend_lookback),
@@ -1271,34 +2015,32 @@ def _render_backtest_result(
     if filtered_count > 0:
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")
     if data_coverage is not None and not data_coverage.empty:
-        st.dataframe(data_coverage, use_container_width=True)
-    st.dataframe(result.trades, use_container_width=True)
+        _render_display_table("数据覆盖率检查", data_coverage)
+    _render_display_table("逐笔交易", result.trades)
     if not result.equity_curve.empty:
-        if "date" in result.equity_curve.columns:
-            st.line_chart(result.equity_curve.set_index("date")["net_value"])
-            st.dataframe(result.equity_curve.tail(200), use_container_width=True)
-        else:
-            st.line_chart(result.equity_curve.set_index("trade_no")["net_value"])
+        st.markdown("##### 净值曲线")
+        _render_equity_chart(result.equity_curve)
+        _render_display_table("净值明细", result.equity_curve, tail=200)
 
 
 def _render_experiment_breakdowns(experiment) -> None:
     """展示实验拆分统计；单策略和组合回测复用同一组产物。"""
-    for frame in [
-        experiment.strategy_stats,
-        experiment.symbol_stats,
-        experiment.side_stats,
-        experiment.exit_reason_stats,
-        experiment.event_type_stats,
-        experiment.monthly_returns,
+    for title, frame in [
+        ("策略绩效", experiment.strategy_stats),
+        ("股票绩效", experiment.symbol_stats),
+        ("方向绩效", experiment.side_stats),
+        ("退出原因绩效", experiment.exit_reason_stats),
+        ("信号形态绩效", experiment.event_type_stats),
+        ("月度收益", experiment.monthly_returns),
     ]:
-        if not frame.empty:
-            st.dataframe(frame, use_container_width=True)
+        _render_display_table(title, frame)
 
 
 def _chart_close(frame: pd.DataFrame) -> None:
     if frame.empty:
         return
     chart = frame.pivot_table(index="date", columns="stock_code", values="close", aggfunc="last")
+    chart = chart.rename(columns={column: _stock_name_label(column) for column in chart.columns})
     st.line_chart(chart)
 
 

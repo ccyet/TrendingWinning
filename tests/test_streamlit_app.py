@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from streamlit_app import (
+    _equity_y_domain,
+    _format_display_value,
     _parse_float_mapping,
     _parse_int_mapping,
     _parse_text_mapping,
+    _prepare_display_frame,
     _resolve_native_directory_choice,
 )
 
@@ -214,6 +218,55 @@ def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None
         assert title in source
 
 
+def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
+    source = (Path(__file__).resolve().parents[1] / "streamlit_app.py").read_text()
+
+    for help_key in [
+        "take_profit",
+        "strict_data_quality",
+        "higher_timeframe",
+        "trend_h2_min_pullback_legs",
+        "range_middle_low",
+        "channel_sigma",
+        "reversal_old_extreme_tolerance_pct",
+        "risk_per_trade",
+    ]:
+        assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
+
+
+def test_backtest_display_tables_are_localized_and_formatted() -> None:
+    frame = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "600519.SH"],
+            "trade_count": [3, 4],
+            "win_rate": [0.096, 1.0],
+            "total_return": [0.096, 1.0],
+            "return_pct": [9.6, -0.5],
+            "avg_holding_bars": [2.45, 3.2],
+        }
+    )
+
+    display = _prepare_display_frame(frame)
+
+    assert "stock_code" not in display.columns
+    assert display["股票名称"].tolist() == ["平安银行（000001.SZ）", "贵州茅台（600519.SH）"]
+    assert display["交易次数"].tolist() == ["3", "4"]
+    assert display["胜率"].tolist() == ["9.60%", "100.00%"]
+    assert display["总收益"].tolist() == ["9.60%", "100.00%"]
+    assert display["收益率"].tolist() == ["9.60%", "-0.50%"]
+    assert display["平均持有K数"].tolist() == ["2.45", "3.20"]
+    assert _format_display_value("max_drawdown", 0.096) == "9.60%"
+
+
+def test_backtest_equity_chart_domain_is_anchored_at_one() -> None:
+    assert _equity_y_domain(pd.Series([1.04, 1.10]))[0] == 1.0
+
+    lower, upper = _equity_y_domain(pd.Series([0.96, 1.08]))
+
+    assert lower < 1.0
+    assert upper > 1.08
+
+
 def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     html = (Path(__file__).resolve().parents[1] / "docs" / "usage_guide.html").read_text(encoding="utf-8")
 
@@ -240,6 +293,9 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "术语对照" in html
     assert "趋势回撤：H2 顺势做多" in html
     assert "下降趋势：L2 顺势做空" in html
+    assert "H1/H2/L1/L2" in html
+    assert "H2 多头二次入场" in html
+    assert "L2 空头二次入场" in html
     assert "交易区间下沿：失败突破做多" in html
     assert "交易区间上沿：失败突破做空" in html
     assert "通道突破：顺势延续" in html
