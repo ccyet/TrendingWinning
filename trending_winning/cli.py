@@ -28,6 +28,7 @@ from trending_winning.data.tdx_parallels import (
     mac_path_to_parallels_shared_path,
     run_parallels_tdx_command,
 )
+from trending_winning.strategies.signal_bar import SUPPORTED_SIDE_MODES
 from trending_winning.strategy import StrategyConfig, scan_bars
 
 
@@ -49,6 +50,15 @@ def _parse_int_mapping(value: str) -> dict[str, int]:
 
 def _parse_text_mapping(value: str) -> dict[str, str]:
     return _parse_key_value_pairs(value)
+
+
+def _add_side_mode_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--side-mode",
+        choices=list(SUPPORTED_SIDE_MODES),
+        default="both",
+        help="订单方向：both=多空都做，long_only=仅做多，short_only=仅做空。",
+    )
 
 
 def _parse_generic_sweep_grid(items: list[str], config: object) -> dict[str, list[object]]:
@@ -240,6 +250,7 @@ def main() -> None:
     single_parser.add_argument("--max-holding-bars", type=int, default=12)
     single_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     single_parser.add_argument("--max-chase-pct", type=float, default=None)
+    _add_side_mode_arg(single_parser)
     single_parser.add_argument("--min-coverage-ratio", type=float, default=None)
     single_parser.add_argument("--fee-rate", type=float, default=0.0)
     single_parser.add_argument("--slippage-bps", type=float, default=0.0)
@@ -288,6 +299,7 @@ def main() -> None:
     single_sweep_parser.add_argument("--grid", action="append", default=[])
     single_sweep_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     single_sweep_parser.add_argument("--max-chase-pct", type=float, default=None)
+    _add_side_mode_arg(single_sweep_parser)
     single_sweep_parser.add_argument("--min-coverage-ratio", type=float, default=None)
     single_sweep_parser.add_argument("--fee-rate", type=float, default=0.0)
     single_sweep_parser.add_argument("--slippage-bps", type=float, default=0.0)
@@ -334,6 +346,7 @@ def main() -> None:
     portfolio_parser.add_argument("--max-holding-bars", type=int, default=12)
     portfolio_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     portfolio_parser.add_argument("--max-chase-pct", type=float, default=None)
+    _add_side_mode_arg(portfolio_parser)
     portfolio_parser.add_argument("--min-coverage-ratio", type=float, default=None)
     portfolio_parser.add_argument("--fee-rate", type=float, default=0.0)
     portfolio_parser.add_argument("--slippage-bps", type=float, default=0.0)
@@ -395,6 +408,7 @@ def main() -> None:
     sweep_parser.add_argument("--grid", action="append", default=[])
     sweep_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     sweep_parser.add_argument("--max-chase-pct", type=float, default=None)
+    _add_side_mode_arg(sweep_parser)
     sweep_parser.add_argument("--min-coverage-ratio", type=float, default=None)
     sweep_parser.add_argument("--fee-rate", type=float, default=0.0)
     sweep_parser.add_argument("--slippage-bps", type=float, default=0.0)
@@ -562,6 +576,7 @@ def main() -> None:
             max_holding_bars=int(args.max_holding_bars),
             max_actual_risk_pct=args.max_actual_risk_pct,
             max_chase_pct=args.max_chase_pct,
+            side_mode=str(args.side_mode),
             min_coverage_ratio=args.min_coverage_ratio,
             fee_rate=float(args.fee_rate),
             slippage_bps=float(args.slippage_bps),
@@ -617,6 +632,7 @@ def main() -> None:
             detector=str(args.detector),
             max_actual_risk_pct=args.max_actual_risk_pct,
             max_chase_pct=args.max_chase_pct,
+            side_mode=str(args.side_mode),
             min_coverage_ratio=args.min_coverage_ratio,
             fee_rate=float(args.fee_rate),
             slippage_bps=float(args.slippage_bps),
@@ -685,6 +701,7 @@ def main() -> None:
             max_holding_bars=int(args.max_holding_bars),
             max_actual_risk_pct=args.max_actual_risk_pct,
             max_chase_pct=args.max_chase_pct,
+            side_mode=str(args.side_mode),
             min_coverage_ratio=args.min_coverage_ratio,
             fee_rate=float(args.fee_rate),
             slippage_bps=float(args.slippage_bps),
@@ -764,6 +781,7 @@ def main() -> None:
             detectors=tuple(item.strip() for item in args.detectors.split(",") if item.strip()),
             max_actual_risk_pct=args.max_actual_risk_pct,
             max_chase_pct=args.max_chase_pct,
+            side_mode=str(args.side_mode),
             min_coverage_ratio=args.min_coverage_ratio,
             fee_rate=float(args.fee_rate),
             slippage_bps=float(args.slippage_bps),

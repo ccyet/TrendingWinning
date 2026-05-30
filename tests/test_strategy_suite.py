@@ -16,6 +16,7 @@ def test_default_strategy_suite_builds_independent_detector_strategies() -> None
             max_holding_bars=9,
             max_actual_risk_pct=0.03,
             max_chase_pct=0.02,
+            side_mode="short_only",
             trend_lookback=5,
             trend_strong_close_pos=0.7,
             trend_min_body_ratio=0.55,
@@ -51,6 +52,7 @@ def test_default_strategy_suite_builds_independent_detector_strategies() -> None
     assert [strategy.config.max_holding_bars for strategy in suite] == [9, 9, 9, 9]
     assert [strategy.config.max_actual_risk_pct for strategy in suite] == [0.03, 0.03, 0.03, 0.03]
     assert [strategy.config.max_chase_pct for strategy in suite] == [0.02, 0.02, 0.02, 0.02]
+    assert [strategy.config.side_mode for strategy in suite] == ["short_only", "short_only", "short_only", "short_only"]
     assert suite[0].detector.config.h2_min_pullback_legs == 3
     assert suite[0].detector.config.strong_close_pos == 0.7
     assert suite[0].detector.config.min_body_ratio == 0.55
@@ -81,6 +83,7 @@ def test_create_strategy_for_detector_builds_one_detector_strategy() -> None:
             max_holding_bars=7,
             max_actual_risk_pct=0.04,
             max_chase_pct=0.03,
+            side_mode="long_only",
             range_lookback=9,
             range_middle_low=0.2,
             range_middle_high=0.8,
@@ -98,6 +101,7 @@ def test_create_strategy_for_detector_builds_one_detector_strategy() -> None:
     assert strategy.config.max_holding_bars == 7
     assert strategy.config.max_actual_risk_pct == 0.04
     assert strategy.config.max_chase_pct == 0.03
+    assert strategy.config.side_mode == "long_only"
 
 
 def test_create_strategy_for_detector_ignores_suite_enabled_list() -> None:

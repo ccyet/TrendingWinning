@@ -352,6 +352,8 @@ def test_cli_portfolio_backtest_passes_higher_timeframe_gate_config(monkeypatch,
             "60m",
             "--higher-timeframe-max-age-minutes",
             "90",
+            "--side-mode",
+            "short_only",
             "--start",
             "2026-05-25",
             "--end",
@@ -370,6 +372,7 @@ def test_cli_portfolio_backtest_passes_higher_timeframe_gate_config(monkeypatch,
     assert "trade_count" in out
     assert config.higher_timeframe == "60m"
     assert config.higher_timeframe_max_age_minutes == 90
+    assert config.side_mode == "short_only"
     assert captured["save"] is False
 
 
@@ -703,6 +706,8 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
             "0.08",
             "--max-chase-pct",
             "0.08",
+            "--side-mode",
+            "long_only",
             "--min-coverage-ratio",
             "0.1",
             "--fee-rate",
@@ -770,6 +775,7 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
     assert saved_config["detector"] == "trend"
     assert saved_config["max_actual_risk_pct"] == 0.08
     assert saved_config["max_chase_pct"] == 0.08
+    assert saved_config["side_mode"] == "long_only"
     assert saved_config["min_coverage_ratio"] == 0.1
     assert saved_config["fee_rate"] == 0.0003
     assert saved_config["slippage_bps"] == 5.0

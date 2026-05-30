@@ -56,6 +56,7 @@ Parallels 默认配置：
 Web 回测页里的“单策略回测”和“组合策略回测”与 CLI 复用同一套实验运行器。
 Web 页面所有文件夹路径都通过“选择文件夹”按钮弹出系统选择框；若本机窗口环境不可用，页面会明确提示并保留站内目录浏览器。
 单策略只绑定一种形态识别模块，不进入组合仓位分配层；组合策略才启用策略优先级、资金上限、行业上限和持仓互斥。
+单策略和组合策略都支持交易方向：`both` 表示多/空都做，`long_only` 表示仅多，`short_only` 表示仅空；被方向模式过滤的信号会写入 `strategy_filter_decisions.csv`。
 回测结果页会展示“策略K线运行区间”，按股票切换完整样本 K 线，并标注开多、开空和止损价位，方便检查信号和风控是否落在正确 K 线上。
 需要 60m 判主方向、15m/5m 触发时，可用 `HigherTimeframeAlignmentStrategy` 包装任一基础策略；它按订单 `signal_date` 向前匹配大周期上下文，拒绝方向不一致或上下文过旧的订单，基础形态识别仍保持独立，拒绝原因会单独写入策略层过滤日志。
 “高级形态识别参数”在 Web 里按单策略和组合策略分开配置，可单独调整趋势、区间、通道、反转识别阈值。
@@ -165,6 +166,7 @@ python -m trending_winning.cli single-backtest \
   --max-holding-bars 12 \
   --max-actual-risk-pct 0.03 \
   --max-chase-pct 0.02 \
+  --side-mode both \
   --min-coverage-ratio 0.95 \
   --fee-rate 0.0003 \
   --slippage-bps 5 \
@@ -203,7 +205,7 @@ python -m trending_winning.cli single-backtest \
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个形态识别事件和哪类信号形态。
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
-`strategy_filter_decisions.csv` 记录策略层过滤结果，例如形态输出观察/中部不交易方向、信号 K 无流动性、大周期方向不一致、无可用大周期上下文或上下文过旧；基础策略过滤和大周期方向过滤会叠加保留，它早于撮合层，不和 `order_decisions.csv` 混用。
+`strategy_filter_decisions.csv` 记录策略层过滤结果，例如形态输出观察/中部不交易方向、交易方向过滤、信号 K 无流动性、大周期方向不一致、无可用大周期上下文或上下文过旧；基础策略过滤和大周期方向过滤会叠加保留，它早于撮合层，不和 `order_decisions.csv` 混用。
 `limit_filter_audit.csv` 记录日 K 一字涨停过滤是否真实执行；严格模式下日线缺失或损坏会直接失败，只有显式关闭严格数据质量检查时才会继续输出 `daily_missing / daily_read_error / daily_missing_columns / daily_quality_error` 审计。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 按策略、状态和原因聚合决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 按 `detector_name / event_type / side` 进一步拆解信号形态的撮合失败、风控拒绝和策略过滤拒绝。`decision_rate` 表示占全部决策的比例，`group_decision_rate` 表示在当前策略、信号形态或过滤器组内的比例。订单聚合表还会汇总实际风险、追价和实际盈亏比，用于定位哪类参数在撮合层失效。
 `detector_stats.csv` 按 `detector_name` 独立汇总趋势、区间、通道、反转的成交绩效；`setup_stats.csv` 按 `detector_name / event_type / side` 汇总标志 K、失败突破、通道突破、H1/H2/L1/L2 等信号形态的多空表现。组合回测的 `strategy_stats.csv / detector_stats.csv / setup_stats.csv / symbol_stats.csv / side_stats.csv` 会额外给出 `return_contribution / capital_turnover / capital_weighted_raw_return`，用于拆解策略、识别模块、信号形态、标的和方向对组合净值的资金贡献；`capital_exposure_bars / margin_exposure_bars` 按仓位或保证金占用乘以持仓 K 数，衡量长期占资压力。组合 `stats.json` 还会从逐 K 净值曲线计算 `avg_cash_ratio / min_cash_ratio / max_cash_ratio / avg_net_exposure / min_net_exposure / max_net_exposure`，用于判断现金拖累、空头资金占用和多空偏向。
@@ -225,6 +227,7 @@ python -m trending_winning.cli portfolio-backtest \
   --max-open-positions 5 \
   --max-actual-risk-pct 0.03 \
   --max-chase-pct 0.02 \
+  --side-mode both \
   --min-coverage-ratio 0.95 \
   --fee-rate 0.0003 \
   --slippage-bps 5 \
@@ -258,7 +261,7 @@ python -m trending_winning.cli portfolio-backtest \
 趋势、区间、通道、反转的识别参数各自传入 detector，组合层只负责排序、容量和资金分配。
 `--strategy-priority`、`--strategy-capital-limit`、`--sector-capital-limit` 和 `--symbol-sector-map` 使用 `key=value,key=value` 格式，分别控制策略排序、策略资金上限、行业资金上限和股票所属行业。
 `order_decisions.csv` 记录组合层接受或拒绝每个候选订单的原因，例如 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable`、`max_open_positions`、`same_symbol_overlap`、`no_capital`；组合容量或资金拒绝也会保留候选成交的 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`。
-`strategy_filter_decisions.csv` 记录订单进入组合撮合前被策略过滤的原因，包括观察/中部不交易方向、信号 K 无流动性和大周期方向不一致；包装策略会保留内层过滤日志，便于单策略回测和组合回测分别定位问题。
+`strategy_filter_decisions.csv` 记录订单进入组合撮合前被策略过滤的原因，包括观察/中部不交易方向、交易方向过滤、信号 K 无流动性和大周期方向不一致；包装策略会保留内层过滤日志，便于单策略回测和组合回测分别定位问题。
 `limit_filter_audit.csv` 记录日线过滤状态；严格模式下 `daily_missing / daily_read_error / daily_missing_columns / daily_quality_error` 会中止回测，关闭严格数据质量检查排查时重点看这些状态和 `filtered_days`。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 分别汇总撮合层与策略门控层的决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 用同一口径按 setup 继续拆分拒绝结构；`decision_rate` 是全局占比，`group_decision_rate` 是当前策略、setup 或过滤器组内占比，撮合层聚合表包含实际风险、追价和实际盈亏比摘要。
 手续费率、滑点 bps 和初始资金会写入 `config.json`，并直接传给单策略、组合策略和参数遍历撮合层。
@@ -286,6 +289,7 @@ python -m trending_winning.cli single-sweep \
   --trend-min-scores 0.8,1.0,1.2 \
   --max-actual-risk-pct 0.03 \
   --max-chase-pct 0.02 \
+  --side-mode long_only \
   --min-coverage-ratio 0.95 \
   --fee-rate 0.0003 \
   --slippage-bps 5 \
@@ -295,7 +299,7 @@ python -m trending_winning.cli single-sweep \
 
 `single-sweep` 只绑定一个 detector，不进入组合仓位分配层；一次加载数据，多组参数复用同一批 K 线，订单参数不变时复用已生成订单。
 除固定的 `--risk-rewards / --max-holding-bars-list` 外，也可以重复传 `--grid 字段=值1,值2` 遍历任意实验配置字段，例如
-`--grid range_min_score=0.7,0.9 --grid fee_rate=0,0.0003`；布尔字段用 `true/false`。
+`--grid side_mode=both,long_only --grid range_min_score=0.7,0.9 --grid fee_rate=0,0.0003`；布尔字段用 `true/false`。
 重复的 grid 值会在笛卡尔积展开前按稳定指纹去重，避免重复配置进入订单生成和回测热路径；`summary.json` 仍保留原始 `grid_case_count` 和去重后的 `case_count`。
 固定启用 detector 的 sweep 只保留已启用 detector 相关参数、通用撮合参数和实际启用的高周期 trend 上下文字段；只改未启用模块参数时，不会生成额外 case，也不会改变 `case_config_hash`。
 结果按收益、回撤、月度稳定性、交易数和 case 名稳定排序保存 `sweep.csv`，首列 `sweep_rank` 是可直接筛选的参数排名；`pareto_rank=1` 表示按收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数得到的第一层非支配候选集，分层时使用 NumPy 批量支配矩阵，避免逐候选嵌套比较拖慢大网格。`case_config_hash` 是完整实验配置的 SHA-256 指纹，`data_inventory_signature` 是本次 K 线缓存快照指纹，方便跨机器复现和对照。同时保存 `config.json`、`summary.json`、`pareto.csv`、`parameter_summary.csv`、`case_setup_stats.csv`、`case_setup_order_decision_stats.csv`、`case_setup_strategy_filter_stats.csv`、`case_configs.jsonl`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv` 和 `limit_filter_audit.csv`；`summary.json` 汇总 `grid_case_count / case_count / pareto_case_count / best_case_name / best_case_config_hash / data_inventory_signature / order_cache_hit_rate / data_coverage_below_min_count / data_weighted_coverage_ratio / data_max_missing_gap_minutes / data_max_missing_gap_start_at / data_max_missing_gap_end_at / limit_filter_filtered_days / case_setup_order_decision_count / case_setup_order_rejected_count / case_setup_strategy_filter_decision_count / case_setup_strategy_filter_rejected_count`，其中 `grid_case_count` 是原始笛卡尔积组合数，`case_count` 是去重后实际运行数，`pareto.csv` 只保留第一层 Pareto 候选，`parameter_summary.csv` 按 grid 字段和值聚合收益、回撤、月度稳定性、撮合/策略过滤接受率、Pareto 命中率、正收益率和收益离散度，避免只看平均收益选参数，`case_setup_stats.csv` 按 `case_config_hash / detector_name / event_type / side` 下钻每个参数组的 setup 绩效，`case_setup_order_decision_stats.csv` 和 `case_setup_strategy_filter_stats.csv` 则按同一 setup 维度拆分撮合拒绝和策略过滤拒绝。`case_configs.jsonl` 按 `sweep.csv` 排名顺序逐行保存完整 case 配置。每行会带 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_return_std / monthly_max_consecutive_losses / monthly_max_recovery_periods`、`data_inventory_signature / data_inventory_cached_count / data_min_coverage_threshold / data_coverage_below_min_count / data_weighted_coverage_ratio / data_coverage_p05 / data_coverage_p50 / data_coverage_p95 / data_max_missing_gap_minutes / data_max_missing_gap_start_at / data_max_missing_gap_end_at / data_missing_rows / data_audit_failed_count / limit_filter_filtered_days`，参数结果不脱离周期稳定性和数据质量语境。
@@ -313,6 +317,7 @@ python -m trending_winning.cli portfolio-sweep \
   --max-holding-bars-list 6,12,18 \
   --max-actual-risk-pct 0.03 \
   --max-chase-pct 0.02 \
+  --side-mode both \
   --min-coverage-ratio 0.95 \
   --fee-rate 0.0003 \
   --slippage-bps 5 \

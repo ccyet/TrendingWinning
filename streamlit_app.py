@@ -22,6 +22,7 @@ from trending_winning.data.repository import BacktestDataBundle, MarketDataRepos
 from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE
 from trending_winning.multitimeframe import scan_timeframes
+from trending_winning.strategies.signal_bar import SUPPORTED_SIDE_MODES
 from trending_winning.strategy import StrategyConfig, scan_bars
 
 DEFAULT_DATA_ROOT = "/Users/a1234/Desktop/trend-backtest/data/market/daily"
@@ -29,6 +30,7 @@ DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
 DATA_TIMEFRAMES = ["1d", "5m", "15m", "30m", "60m"]
 INTRADAY_TIMEFRAMES = ["5m", "15m", "30m", "60m"]
+SIDE_MODE_LABELS = {"both": "多/空", "long_only": "仅多", "short_only": "仅空"}
 BACKTEST_HELP_TEXT = {
     "timeframe": "本次扫描或回测使用的 K 线周期。策略周期只支持分钟级，日 K 只用于涨停开盘过滤。",
     "symbols": "输入股票代码，多个代码用英文逗号分隔，例如 000001.SZ,600519.SH。",
@@ -57,6 +59,7 @@ BACKTEST_HELP_TEXT = {
     "channel_sigma": "回归通道宽度倍数，越大通道越宽、突破越少。",
     "max_actual_risk_pct": "入场价到止损价的最大允许距离，0 表示不限制。",
     "max_chase_pct": "信号 K 突破价到实际成交价的最大追价距离，0 表示不限制。",
+    "side_mode": "控制策略允许生成的订单方向。多/空表示多头和空头都做；仅多会过滤空头信号；仅空会过滤多头信号。",
     "reversal_lookback": "识别旧高/旧低、二次测试和结构确认时使用的回看 K 线数量。",
     "reversal_old_extreme_tolerance_pct": "价格接近旧高/旧低的容忍范围，例如 0.010 表示 1%。",
     "reversal_require_old_extreme_test": "开启后，反转必须先测试旧高/旧低并失败。",
@@ -100,6 +103,7 @@ DISPLAY_COLUMN_LABELS = {
     "detector_name": "形态模块",
     "event_type": "信号形态",
     "side": "方向",
+    "side_mode": "交易方向",
     "exit_reason": "退出原因",
     "status": "状态",
     "reason": "原因",
@@ -232,7 +236,9 @@ DISPLAY_VALUE_MAP = {
         "same_symbol_overlap": "同票已有持仓",
         "capital_limit": "资金上限",
         "sector_limit": "行业上限",
+        "side_mode_filtered": "交易方向过滤",
     },
+    "side_mode": {"both": "多/空", "long_only": "仅多", "short_only": "仅空"},
 }
 
 
@@ -292,6 +298,7 @@ class SingleStrategyInputs:
     detector: str
     experiment_name: str
     risk_reward: float
+    side_mode: str
     trend_lookback: int
     trend_min_score: float
     trend_h2_min_pullback_legs: int
@@ -315,6 +322,7 @@ class PortfolioAllocationInputs:
     detectors: tuple[str, ...]
     experiment_name: str
     risk_reward: float
+    side_mode: str
     max_open_positions: int
     risk_per_trade: float | None
     short_margin_rate: float
@@ -567,6 +575,10 @@ def _display_path(value: str) -> str:
     except ValueError:
         return str(path)
     return "~" if str(relative) == "." else f"~/{relative}"
+
+
+def _side_mode_label(value: object) -> str:
+    return SIDE_MODE_LABELS.get(str(value), str(value))
 
 
 def _stock_name_label(value: object, stock_names: Mapping[str, str] | None = None) -> str:
@@ -1816,13 +1828,24 @@ def _legacy_backtest_module(
 
 def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
     with _backtest_module_container("5. 单策略参数", "只绑定一个形态识别模块，用于验证单一交易形态。"):
-        detector = st.selectbox(
-            "单策略形态",
-            ["trend", "range", "channel", "reversal"],
-            index=0,
-            key="single_detector",
-            help=BACKTEST_HELP_TEXT["single_detector"],
-        )
+        top1, top2 = st.columns([2, 1])
+        with top1:
+            detector = st.selectbox(
+                "单策略形态",
+                ["trend", "range", "channel", "reversal"],
+                index=0,
+                key="single_detector",
+                help=BACKTEST_HELP_TEXT["single_detector"],
+            )
+        with top2:
+            side_mode = st.selectbox(
+                "单策略交易方向",
+                list(SUPPORTED_SIDE_MODES),
+                index=0,
+                key="single_side_mode",
+                format_func=_side_mode_label,
+                help=BACKTEST_HELP_TEXT["side_mode"],
+            )
         experiment_name = _experiment_name(f"single-{detector}", scope.timeframe, scope.start, scope.end)
         s1, s2, s3 = st.columns(3)
         with s1:
@@ -1945,6 +1968,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
         detector=str(detector),
         experiment_name=experiment_name,
         risk_reward=float(risk_reward),
+        side_mode=str(side_mode),
         trend_lookback=int(trend_lookback),
         trend_min_score=float(trend_min_score),
         trend_h2_min_pullback_legs=int(trend_h2_min_pullback_legs),
@@ -1964,12 +1988,23 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
 
 def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocationInputs:
     with _backtest_module_container("5. 组合仓位与资金", "组合层只处理多个单策略订单之间的资金、容量和暴露约束。"):
-        detectors = st.multiselect(
-            "组合形态",
-            ["trend", "range", "channel", "reversal"],
-            default=["trend", "range", "channel"],
-            help=BACKTEST_HELP_TEXT["single_detector"],
-        )
+        top1, top2 = st.columns([3, 1])
+        with top1:
+            detectors = st.multiselect(
+                "组合形态",
+                ["trend", "range", "channel", "reversal"],
+                default=["trend", "range", "channel"],
+                help=BACKTEST_HELP_TEXT["single_detector"],
+            )
+        with top2:
+            side_mode = st.selectbox(
+                "组合交易方向",
+                list(SUPPORTED_SIDE_MODES),
+                index=0,
+                key="pf_side_mode",
+                format_func=_side_mode_label,
+                help=BACKTEST_HELP_TEXT["side_mode"],
+            )
         experiment_name = _experiment_name("portfolio", scope.timeframe, scope.start, scope.end)
         p1, p2, p3, p4 = st.columns(4)
         with p1:
@@ -2104,6 +2139,7 @@ def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocat
         detectors=tuple(str(item) for item in detectors),
         experiment_name=experiment_name,
         risk_reward=float(risk_reward),
+        side_mode=str(side_mode),
         max_open_positions=int(max_open_positions),
         risk_per_trade=float(risk_per_trade) if float(risk_per_trade) > 0 else None,
         short_margin_rate=float(short_margin_rate),
@@ -2266,6 +2302,7 @@ def _execute_single_strategy_experiment(
             detector=single.detector,
             adjust=adjust,
             risk_reward=single.risk_reward,
+            side_mode=single.side_mode,
             max_holding_bars=risk.max_holding,
             max_actual_risk_pct=single.max_actual_risk_pct,
             max_chase_pct=single.max_chase_pct,
@@ -2341,6 +2378,7 @@ def _execute_portfolio_strategy_experiment(
             adjust=adjust,
             detectors=allocation.detectors,
             risk_reward=allocation.risk_reward,
+            side_mode=allocation.side_mode,
             max_holding_bars=risk.max_holding,
             max_actual_risk_pct=allocation.max_actual_risk_pct,
             max_chase_pct=allocation.max_chase_pct,

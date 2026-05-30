@@ -649,6 +649,7 @@ def test_portfolio_experiment_passes_detector_parameters_to_strategy_suite(
     captured: dict[str, object] = {}
 
     def spy_suite(cfg):
+        captured["side_mode"] = cfg.side_mode
         captured["trend_lookback"] = cfg.trend_lookback
         captured["trend_min_score"] = cfg.trend_min_score
         captured["trend_strong_close_pos"] = cfg.trend_strong_close_pos
@@ -708,12 +709,14 @@ def test_portfolio_experiment_passes_detector_parameters_to_strategy_suite(
         reversal_strong_close_pos=0.7,
         reversal_min_body_ratio=0.5,
         reversal_old_extreme_tolerance_pct=0.03,
+        side_mode="short_only",
         strict_data_quality=False,
     )
 
     run_portfolio_experiment(config)
 
     assert captured == {
+        "side_mode": "short_only",
         "trend_lookback": 7,
         "trend_min_score": 0.4,
         "trend_strong_close_pos": 0.7,

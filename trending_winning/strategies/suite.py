@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trending_winning.strategies.signal_bar import SignalBarStopStrategy, SignalBarStopStrategyConfig
+from trending_winning.strategies.signal_bar import (
+    SUPPORTED_SIDE_MODES,
+    SignalBarStopStrategy,
+    SignalBarStopStrategyConfig,
+)
 
 SUPPORTED_STRATEGY_DETECTORS = ("trend", "range", "channel", "reversal")
 
@@ -16,6 +20,7 @@ class StrategySuiteConfig:
     max_holding_bars: int = 12
     max_actual_risk_pct: float | None = None
     max_chase_pct: float | None = None
+    side_mode: str = "both"
     trend_lookback: int = 20
     trend_min_score: float = 1.0
     trend_strong_close_pos: float = 0.65
@@ -65,6 +70,7 @@ def create_strategy_for_detector(
             max_holding_bars=cfg.max_holding_bars,
             max_actual_risk_pct=cfg.max_actual_risk_pct,
             max_chase_pct=cfg.max_chase_pct,
+            side_mode=cfg.side_mode,
         ),
     )
 
@@ -160,6 +166,8 @@ def _validate_common_strategy_parameters(cfg: StrategySuiteConfig) -> None:
         raise ValueError("max_actual_risk_pct 必须大于 0 或设为 None。")
     if cfg.max_chase_pct is not None and cfg.max_chase_pct <= 0:
         raise ValueError("max_chase_pct 必须大于 0 或设为 None。")
+    if str(cfg.side_mode).strip().lower() not in SUPPORTED_SIDE_MODES:
+        raise ValueError("side_mode 仅支持 both、long_only 或 short_only。")
 
 
 def _validate_detector_parameters(detector_name: str, cfg: StrategySuiteConfig) -> None:

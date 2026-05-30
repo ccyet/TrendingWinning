@@ -322,7 +322,7 @@
         <div class="card"><b>选择目录</b><span>侧边栏选择行情根目录、复权方式；TDX 目录只在补数时使用，回测读取本地 parquet。</span></div>
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
-        <div class="card"><b>设置风控</b><span>统一设置止盈、止损、最大持有 K 数、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
+        <div class="card"><b>设置风控</b><span>统一设置止盈、止损、交易方向、最大持有 K 数、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
         <div class="card"><b>读取产物</b><span>先看策略K线运行区间里的开多、开空、止损标注，再看未成交原因、收益回撤、信号形态绩效和月度稳定性。</span></div>
       </div>
       <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
@@ -338,8 +338,8 @@
           <tr><td>2. 基础风控与成本</td><td>止盈、止损、最大持有 K 数、手续费、滑点、同 K 冲突规则。</td><td>全部模式</td></tr>
           <tr><td>3. 数据质量检查</td><td>检查 K 线是否缺失、重复、价格异常，以及覆盖率是否足够。</td><td>全部模式</td></tr>
           <tr><td>4. 大周期方向过滤</td><td>用 60m 或 30m 判断主方向，只保留顺势入场。</td><td>现代单策略和组合策略重点使用</td></tr>
-          <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、实际风险和追价过滤。</td><td>单策略回测</td></tr>
-          <tr><td>5. 组合仓位与资金</td><td>组合形态、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
+          <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、实际风险和追价过滤。</td><td>单策略回测</td></tr>
+          <tr><td>5. 组合仓位与资金</td><td>组合形态、交易方向、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
           <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，并标注开多、开空、止损横线和真实止损点。</td><td>运行后显示</td></tr>
         </tbody>
@@ -348,6 +348,7 @@
         <div class="card"><b>样本字段</b><span><code>周期</code>、<code>标的代码</code>、<code>开始日期</code>、<code>结束日期</code>。标的代码支持逗号或换行分隔。</span></div>
         <div class="card"><b>基础风控</b><span><code>止盈</code>、<code>止损</code>、<code>最大持有K数</code>。旧突破回测使用百分比止盈止损；现代单策略和组合策略使用 <code>risk_reward</code> 生成目标价。</span></div>
         <div class="card"><b>成本模型</b><span><code>手续费率</code>、<code>滑点bps</code>、<code>初始资金</code> 写入配置，并进入所有撮合路径。</span></div>
+        <div class="card"><b>交易方向</b><span><code>多/空</code> 同时保留多头和空头信号；<code>仅多</code> 过滤空头；<code>仅空</code> 过滤多头。过滤记录进入策略过滤表，不进入撮合拒单表。</span></div>
         <div class="card"><b>数据质量检查</b><span><code>严格数据质量检查</code> 和 <code>最低K线覆盖率</code> 控制本地 parquet 是否足够可信。</span></div>
         <div class="card"><b>大周期方向过滤</b><span>用 60m 或 30m 过滤低周期订单，只拒绝逆势或大周期信号太旧的订单，不改形态识别结果。</span></div>
         <div class="card"><b>保存实验产物</b><span>选择输出父目录后，系统按实验名生成子文件夹，写入配置、成交、净值、拒单和审计文件。</span></div>
@@ -598,7 +599,7 @@
       <table>
         <thead><tr><th>步骤</th><th>操作</th><th>判断标准</th></tr></thead>
         <tbody>
-          <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略形态</code>。</td><td>只出现一种形态识别结果和信号形态。</td></tr>
+          <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略形态</code> 和 <code>单策略交易方向</code>。</td><td>只出现一种形态识别结果；方向可在多/空、仅多、仅空之间切换。</td></tr>
           <tr><td>2</td><td>先关闭大周期方向过滤。</td><td>确认基础信号数量、成交数量和拒单原因。</td></tr>
           <tr><td>3</td><td>开启大周期方向过滤和有效分钟。</td><td>看 <code>strategy_filter_decisions.csv</code> 中方向过滤是否合理。</td></tr>
           <tr><td>4</td><td>加入真实风险、追价、成本。</td><td>看 <code>order_decisions.csv</code> 中 <code>actual_risk_too_high</code> 和 <code>chase_too_far</code>。</td></tr>
@@ -618,6 +619,7 @@ min_coverage_ratio = 0.95</code></pre>
       <p>组合策略回测不是“多个形态简单相加”。它把多个单策略的候选订单按真实入场时间送入组合层，再处理资金和冲突。</p>
       <div class="grid">
         <div class="card"><b>排序</b><span><code>策略优先级</code> 控制同一时间容量不够时谁先拿仓位。</span></div>
+        <div class="card"><b>方向</b><span><code>组合交易方向</code> 在所有启用形态上统一生效，可快速比较多空都做、仅多或仅空的收益和回撤。</span></div>
         <div class="card"><b>容量</b><span><code>最大组合持仓</code> 和 <code>允许同票重叠</code> 控制是否拒绝新订单。</span></div>
         <div class="card"><b>仓位</b><span><code>固定单笔仓位</code>、<code>单笔风险预算</code>、<code>最大单笔仓位</code> 共同决定真实资金占用。</span></div>
         <div class="card"><b>行业</b><span><code>行业资金上限</code> 和 <code>股票行业映射</code> 用于限制同一主题暴露。</span></div>

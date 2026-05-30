@@ -206,6 +206,7 @@ class PortfolioExperimentConfig:
     max_holding_bars: int = 12
     max_actual_risk_pct: float | None = None
     max_chase_pct: float | None = None
+    side_mode: str = "both"
     max_open_positions: int = 5
     capital_per_trade: float | None = None
     risk_per_trade: float | None = None
@@ -270,6 +271,7 @@ class SingleStrategyExperimentConfig:
     max_holding_bars: int = 12
     max_actual_risk_pct: float | None = None
     max_chase_pct: float | None = None
+    side_mode: str = "both"
     intrabar_exit_policy: str = "conservative"
     fee_rate: float = 0.0
     slippage_bps: float = 0.0
@@ -966,6 +968,7 @@ def _active_strategy_suite_cache_key(
         ("max_holding_bars", int(suite_config.max_holding_bars)),
         ("max_actual_risk_pct", suite_config.max_actual_risk_pct),
         ("max_chase_pct", suite_config.max_chase_pct),
+        ("side_mode", str(suite_config.side_mode)),
     ]
     for detector_name in enabled:
         parts.append((detector_name, _detector_cache_parameters(detector_name, suite_config)))
@@ -1023,6 +1026,7 @@ def _strategy_suite_config(config: PortfolioExperimentConfig | SingleStrategyExp
         max_holding_bars=config.max_holding_bars,
         max_actual_risk_pct=config.max_actual_risk_pct,
         max_chase_pct=config.max_chase_pct,
+        side_mode=config.side_mode,
         trend_lookback=config.trend_lookback,
         trend_min_score=config.trend_min_score,
         trend_strong_close_pos=config.trend_strong_close_pos,
@@ -1805,7 +1809,7 @@ def _sweep_parameter_record(
     for key in keys:
         value = getattr(variant, key)
         record[key] = ",".join(value) if isinstance(value, tuple) else value
-    for key in ("detectors", "detector", "intrabar_exit_policy"):
+    for key in ("detectors", "detector", "side_mode", "intrabar_exit_policy"):
         if key not in record:
             if not hasattr(base, key):
                 continue

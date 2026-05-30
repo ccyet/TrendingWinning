@@ -10,6 +10,13 @@ from trending_winning.detectors.base import Detector, validate_detector_events
 from trending_winning.strategies.base import ORDER_COLUMNS, empty_orders
 from trending_winning.strategies.diagnostics import STRATEGY_FILTER_DECISION_COLUMNS, empty_strategy_filter_decisions
 
+SUPPORTED_SIDE_MODES = ("both", "long_only", "short_only")
+SIDE_MODE_ALLOWED_SIDES = {
+    "both": frozenset({"long", "short"}),
+    "long_only": frozenset({"long"}),
+    "short_only": frozenset({"short"}),
+}
+
 
 @dataclass(frozen=True)
 class SignalBarStopStrategyConfig:
@@ -20,6 +27,7 @@ class SignalBarStopStrategyConfig:
     max_holding_bars: int = 12
     max_actual_risk_pct: float | None = None
     max_chase_pct: float | None = None
+    side_mode: str = "both"
 
 
 class SignalBarStopStrategy:
@@ -38,6 +46,7 @@ class SignalBarStopStrategy:
             raise ValueError("max_actual_risk_pct 必须大于 0 或设为 None。")
         if self.config.max_chase_pct is not None and self.config.max_chase_pct <= 0:
             raise ValueError("max_chase_pct 必须大于 0 或设为 None。")
+        self.allowed_sides = _allowed_sides_for_mode(self.config.side_mode)
 
     def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
         self.last_filter_decisions = empty_strategy_filter_decisions()
@@ -49,10 +58,12 @@ class SignalBarStopStrategy:
             return empty_orders()
         side = events["direction"].astype(str).str.strip().str.lower()
         tradable_mask = side.isin(["long", "short"])
+        side_mode_mask = side.isin(self.allowed_sides)
         numeric = events.loc[:, ["entry_price", "stop_price", "signal_price"]].apply(pd.to_numeric, errors="coerce")
         signal_bar_index = pd.to_numeric(events["bar_index"], errors="coerce")
         valid = (
             tradable_mask
+            & side_mode_mask
             & pd.to_datetime(events["date"], errors="coerce").notna()
             & signal_bar_index.notna()
             & signal_bar_index.ge(0)
@@ -68,6 +79,7 @@ class SignalBarStopStrategy:
             accepted_mask,
             liquid,
             tradable_mask,
+            side_mode_mask,
             strategy_name=self.name,
         )
         if not bool(accepted_mask.any()):
@@ -151,6 +163,7 @@ def _signal_filter_decisions(
     accepted_mask: pd.Series,
     liquid_mask: pd.Series,
     tradable_mask: pd.Series,
+    side_mode_mask: pd.Series,
     *,
     strategy_name: str,
 ) -> pd.DataFrame:
@@ -159,9 +172,10 @@ def _signal_filter_decisions(
     accepted = accepted_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
     liquid = liquid_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
     tradable = tradable_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
+    side_allowed = side_mode_mask.reindex(events.index, fill_value=False).to_numpy(dtype=bool)
     reason = np.select(
-        [accepted, ~tradable, ~liquid],
-        ["", "non_tradable_direction", "signal_bar_no_liquidity"],
+        [accepted, ~tradable, ~side_allowed, ~liquid],
+        ["", "non_tradable_direction", "side_mode_filtered", "signal_bar_no_liquidity"],
         default="invalid_signal_order",
     )
     result = pd.DataFrame(
@@ -187,3 +201,11 @@ def _signal_filter_decisions(
         columns=pd.Index(STRATEGY_FILTER_DECISION_COLUMNS),
     )
     return result
+
+
+def _allowed_sides_for_mode(side_mode: str) -> frozenset[str]:
+    """把界面/CLI 的方向模式翻译成订单方向集合。"""
+    normalized = str(side_mode).strip().lower()
+    if normalized not in SIDE_MODE_ALLOWED_SIDES:
+        raise ValueError("side_mode 仅支持 both、long_only 或 short_only。")
+    return SIDE_MODE_ALLOWED_SIDES[normalized]

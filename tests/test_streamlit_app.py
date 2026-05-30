@@ -78,6 +78,8 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "手续费率" for item in app.number_input)
     assert any(item.label == "滑点bps" for item in app.number_input)
     assert any(item.label == "初始资金" for item in app.number_input)
+    direction = next(item for item in app.selectbox if item.label == "组合交易方向")
+    assert direction.options == ["多/空", "仅多", "仅空"]
     assert any(checkbox.label == "组合要求旧极端失败测试" for checkbox in app.checkbox)
     assert any(checkbox.label == "组合要求结构确认" for checkbox in app.checkbox)
     assert any(item.label == "同K止盈止损冲突" for item in app.selectbox)
@@ -126,6 +128,8 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
     assert not app.exception
     app.radio[0].set_value("单策略回测").run(timeout=5)
     assert any(item.label == "单策略形态" for item in app.selectbox)
+    direction = next(item for item in app.selectbox if item.label == "单策略交易方向")
+    assert direction.options == ["多/空", "仅多", "仅空"]
     assert any(item.label == "大周期方向过滤" for item in app.selectbox)
     assert any(item.label == "大周期信号有效分钟" for item in app.number_input)
     assert any(item.label == "最大实际风险" for item in app.number_input)
@@ -233,6 +237,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         "take_profit",
         "strict_data_quality",
         "higher_timeframe",
+        "side_mode",
         "trend_h2_min_pullback_legs",
         "range_middle_low",
         "channel_sigma",

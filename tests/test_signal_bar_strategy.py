@@ -56,6 +56,7 @@ def _event(
     entry_price: float,
     stop_price: float,
     signal_price: float,
+    direction: str = "long",
     bar_index: int = 1,
 ) -> dict[str, object]:
     return {
@@ -66,7 +67,7 @@ def _event(
         "date": pd.Timestamp("2026-05-25 10:00:00"),
         "bar_index": bar_index,
         "event_type": "fixed_setup",
-        "direction": "long",
+        "direction": direction,
         "signal_price": signal_price,
         "entry_price": entry_price,
         "stop_price": stop_price,
@@ -164,6 +165,32 @@ def test_signal_bar_strategy_records_non_tradable_detector_events_in_filter_log(
     assert decisions.loc["middle-watch", "status"] == "rejected"
     assert decisions.loc["middle-watch", "reason"] == "non_tradable_direction"
     assert decisions.loc["long-setup", "status"] == "accepted"
+
+
+def test_signal_bar_strategy_filters_orders_by_side_mode_and_keeps_decision_log() -> None:
+    strategy = SignalBarStopStrategy(
+        FixedEventDetector(
+            [
+                _event(event_id="long-setup", entry_price=10.6, stop_price=10.1, signal_price=10.5, direction="long"),
+                _event(event_id="short-setup", entry_price=9.8, stop_price=10.2, signal_price=10.0, direction="short"),
+            ]
+        ),
+        SignalBarStopStrategyConfig(name="long_only_strategy", side_mode="long_only"),
+    )
+
+    orders = strategy.generate_orders(pd.DataFrame())
+    decisions = strategy.last_filter_decisions.set_index("event_id")
+
+    assert orders["event_id"].tolist() == ["long-setup"]
+    assert orders["side"].tolist() == ["long"]
+    assert decisions.loc["long-setup", "status"] == "accepted"
+    assert decisions.loc["short-setup", "status"] == "rejected"
+    assert decisions.loc["short-setup", "reason"] == "side_mode_filtered"
+
+
+def test_signal_bar_strategy_rejects_unknown_side_mode() -> None:
+    with pytest.raises(ValueError, match="side_mode 仅支持 both、long_only 或 short_only"):
+        SignalBarStopStrategy(FixedEventDetector([]), SignalBarStopStrategyConfig(side_mode="bad-mode"))
 
 
 def test_signal_bar_strategy_rejects_detector_events_missing_standard_columns() -> None:
