@@ -1197,6 +1197,12 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_summary["data_max_missing_gap_start_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_start_at"])
     assert saved_summary["data_max_missing_gap_end_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_end_at"])
     assert saved_summary["limit_filter_filtered_days"] == 0.0
+    assert saved_summary["case_strategy_row_count"] == len(saved_case_strategy)
+    assert saved_summary["case_strategy_trade_count"] == pytest.approx(saved_case_strategy["trade_count"].sum())
+    assert saved_summary["case_strategy_zero_trade_row_count"] == int(saved_case_strategy["trade_count"].eq(0).sum())
+    assert saved_summary["case_detector_row_count"] == len(saved_case_detector)
+    assert saved_summary["case_detector_trade_count"] == pytest.approx(saved_case_detector["trade_count"].sum())
+    assert saved_summary["case_detector_zero_trade_row_count"] == int(saved_case_detector["trade_count"].eq(0).sum())
     assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
     assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
         saved_case_setup_order_decisions["decision_count"].sum()
@@ -1988,6 +1994,12 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_summary["data_max_missing_gap_start_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_start_at"])
     assert saved_summary["data_max_missing_gap_end_at"] == _csv_text(saved_sweep.loc[0, "data_max_missing_gap_end_at"])
     assert saved_summary["limit_filter_filtered_days"] == 0.0
+    assert saved_summary["case_strategy_row_count"] == len(saved_case_strategy)
+    assert saved_summary["case_strategy_trade_count"] == pytest.approx(saved_case_strategy["trade_count"].sum())
+    assert saved_summary["case_strategy_zero_trade_row_count"] == int(saved_case_strategy["trade_count"].eq(0).sum())
+    assert saved_summary["case_detector_row_count"] == len(saved_case_detector)
+    assert saved_summary["case_detector_trade_count"] == pytest.approx(saved_case_detector["trade_count"].sum())
+    assert saved_summary["case_detector_zero_trade_row_count"] == int(saved_case_detector["trade_count"].eq(0).sum())
     assert saved_summary["case_setup_order_decision_row_count"] == len(saved_case_setup_order_decisions)
     assert saved_summary["case_setup_order_decision_count"] == pytest.approx(
         saved_case_setup_order_decisions["decision_count"].sum()

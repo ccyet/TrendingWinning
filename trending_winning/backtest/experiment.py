@@ -1548,6 +1548,8 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
 
     summary.update(_cache_status_statistics(table, "order_cache_status", prefix="order_cache"))
     summary.update(_cache_status_statistics(table, "candidate_cache_status", prefix="candidate_cache"))
+    summary.update(_case_trade_summary_statistics(result.strategy_stats, prefix="case_strategy"))
+    summary.update(_case_trade_summary_statistics(result.detector_stats, prefix="case_detector"))
     summary.update(
         _case_decision_summary_statistics(
             result.setup_order_decision_stats,
@@ -1919,6 +1921,23 @@ def _cache_status_statistics(table: pd.DataFrame, column: str, *, prefix: str) -
     keys[f"{prefix}_miss_count"] = misses
     keys[f"{prefix}_hit_rate"] = float(hits / total) if total else 0.0
     return keys
+
+
+def _case_trade_summary_statistics(frame: pd.DataFrame, *, prefix: str) -> dict[str, float]:
+    """把 case 级绩效表压成 summary 字段，避免总览页先读取大 CSV。"""
+    keys = {
+        f"{prefix}_row_count": 0.0,
+        f"{prefix}_trade_count": 0.0,
+        f"{prefix}_zero_trade_row_count": 0.0,
+    }
+    if frame.empty or "trade_count" not in frame.columns:
+        return keys
+    trades = pd.to_numeric(frame["trade_count"], errors="coerce").fillna(0.0)
+    return {
+        f"{prefix}_row_count": float(len(frame)),
+        f"{prefix}_trade_count": float(trades.sum()),
+        f"{prefix}_zero_trade_row_count": float(trades.eq(0.0).sum()),
+    }
 
 
 def _case_decision_summary_statistics(frame: pd.DataFrame, *, prefix: str) -> dict[str, float]:
