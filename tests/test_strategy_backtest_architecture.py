@@ -584,6 +584,93 @@ def test_single_strategy_backtest_applies_full_position_gate_by_actual_entry_tim
     assert decisions.loc["late-entry-first-by-code", "reason"] == "already_open"
 
 
+def test_single_strategy_backtest_breaks_same_entry_time_ties_by_signal_order() -> None:
+    bars = pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp("2026-05-25 09:30:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.0,
+                "high": 10.1,
+                "low": 9.9,
+                "close": 10.0,
+                "volume": 1000.0,
+                "amount": 10000.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 10:00:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.0,
+                "high": 10.4,
+                "low": 9.9,
+                "close": 10.2,
+                "volume": 1000.0,
+                "amount": 10200.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 10:30:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.2,
+                "high": 11.3,
+                "low": 10.1,
+                "close": 11.0,
+                "volume": 1000.0,
+                "amount": 11000.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 09:30:00"),
+                "stock_code": "000002.SZ",
+                "open": 20.0,
+                "high": 20.1,
+                "low": 19.9,
+                "close": 20.0,
+                "volume": 1000.0,
+                "amount": 20000.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 10:30:00"),
+                "stock_code": "000002.SZ",
+                "open": 20.2,
+                "high": 22.3,
+                "low": 20.1,
+                "close": 22.0,
+                "volume": 1000.0,
+                "amount": 22000.0,
+            },
+        ]
+    )
+    strategy = FixedOrderStrategy(
+        [
+            _fixed_order(
+                order_id="later-signal-lower-code",
+                symbol="000001.SZ",
+                signal_date="2026-05-25 10:00:00",
+                signal_bar_index=1,
+                entry_price=10.5,
+                stop_price=9.5,
+                target_price=11.2,
+            ),
+            _fixed_order(
+                order_id="earlier-signal-higher-code",
+                symbol="000002.SZ",
+                signal_date="2026-05-25 09:30:00",
+                signal_bar_index=0,
+                entry_price=20.5,
+                stop_price=19.5,
+                target_price=22.2,
+            ),
+        ]
+    )
+
+    result = run_single_strategy_backtest(bars, strategy, BacktestConfig(max_holding_bars=2))
+    decisions = result.order_decisions.set_index("order_id")
+
+    assert result.trades["order_id"].tolist() == ["earlier-signal-higher-code"]
+    assert decisions.loc["earlier-signal-higher-code", "status"] == "accepted"
+    assert decisions.loc["later-signal-lower-code", "status"] == "rejected"
+    assert decisions.loc["later-signal-lower-code", "reason"] == "already_open"
+
+
 def test_single_strategy_backtest_rejects_cross_symbol_entries_while_full_position_is_open() -> None:
     bars = _two_symbol_bars()
     strategy = FixedOrderStrategy(

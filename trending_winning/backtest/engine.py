@@ -656,20 +656,20 @@ def _sorted_order_records(orders: pd.DataFrame) -> list[dict[str, object]]:
     return _sort_orders_for_execution(orders).to_dict("records")
 
 
-def _single_position_candidate_sort_key(candidate: Mapping[str, object]) -> tuple[bool, pd.Timestamp, str, str, int]:
+def _single_position_candidate_sort_key(candidate: Mapping[str, object]) -> tuple[bool, pd.Timestamp, int, str, str]:
     """单策略满仓门控按真实入场时间排序；信号时间只负责生成候选订单。"""
     trade = candidate["trade"]
     if not isinstance(trade, Mapping):
-        return (True, pd.Timestamp.max, "", "", int(candidate.get("order_sequence", 0)))
+        return (True, pd.Timestamp.max, int(candidate.get("order_sequence", 0)), "", "")
     entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
     missing_entry = bool(pd.isna(entry_date))
     entry_key = pd.Timestamp.max if missing_entry else pd.Timestamp(entry_date)
     return (
         missing_entry,
         entry_key,
+        int(candidate.get("order_sequence", 0)),
         str(trade.get("stock_code", "")),
         str(trade.get("order_id", "")),
-        int(candidate.get("order_sequence", 0)),
     )
 
 
