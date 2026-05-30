@@ -628,6 +628,14 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
         "max_accepted_risk_fraction",
         "avg_accepted_margin_fraction",
         "max_accepted_margin_fraction",
+        "executed_order_count",
+        "accepted_executed_order_count",
+        "avg_accepted_actual_risk_pct",
+        "max_accepted_actual_risk_pct",
+        "avg_accepted_actual_chase_pct",
+        "max_accepted_actual_chase_pct",
+        "avg_accepted_actual_reward_to_risk",
+        "min_accepted_actual_reward_to_risk",
         "avg_executed_actual_risk_pct",
         "max_executed_actual_risk_pct",
         "avg_executed_actual_chase_pct",
@@ -648,6 +656,7 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
     accepted_count = float(accepted.sum())
     rejected_count = float(rejected.sum())
     executed = _executed_decisions(order_decisions)
+    accepted_executed = accepted & executed
     result = {
         "order_count": order_count,
         "accepted_order_count": accepted_count,
@@ -672,6 +681,18 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
         "max_accepted_risk_fraction": _accepted_max(order_decisions, accepted, "risk_fraction"),
         "avg_accepted_margin_fraction": _accepted_mean(order_decisions, accepted, "margin_fraction"),
         "max_accepted_margin_fraction": _accepted_max(order_decisions, accepted, "margin_fraction"),
+        "executed_order_count": float(executed.sum()),
+        "accepted_executed_order_count": float(accepted_executed.sum()),
+        "avg_accepted_actual_risk_pct": _masked_mean(order_decisions, accepted_executed, "actual_risk_pct"),
+        "max_accepted_actual_risk_pct": _masked_max(order_decisions, accepted_executed, "actual_risk_pct"),
+        "avg_accepted_actual_chase_pct": _masked_mean(order_decisions, accepted_executed, "actual_chase_pct"),
+        "max_accepted_actual_chase_pct": _masked_max(order_decisions, accepted_executed, "actual_chase_pct"),
+        "avg_accepted_actual_reward_to_risk": _masked_mean(
+            order_decisions, accepted_executed, "actual_reward_to_risk"
+        ),
+        "min_accepted_actual_reward_to_risk": _masked_min(
+            order_decisions, accepted_executed, "actual_reward_to_risk"
+        ),
         "avg_executed_actual_risk_pct": _masked_mean(order_decisions, executed, "actual_risk_pct"),
         "max_executed_actual_risk_pct": _masked_max(order_decisions, executed, "actual_risk_pct"),
         "avg_executed_actual_chase_pct": _masked_mean(order_decisions, executed, "actual_chase_pct"),

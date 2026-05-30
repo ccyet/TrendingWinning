@@ -305,6 +305,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "exposure_bar_ratio": [0.25, 0.25],
             "avg_margin_exposure": [0.45, 0.0],
             "max_margin_exposure": [1.5, 0.0],
+            "avg_accepted_actual_risk_pct": [0.035, 0.0],
+            "avg_accepted_actual_chase_pct": [0.015, 0.0],
+            "avg_accepted_actual_reward_to_risk": [1.75, 0.0],
             "take_profit_exit_count": [2, 0],
             "trailing_take_profit_exit_rate": [0.25, 0.0],
             "stop_loss_exit_rate": [0.5, 1.0],
@@ -340,6 +343,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["场内时间比例"].tolist() == ["25.00%", "25.00%"]
     assert display["平均保证金暴露"].tolist() == ["45.00%", "0.00%"]
     assert display["最大保证金暴露"].tolist() == ["150.00%", "0.00%"]
+    assert display["成交平均实际风险"].tolist() == ["3.50%", "0.00%"]
+    assert display["成交平均追价距离"].tolist() == ["1.50%", "0.00%"]
+    assert display["成交平均实际盈亏比"].tolist() == ["1.75", "0.00"]
     assert display["止盈退出次数"].tolist() == ["2", "0"]
     assert display["回撤止盈退出比例"].tolist() == ["25.00%", "0.00%"]
     assert display["止损退出比例"].tolist() == ["50.00%", "100.00%"]
@@ -633,6 +639,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
     assert "策略K线运行区间" in html
+    assert "avg_accepted_actual_risk_pct" in html
+    assert "最终成交订单" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
     assert "没有成交但出现过信号或拒单" in html
 
@@ -644,6 +652,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
 
     assert "docs/backtest_kline_guide.html" in readme
     assert "盈利通道回撤止盈" in readme
+    assert "avg_accepted_actual_risk_pct" in readme
     assert "回测界面 K 线使用说明" in html
     assert "盈利通道回撤止盈" in html
     assert "术语对照" in html

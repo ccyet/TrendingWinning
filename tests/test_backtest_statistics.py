@@ -591,6 +591,14 @@ def test_summarize_order_decisions_reports_rates_and_allocation_usage() -> None:
     assert stats["max_accepted_risk_fraction"] == pytest.approx(0.015)
     assert stats["avg_accepted_margin_fraction"] == pytest.approx(0.475)
     assert stats["max_accepted_margin_fraction"] == pytest.approx(0.7)
+    assert stats["executed_order_count"] == 5.0
+    assert stats["accepted_executed_order_count"] == 2.0
+    assert stats["avg_accepted_actual_risk_pct"] == pytest.approx(0.035)
+    assert stats["max_accepted_actual_risk_pct"] == pytest.approx(0.04)
+    assert stats["avg_accepted_actual_chase_pct"] == pytest.approx(0.015)
+    assert stats["max_accepted_actual_chase_pct"] == pytest.approx(0.02)
+    assert stats["avg_accepted_actual_reward_to_risk"] == pytest.approx(1.75)
+    assert stats["min_accepted_actual_reward_to_risk"] == pytest.approx(1.5)
     assert stats["avg_executed_actual_risk_pct"] == pytest.approx(0.062)
     assert stats["max_executed_actual_risk_pct"] == pytest.approx(0.1)
     assert stats["avg_executed_actual_chase_pct"] == pytest.approx(0.042)
