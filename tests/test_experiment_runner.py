@@ -2678,3 +2678,113 @@ def test_single_strategy_experiment_builds_strategy_without_default_suite(tmp_pa
 
     assert captured == {"detector": "range", "enabled": ("range",)}
     assert result.backtest.trades.empty
+
+
+def _write_no_fill_setup_sample(tmp_path: Path) -> Path:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 09:30:00", "2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.0],
+            "high": [10.2, 10.1],
+            "low": [9.8, 9.7],
+            "close": [10.0, 9.9],
+            "volume": [1000.0, 1000.0],
+            "amount": [10000.0, 9900.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    return data_root
+
+
+class _NoFillRangeStrategy:
+    name = "range_signal_bar"
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "order_id": "range-no-fill",
+                    "strategy_name": self.name,
+                    "detector_name": "range",
+                    "event_id": "range-event-1",
+                    "event_type": "range_failed_breakdown",
+                    "stock_code": "000001.SZ",
+                    "timeframe": timeframe,
+                    "signal_date": bars.loc[0, "date"],
+                    "signal_bar_index": 0,
+                    "side": "long",
+                    "signal_price": 10.0,
+                    "entry_price": 11.0,
+                    "stop_price": 9.5,
+                    "target_price": 14.0,
+                    "max_holding_bars": 1,
+                    "max_actual_risk_pct": None,
+                    "max_chase_pct": None,
+                    "metadata": {},
+                }
+            ],
+            columns=ORDER_COLUMNS,
+        )
+
+
+def _install_no_fill_range_strategy(monkeypatch) -> None:
+    monkeypatch.setattr(
+        experiment_module,
+        "create_strategy_for_detector",
+        lambda _detector, _cfg: _NoFillRangeStrategy(),
+    )
+
+
+def test_single_strategy_experiment_keeps_zero_setup_stats_for_rejected_orders(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = _write_no_fill_setup_sample(tmp_path)
+    _install_no_fill_range_strategy(monkeypatch)
+
+    result = run_single_strategy_experiment(
+        SingleStrategyExperimentConfig(
+            name="single-zero-setup",
+            data_root=str(data_root),
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-05-25",
+            end="2026-05-25",
+            detector="range",
+            strict_data_quality=False,
+        )
+    )
+
+    assert result.backtest.trades.empty
+    assert result.backtest.order_decisions["reason"].tolist() == ["no_fill"]
+    setup = result.setup_stats.set_index(["detector_name", "event_type", "side"])
+    assert setup.loc[("range", "range_failed_breakdown", "long"), "trade_count"] == 0.0
+
+
+def test_single_strategy_sweep_keeps_zero_case_setup_stats_for_rejected_orders(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = _write_no_fill_setup_sample(tmp_path)
+    _install_no_fill_range_strategy(monkeypatch)
+
+    result = run_single_strategy_parameter_sweep(
+        SingleStrategyExperimentConfig(
+            name="single-zero-setup-sweep",
+            data_root=str(data_root),
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-05-25",
+            end="2026-05-25",
+            detector="range",
+            strict_data_quality=False,
+        ),
+        grid={"risk_reward": [1.0, 2.0]},
+    )
+
+    assert result.table["trade_count"].tolist() == [0, 0]
+    setup = result.setup_stats.set_index(["case_name", "detector_name", "event_type", "side"])
+    assert setup.loc[("single-zero-setup-sweep-001", "range", "range_failed_breakdown", "long"), "trade_count"] == 0.0
+    assert setup.loc[("single-zero-setup-sweep-002", "range", "range_failed_breakdown", "long"), "trade_count"] == 0.0

@@ -478,7 +478,11 @@ def run_single_strategy_experiment(
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
-        setup_stats=_grouped_trade_statistics(backtest.trades, by=("detector_name", "event_type", "side")),
+        setup_stats=_setup_trade_statistics(
+            backtest.trades,
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
@@ -547,7 +551,11 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_grouped_trade_statistics(backtest.trades, by="detector_name"),
-        setup_stats=_grouped_trade_statistics(backtest.trades, by=("detector_name", "event_type", "side")),
+        setup_stats=_setup_trade_statistics(
+            backtest.trades,
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
@@ -668,7 +676,15 @@ def run_portfolio_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
-        setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        setup_frames.append(
+            _case_setup_statistics(
+                backtest.trades,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
         symbol_frames.append(
             _case_symbol_statistics(
                 backtest.trades,
@@ -799,7 +815,15 @@ def run_single_strategy_parameter_sweep(
         row.update(_monthly_period_statistics(backtest, use_trade_dates=True))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
         rows.append(row)
-        setup_frames.append(_case_setup_statistics(backtest.trades, case_name=case_name, case_config_hash=case_hash))
+        setup_frames.append(
+            _case_setup_statistics(
+                backtest.trades,
+                case_name=case_name,
+                case_config_hash=case_hash,
+                order_decisions=backtest.order_decisions,
+                filter_decisions=filter_decisions,
+            )
+        )
         symbol_frames.append(
             _case_symbol_statistics(
                 backtest.trades,
@@ -1517,9 +1541,16 @@ def _parameter_robustness_metrics(
     }
 
 
-def _case_setup_statistics(trades: pd.DataFrame, *, case_name: str, case_config_hash: str) -> pd.DataFrame:
-    """按 case 汇总 setup 表现；只依赖成交表，供参数遍历下钻使用。"""
-    stats = _grouped_trade_statistics(trades, by=SETUP_STAT_FIELDS)
+def _case_setup_statistics(
+    trades: pd.DataFrame,
+    *,
+    case_name: str,
+    case_config_hash: str,
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按 case 汇总 setup 表现；没有成交但出现过信号的 setup 也保留零行。"""
+    stats = _setup_trade_statistics(trades, order_decisions, filter_decisions)
     if stats.empty:
         return pd.DataFrame(columns=pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS]))
     stats.insert(0, "case_config_hash", case_config_hash)
@@ -2048,6 +2079,89 @@ def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) 
     if missing:
         return pd.DataFrame(columns=pd.Index([*fields, *STAT_KEYS]))
     return compute_grouped_trade_statistics(trades, by=by)
+
+
+def _setup_trade_statistics(
+    trades: pd.DataFrame,
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按 setup 汇总成交表现；保留只有信号或拒单、没有成交的 setup。"""
+    stats = _grouped_trade_statistics(trades, by=SETUP_STAT_FIELDS).reindex(
+        columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS])
+    )
+    setup_keys = _setup_keys_from_decisions(order_decisions, filter_decisions)
+    if setup_keys.empty:
+        return stats
+    existing_keys = set(_setup_key_tuples(stats))
+    missing_keys = [
+        tuple(row)
+        for row in setup_keys.loc[:, SETUP_STAT_FIELDS].itertuples(index=False, name=None)
+        if tuple(row) not in existing_keys
+    ]
+    if not missing_keys:
+        return _sort_setup_statistics(stats)
+    zero_rows = pd.DataFrame(
+        [
+            {
+                **dict(zip(SETUP_STAT_FIELDS, key, strict=True)),
+                **{stat_key: 0.0 for stat_key in STAT_KEYS},
+            }
+            for key in missing_keys
+        ],
+        columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS]),
+    )
+    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS]))
+    return _sort_setup_statistics(pd.concat(frames, ignore_index=True))
+
+
+def _setup_keys_from_decisions(*decision_frames: pd.DataFrame | None) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    for frame in decision_frames:
+        if frame is None or frame.empty or not set(SETUP_STAT_FIELDS).issubset(frame.columns):
+            continue
+        setup = frame.loc[:, SETUP_STAT_FIELDS].copy()
+        for setup_field in SETUP_STAT_FIELDS:
+            setup[setup_field] = setup[setup_field].map(_setup_label)
+        present = setup.loc[:, SETUP_STAT_FIELDS].ne("").all(axis=1)
+        if bool(present.any()):
+            frames.append(setup.loc[present, SETUP_STAT_FIELDS])
+    if not frames:
+        return pd.DataFrame(columns=pd.Index(SETUP_STAT_FIELDS))
+    return (
+        pd.concat(frames, ignore_index=True)
+        .drop_duplicates()
+        .sort_values(list(SETUP_STAT_FIELDS), kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _setup_label(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _setup_key_tuples(stats: pd.DataFrame) -> list[tuple[str, str, str]]:
+    if stats.empty or not set(SETUP_STAT_FIELDS).issubset(stats.columns):
+        return []
+    normalized = stats.loc[:, SETUP_STAT_FIELDS].copy()
+    for setup_field in SETUP_STAT_FIELDS:
+        normalized[setup_field] = normalized[setup_field].map(_setup_label)
+    return [tuple(row) for row in normalized.itertuples(index=False, name=None)]
+
+
+def _sort_setup_statistics(stats: pd.DataFrame) -> pd.DataFrame:
+    columns = pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS])
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    return (
+        stats.reindex(columns=columns)
+        .sort_values(list(SETUP_STAT_FIELDS), kind="mergesort")
+        .reset_index(drop=True)
+    )
 
 
 def _trade_dated_equity_curve(backtest: BacktestResult) -> pd.DataFrame:

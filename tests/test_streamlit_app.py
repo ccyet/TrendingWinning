@@ -524,6 +524,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "周期稳定性" in html
     assert "策略K线运行区间" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
+    assert "没有成交但出现过信号或拒单" in html
 
 
 def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
@@ -549,6 +550,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "主要反转：第二次信号才切换" in html
     assert "旧突破显示固定止盈止损" in html
     assert "单策略和组合策略使用信号 K 止损价" in html
+    assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
     assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6
@@ -588,6 +590,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "monthly_max_consecutive_losses" in guide
     assert "monthly_max_recovery_periods" in readme
     assert "monthly_max_recovery_periods" in guide
+    assert "没有成交但出现过信号或拒单" in readme
+    assert "没有成交但出现过信号或拒单" in guide
     for field in [
         "max_drawdown_start_at",
         "max_drawdown_trough_at",
