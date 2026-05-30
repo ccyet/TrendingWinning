@@ -2210,6 +2210,45 @@ def test_sweep_case_config_hash_is_stable_and_changes_with_config() -> None:
     assert experiment_module._case_config_hash(base) != experiment_module._case_config_hash(changed)
 
 
+def test_sweep_case_config_hash_ignores_local_paths_and_experiment_label() -> None:
+    mac = SingleStrategyExperimentConfig(
+        name="mac-run",
+        data_root="/Users/a1234/market/daily",
+        output_dir="/Users/a1234/runs/single",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        risk_reward=1.8,
+    )
+    windows = SingleStrategyExperimentConfig(
+        name="win-run",
+        data_root="D:/market/daily",
+        output_dir="D:/runs/single",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        risk_reward=1.8,
+    )
+    changed_strategy = SingleStrategyExperimentConfig(
+        name="win-run",
+        data_root="D:/market/daily",
+        output_dir="D:/runs/single",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+        risk_reward=2.0,
+    )
+
+    assert experiment_module._case_config_hash(mac) == experiment_module._case_config_hash(windows)
+    assert experiment_module._case_config_hash(mac) != experiment_module._case_config_hash(changed_strategy)
+
+
 def test_single_strategy_case_config_hash_ignores_disabled_detector_parameters() -> None:
     base = SingleStrategyExperimentConfig(
         name="single-trend",

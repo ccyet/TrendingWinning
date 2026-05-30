@@ -110,6 +110,7 @@ DETECTOR_PARAMETER_FIELDS = {
 }
 
 ALL_DETECTOR_PARAMETER_FIELDS = frozenset().union(*DETECTOR_PARAMETER_FIELDS.values())
+NON_REPRODUCIBLE_CONFIG_HASH_FIELDS = frozenset({"name", "data_root", "output_dir"})
 
 SWEEP_SUMMARY_CONTEXT_COLUMNS = (
     *DATA_INVENTORY_SUMMARY_KEYS,
@@ -2146,6 +2147,8 @@ def _case_config_hash(config: PortfolioExperimentConfig | SingleStrategyExperime
 
 def _case_config_hash_payload(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> dict[str, object]:
     payload = _json_ready(asdict(config))
+    for key in NON_REPRODUCIBLE_CONFIG_HASH_FIELDS:
+        payload.pop(key, None)
     active_fields = _active_detector_parameter_fields(config)
     for key in ALL_DETECTOR_PARAMETER_FIELDS.difference(active_fields):
         payload.pop(key, None)
