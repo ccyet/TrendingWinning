@@ -129,31 +129,28 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
     cfg = config or BacktestConfig()
     validate_backtest_config(cfg)
 
+    trigger_records = _legacy_trigger_records(scanned_bars)
     candidates: list[dict[str, object]] = []
     decisions: list[tuple[int, dict[str, object]]] = []
-    order_sequence = 0
-    for symbol, group in scanned_bars.sort_values(["stock_code", "date"]).groupby("stock_code", sort=False):
-        group = group.reset_index(drop=True)
-        for index in range(len(group)):
-            if not bool(group.loc[index, "breakout_trigger"]):
-                continue
-            current_sequence = order_sequence
-            order_sequence += 1
-            trade = _simulate_trade(group, index, str(symbol), cfg)
-            if trade is None:
-                decisions.append(
-                    (
-                        current_sequence,
-                        _legacy_signal_rejection_record(
-                            group.loc[index],
-                            index,
-                            str(symbol),
-                            _legacy_signal_reject_reason(group, index),
-                        ),
-                    )
+    for order_sequence, trigger in enumerate(trigger_records):
+        group = trigger["group"]
+        index = int(trigger["bar_index"])
+        symbol = str(trigger["stock_code"])
+        trade = _simulate_trade(group, index, symbol, cfg)
+        if trade is None:
+            decisions.append(
+                (
+                    order_sequence,
+                    _legacy_signal_rejection_record(
+                        group.loc[index],
+                        index,
+                        symbol,
+                        _legacy_signal_reject_reason(group, index),
+                    ),
                 )
-                continue
-            candidates.append({"trade": trade, "order_sequence": current_sequence})
+            )
+            continue
+        candidates.append({"trade": trade, "order_sequence": order_sequence})
 
     trades: list[dict[str, object]] = []
     open_until_date: pd.Timestamp | None = None
@@ -208,6 +205,33 @@ def _legacy_order_decision_record(trade: dict[str, object], status: str, reason:
         capital_fraction=capital_fraction,
         risk_fraction=_trade_risk_fraction(trade) if status == "accepted" else 0.0,
         margin_fraction=capital_fraction,
+    )
+
+
+def _legacy_trigger_records(scanned_bars: pd.DataFrame) -> list[dict[str, object]]:
+    """提取旧版突破触发并按全市场信号时间排序，保证复盘日志跨股票连续。"""
+    records: list[dict[str, object]] = []
+    for symbol, group in scanned_bars.sort_values(["stock_code", "date"]).groupby("stock_code", sort=False):
+        group = group.reset_index(drop=True)
+        for index, triggered in enumerate(group["breakout_trigger"].tolist()):
+            if not bool(triggered):
+                continue
+            records.append(
+                {
+                    "signal_date": pd.to_datetime(group.loc[index, "date"], errors="coerce"),
+                    "stock_code": str(symbol),
+                    "bar_index": int(index),
+                    "group": group,
+                }
+            )
+    return sorted(
+        records,
+        key=lambda record: (
+            bool(pd.isna(record["signal_date"])),
+            pd.Timestamp.max if pd.isna(record["signal_date"]) else pd.Timestamp(record["signal_date"]),
+            str(record["stock_code"]),
+            int(record["bar_index"]),
+        ),
     )
 
 

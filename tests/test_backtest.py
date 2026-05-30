@@ -225,6 +225,44 @@ def test_legacy_backtest_records_invalid_trigger_price_as_invalid_order() -> Non
     assert result.stats["rejected_invalid_order_count"] == 1.0
 
 
+def test_legacy_backtest_orders_decisions_by_signal_time_across_symbols() -> None:
+    rows: list[dict[str, object]] = []
+    payload = {
+        "000001.SZ": [
+            ("2026-05-25 09:30:00", False, pd.NA, 10.0),
+            ("2026-05-25 10:30:00", True, 10.4, 10.4),
+            ("2026-05-25 11:00:00", False, pd.NA, 10.6),
+        ],
+        "000002.SZ": [
+            ("2026-05-25 09:30:00", True, 20.0, 20.0),
+            ("2026-05-25 10:00:00", False, pd.NA, 20.2),
+            ("2026-05-25 10:30:00", False, pd.NA, 20.4),
+        ],
+    }
+    for symbol, bars in payload.items():
+        for date, triggered, trigger_price, close in bars:
+            rows.append(
+                {
+                    "date": pd.Timestamp(date),
+                    "stock_code": symbol,
+                    "open": close,
+                    "high": close + 0.2,
+                    "low": close - 0.2,
+                    "close": close,
+                    "volume": 1000.0,
+                    "amount": close * 1000.0,
+                    "breakout_trigger": triggered,
+                    "trigger_price": trigger_price,
+                }
+            )
+    scanned = pd.DataFrame(rows)
+
+    result = run_backtest(scanned, BacktestConfig(take_profit_pct=0.2, stop_loss_pct=0.05, max_holding_bars=1))
+
+    assert result.order_decisions["stock_code"].tolist() == ["000002.SZ", "000001.SZ"]
+    assert result.order_decisions["signal_date"].tolist() == sorted(result.order_decisions["signal_date"].tolist())
+
+
 def test_legacy_backtest_reuses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(_simulate_trade)
 
