@@ -1550,6 +1550,8 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
     summary.update(_cache_status_statistics(table, "candidate_cache_status", prefix="candidate_cache"))
     summary.update(_case_trade_summary_statistics(result.strategy_stats, prefix="case_strategy"))
     summary.update(_case_trade_summary_statistics(result.detector_stats, prefix="case_detector"))
+    summary.update(_case_trade_summary_statistics(result.setup_stats, prefix="case_setup"))
+    summary.update(_case_trade_summary_statistics(result.symbol_stats, prefix="case_symbol"))
     summary.update(
         _case_decision_summary_statistics(
             result.setup_order_decision_stats,
