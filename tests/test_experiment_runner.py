@@ -2737,6 +2737,71 @@ def _install_no_fill_range_strategy(monkeypatch) -> None:
     )
 
 
+class _EmptySignalStrategy:
+    name = "empty_signal_bar"
+
+    def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+        return pd.DataFrame(columns=ORDER_COLUMNS)
+
+
+def test_single_strategy_experiment_keeps_zero_strategy_stats_for_empty_strategy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = _write_no_fill_setup_sample(tmp_path)
+    monkeypatch.setattr(
+        experiment_module,
+        "create_strategy_for_detector",
+        lambda _detector, _cfg: _EmptySignalStrategy(),
+    )
+
+    result = run_single_strategy_experiment(
+        SingleStrategyExperimentConfig(
+            name="single-zero-strategy",
+            data_root=str(data_root),
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-05-25",
+            end="2026-05-25",
+            detector="trend",
+            strict_data_quality=False,
+        )
+    )
+
+    assert result.backtest.trades.empty
+    strategy = result.strategy_stats.set_index("strategy_name")
+    assert strategy.loc["empty_signal_bar", "trade_count"] == 0.0
+
+
+def test_portfolio_experiment_keeps_zero_strategy_stats_for_empty_strategy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data_root = _write_no_fill_setup_sample(tmp_path)
+    monkeypatch.setattr(
+        experiment_module,
+        "create_default_strategy_suite",
+        lambda _cfg: [_EmptySignalStrategy()],
+    )
+
+    result = run_portfolio_experiment(
+        PortfolioExperimentConfig(
+            name="portfolio-zero-strategy",
+            data_root=str(data_root),
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-05-25",
+            end="2026-05-25",
+            detectors=("trend",),
+            strict_data_quality=False,
+        )
+    )
+
+    assert result.backtest.trades.empty
+    strategy = result.strategy_stats.set_index("strategy_name")
+    assert strategy.loc["empty_signal_bar", "trade_count"] == 0.0
+
+
 def test_single_strategy_experiment_keeps_zero_setup_stats_for_rejected_orders(
     tmp_path: Path,
     monkeypatch,

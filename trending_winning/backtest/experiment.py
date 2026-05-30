@@ -473,7 +473,12 @@ def run_single_strategy_experiment(
         data_coverage=data.data_audit,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
-        strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
+        strategy_stats=_strategy_trade_statistics(
+            backtest.trades,
+            (strategy,),
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
@@ -551,7 +556,12 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         data_coverage=data.data_audit,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
-        strategy_stats=_grouped_trade_statistics(backtest.trades, by="strategy_name"),
+        strategy_stats=_strategy_trade_statistics(
+            backtest.trades,
+            strategies,
+            backtest.order_decisions,
+            backtest.strategy_filter_decisions,
+        ),
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
@@ -2089,6 +2099,82 @@ def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) 
     if missing:
         return pd.DataFrame(columns=pd.Index([*fields, *STAT_KEYS]))
     return compute_grouped_trade_statistics(trades, by=by)
+
+
+def _strategy_trade_statistics(
+    trades: pd.DataFrame,
+    strategies: Sequence[object],
+    order_decisions: pd.DataFrame | None = None,
+    filter_decisions: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """按策略汇总成交表现；保留已启用但没有成交的策略。"""
+    columns = pd.Index(["strategy_name", *STAT_KEYS])
+    stats = _grouped_trade_statistics(trades, by="strategy_name").reindex(columns=columns)
+    strategy_names = _strategy_names_for_statistics(strategies, order_decisions, filter_decisions)
+    if not strategy_names:
+        return stats
+    existing_names = set()
+    if not stats.empty and "strategy_name" in stats.columns:
+        existing_names = {name for name in stats["strategy_name"].map(_setup_label) if name}
+    missing_names = [name for name in strategy_names if name not in existing_names]
+    if not missing_names:
+        return _sort_strategy_statistics(stats, strategy_names)
+    zero_rows = pd.DataFrame(
+        [
+            {
+                "strategy_name": strategy_name,
+                **{stat_key: 0.0 for stat_key in STAT_KEYS},
+            }
+            for strategy_name in missing_names
+        ],
+        columns=columns,
+    )
+    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=columns)
+    return _sort_strategy_statistics(pd.concat(frames, ignore_index=True), strategy_names)
+
+
+def _strategy_names_for_statistics(
+    strategies: Sequence[object],
+    *decision_frames: pd.DataFrame | None,
+) -> tuple[str, ...]:
+    """生成策略统计行的稳定顺序，优先使用本次实际执行的策略对象。"""
+    names: list[str] = []
+    for strategy in strategies:
+        name = _setup_label(getattr(strategy, "name", ""))
+        if name and name not in names:
+            names.append(name)
+    for strategy_name in _strategy_names_from_decisions(*decision_frames):
+        if strategy_name not in names:
+            names.append(strategy_name)
+    return tuple(names)
+
+
+def _strategy_names_from_decisions(*decision_frames: pd.DataFrame | None) -> tuple[str, ...]:
+    names: list[str] = []
+    for frame in decision_frames:
+        if frame is None or frame.empty or "strategy_name" not in frame.columns:
+            continue
+        for strategy_name in frame["strategy_name"].map(_setup_label):
+            if strategy_name and strategy_name not in names:
+                names.append(strategy_name)
+    return tuple(names)
+
+
+def _sort_strategy_statistics(stats: pd.DataFrame, strategy_names: Sequence[str]) -> pd.DataFrame:
+    columns = pd.Index(["strategy_name", *STAT_KEYS])
+    if stats.empty:
+        return pd.DataFrame(columns=columns)
+    order = {name: index for index, name in enumerate(strategy_names)}
+    result = stats.reindex(columns=columns).copy()
+    result["_strategy_label"] = result["strategy_name"].map(_setup_label)
+    result["_strategy_order"] = result["_strategy_label"].map(lambda name: order.get(name, len(order)))
+    return (
+        result.sort_values(["_strategy_order", "_strategy_label"], kind="mergesort")
+        .drop(columns=["_strategy_order", "_strategy_label"])
+        .reset_index(drop=True)
+    )
 
 
 def _detector_trade_statistics(
