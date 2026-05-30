@@ -238,6 +238,8 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert len(saved_stats["data_inventory_signature"]) == 64
     assert saved_stats["monthly_count"] == float(len(result.monthly_returns))
     assert saved_stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
+    assert saved_stats["monthly_worst_return_period"] == result.backtest.stats["monthly_worst_return_period"]
+    assert saved_stats["max_drawdown_start_at"] == result.backtest.stats["max_drawdown_start_at"]
     assert result.backtest.stats["monthly_count"] == float(len(result.monthly_returns))
     assert result.backtest.stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert saved_stats["limit_filter_failed_count"] == result.backtest.stats["limit_filter_failed_count"]

@@ -234,7 +234,7 @@ def _portfolio_statistics(
     equity_curve: pd.DataFrame,
     decisions: pd.DataFrame,
     filter_decisions: pd.DataFrame,
-) -> dict[str, float]:
+) -> dict[str, object]:
     stats = compute_trade_statistics(trades)
     stats.update(compute_equity_statistics(equity_curve))
     stats.update(summarize_order_decisions(decisions))

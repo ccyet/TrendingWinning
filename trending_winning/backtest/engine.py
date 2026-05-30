@@ -46,7 +46,7 @@ class BacktestResult:
 
     trades: pd.DataFrame
     equity_curve: pd.DataFrame
-    stats: dict[str, float]
+    stats: dict[str, object]
     order_decisions: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=ORDER_DECISION_COLUMNS))
     strategy_filter_decisions: pd.DataFrame = field(default_factory=empty_strategy_filter_decisions)
 
@@ -381,14 +381,14 @@ def run_order_backtest(
     )
 
 
-def _trade_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame) -> dict[str, float]:
+def _trade_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame) -> dict[str, object]:
     """合并逐笔统计和净值曲线统计；净值指标以初始资金点为基准。"""
     stats = compute_trade_statistics(trades)
     stats.update(compute_equity_statistics(equity_curve))
     return stats
 
 
-def _order_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame, decisions: pd.DataFrame) -> dict[str, float]:
+def _order_statistics(trades: pd.DataFrame, equity_curve: pd.DataFrame, decisions: pd.DataFrame) -> dict[str, object]:
     stats = _trade_statistics(trades, equity_curve)
     stats.update(summarize_order_decisions(decisions))
     stats.update(summarize_strategy_filter_decisions(empty_strategy_filter_decisions()))
