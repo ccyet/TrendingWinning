@@ -25,6 +25,9 @@ from trending_winning.multitimeframe import scan_timeframes
 from trending_winning.strategies.signal_bar import SUPPORTED_SIDE_MODES
 from trending_winning.strategy import StrategyConfig, scan_bars
 
+# 分钟级长样本必须完整画出，避免 Altair 默认 5000 行限制截断回测 K 线。
+alt.data_transformers.disable_max_rows()
+
 DEFAULT_DATA_ROOT = "/Users/a1234/Desktop/trend-backtest/data/market/daily"
 DEFAULT_OUTPUT_ROOT = "runs"
 # 数据管理要补日 K，策略执行仍只跑分钟级，避免日 K 误入同级别策略回测。
@@ -39,6 +42,7 @@ BACKTEST_HELP_TEXT = {
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
     "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标价由信号K止损距离和盈亏比计算。",
     "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K止损价。",
+    "enable_trailing_take_profit": "开启后，所有回测模式都会在实际成交后叠加动态回撤止盈；关闭时下方两个回撤止盈参数强制按 0 处理。",
     "trailing_take_profit_activation_pct": "回撤止盈启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
     "trailing_take_profit_drawdown_pct": "回撤止盈触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
@@ -314,6 +318,7 @@ class BacktestRiskInputs:
     slippage_bps: float
     initial_equity: float
     intrabar_exit_policy: str
+    trailing_take_profit_enabled: bool
     trailing_take_profit_activation_pct: float
     trailing_take_profit_drawdown_pct: float
 
@@ -1366,10 +1371,10 @@ def _build_strategy_kline_altair_chart(
     return (
         alt.layer(*layers)
         .resolve_scale(y="shared")
-        .properties(width="container", height=520)
+        .properties(width="container", height=640)
         .add_params(zoom)
         .configure_axis(labelFontSize=11, titleFontSize=12)
-        .configure_view(continuousWidth=900, continuousHeight=520, strokeWidth=0)
+        .configure_view(continuousWidth=1100, continuousHeight=640, strokeWidth=0)
     )
 
 
@@ -1927,6 +1932,13 @@ def _backtest_scope_module(data_root: Path) -> BacktestScopeInputs:
     return BacktestScopeInputs(symbols=symbols, timeframe=timeframe, start=start, end=end, mode=str(mode))
 
 
+def _resolve_trailing_take_profit_controls(enabled: bool, activation_pct: float, drawdown_pct: float) -> tuple[float, float]:
+    """把页面开关转换成撮合参数；关闭时强制归零，避免隐藏参数继续影响回测。"""
+    if not enabled:
+        return 0.0, 0.0
+    return float(activation_pct), float(drawdown_pct)
+
+
 def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
     is_legacy = mode == "旧突破回测"
     caption = (
@@ -1961,16 +1973,23 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
                 max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
         else:
             max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
+        enable_trailing_take_profit = st.checkbox(
+            "启用回撤止盈",
+            value=False,
+            key="bt_enable_trailing_take_profit",
+            help=BACKTEST_HELP_TEXT["enable_trailing_take_profit"],
+        )
         trailing1, trailing2 = st.columns(2)
         with trailing1:
             trailing_take_profit_activation_pct = st.number_input(
                 "回撤止盈启动浮盈",
                 min_value=0.0,
                 max_value=1.0,
-                value=0.0,
+                value=0.04,
                 step=0.005,
                 format="%.3f",
                 key="bt_trailing_take_profit_activation_pct",
+                disabled=not enable_trailing_take_profit,
                 help=BACKTEST_HELP_TEXT["trailing_take_profit_activation_pct"],
             )
         with trailing2:
@@ -1978,10 +1997,11 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
                 "回撤止盈回撤幅度",
                 min_value=0.0,
                 max_value=0.99,
-                value=0.0,
+                value=0.015,
                 step=0.005,
                 format="%.3f",
                 key="bt_trailing_take_profit_drawdown_pct",
+                disabled=not enable_trailing_take_profit,
                 help=BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"],
             )
         cost1, cost2, cost3 = st.columns(3)
@@ -2022,6 +2042,11 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             key="bt_intrabar_policy",
             help=BACKTEST_HELP_TEXT["intrabar_exit_policy"],
         )
+    trailing_activation, trailing_drawdown = _resolve_trailing_take_profit_controls(
+        bool(enable_trailing_take_profit),
+        float(trailing_take_profit_activation_pct),
+        float(trailing_take_profit_drawdown_pct),
+    )
     return BacktestRiskInputs(
         take_profit=float(take_profit),
         stop_loss=float(stop_loss),
@@ -2030,8 +2055,9 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
         slippage_bps=float(slippage_bps),
         initial_equity=float(initial_equity),
         intrabar_exit_policy=str(intrabar_exit_policy),
-        trailing_take_profit_activation_pct=float(trailing_take_profit_activation_pct),
-        trailing_take_profit_drawdown_pct=float(trailing_take_profit_drawdown_pct),
+        trailing_take_profit_enabled=bool(enable_trailing_take_profit),
+        trailing_take_profit_activation_pct=trailing_activation,
+        trailing_take_profit_drawdown_pct=trailing_drawdown,
     )
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 
+import streamlit_app
 from streamlit_app import (
     _build_strategy_kline_altair_chart,
     _equity_chart_frame,
@@ -269,6 +270,17 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     ]:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
+    assert "启用回撤止盈" in source
+    assert "bt_enable_trailing_take_profit" in source
+
+
+def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:
+    resolver = getattr(streamlit_app, "_resolve_trailing_take_profit_controls", None)
+
+    assert resolver is not None
+    assert resolver(False, 0.05, 0.02) == (0.0, 0.0)
+    assert resolver(True, 0.05, 0.02) == (0.05, 0.02)
+
 
 def test_backtest_display_tables_are_localized_and_formatted() -> None:
     frame = pd.DataFrame(
@@ -472,7 +484,7 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
     )
     spec = chart.to_dict()
 
-    assert spec["height"] == 520
+    assert spec["height"] == 640
     assert spec["width"] == "container"
     assert len(spec["layer"]) == 8
     assert "params" in spec
@@ -487,6 +499,34 @@ def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() 
     assert "开仓/平仓时间" in str(spec)
     assert "订单" not in str(spec)
     assert "时间文本" not in str(spec)
+
+
+def test_strategy_kline_altair_chart_supports_large_zoomable_full_windows() -> None:
+    rows = 5201
+    bars = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-01-01 09:30", periods=rows, freq="5min"),
+            "stock_code": ["000001.SZ"] * rows,
+            "open": [10.0 + index * 0.001 for index in range(rows)],
+            "high": [10.2 + index * 0.001 for index in range(rows)],
+            "low": [9.8 + index * 0.001 for index in range(rows)],
+            "close": [10.1 + index * 0.001 for index in range(rows)],
+            "volume": [1000.0] * rows,
+            "amount": [10100.0] * rows,
+        }
+    )
+
+    chart = _build_strategy_kline_altair_chart(
+        _strategy_kline_chart_frame(bars, "000001.SZ"),
+        pd.DataFrame(),
+        pd.DataFrame(),
+        pd.DataFrame(),
+    )
+    spec = chart.to_dict()
+
+    assert spec["height"] == 640
+    assert spec["params"][0]["bind"] == "scales"
+    assert spec["params"][0]["select"]["encodings"] == ["x", "y"]
 
 
 def test_strategy_kline_symbol_options_prioritize_symbols_with_trades() -> None:
