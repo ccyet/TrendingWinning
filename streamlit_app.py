@@ -37,8 +37,8 @@ BACKTEST_HELP_TEXT = {
     "start_date": "回测样本开始日期，系统只读取这个日期之后的本地 K 线。",
     "end_date": "回测样本结束日期，结束日之后的 K 线不会进入样本。",
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
-    "take_profit": "单笔交易达到该收益率后止盈，例如 0.060 表示 6%。",
-    "stop_loss": "单笔交易触及该亏损率后止损，例如 0.030 表示 3%。",
+    "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标价由信号K止损距离和盈亏比计算。",
+    "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K止损价。",
     "trailing_take_profit_activation_pct": "回撤止盈启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
     "trailing_take_profit_drawdown_pct": "回撤止盈触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
@@ -1883,7 +1883,7 @@ def _scan_panel(data_root: Path, adjust: str) -> None:
 def _backtest_panel(data_root: Path, adjust: str) -> None:
     st.subheader("突破策略回测")
     scope = _backtest_scope_module(data_root)
-    risk = _backtest_risk_module()
+    risk = _backtest_risk_module(scope.mode)
     quality = _backtest_data_quality_module()
     higher = _backtest_higher_timeframe_module(scope.timeframe)
 
@@ -1927,28 +1927,39 @@ def _backtest_scope_module(data_root: Path) -> BacktestScopeInputs:
     return BacktestScopeInputs(symbols=symbols, timeframe=timeframe, start=start, end=end, mode=str(mode))
 
 
-def _backtest_risk_module() -> BacktestRiskInputs:
-    with _backtest_module_container("2. 基础风控与成本", "止盈止损、持有周期、手续费和滑点是所有回测共用的撮合参数。"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            take_profit = st.number_input(
-                "止盈",
-                min_value=0.001,
-                value=0.06,
-                step=0.005,
-                format="%.3f",
-                help=BACKTEST_HELP_TEXT["take_profit"],
-            )
-        with c2:
-            stop_loss = st.number_input(
-                "止损",
-                min_value=0.001,
-                value=0.03,
-                step=0.005,
-                format="%.3f",
-                help=BACKTEST_HELP_TEXT["stop_loss"],
-            )
-        with c3:
+def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
+    is_legacy = mode == "旧突破回测"
+    caption = (
+        "固定止盈止损、持有周期、手续费和滑点用于旧突破撮合。"
+        if is_legacy
+        else "单策略和组合策略用信号K止损价、盈亏比目标价和回撤止盈控制退出。"
+    )
+    with _backtest_module_container("2. 基础风控与成本", caption):
+        take_profit = 0.06
+        stop_loss = 0.03
+        if is_legacy:
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                take_profit = st.number_input(
+                    "止盈",
+                    min_value=0.001,
+                    value=0.06,
+                    step=0.005,
+                    format="%.3f",
+                    help=BACKTEST_HELP_TEXT["take_profit"],
+                )
+            with c2:
+                stop_loss = st.number_input(
+                    "止损",
+                    min_value=0.001,
+                    value=0.03,
+                    step=0.005,
+                    format="%.3f",
+                    help=BACKTEST_HELP_TEXT["stop_loss"],
+                )
+            with c3:
+                max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
+        else:
             max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
         trailing1, trailing2 = st.columns(2)
         with trailing1:

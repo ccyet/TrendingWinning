@@ -81,6 +81,8 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "初始资金" for item in app.number_input)
     assert any(item.label == "回撤止盈启动浮盈" for item in app.number_input)
     assert any(item.label == "回撤止盈回撤幅度" for item in app.number_input)
+    assert not any(item.label == "止盈" for item in app.number_input)
+    assert not any(item.label == "止损" for item in app.number_input)
     direction = next(item for item in app.selectbox if item.label == "组合交易方向")
     assert direction.options == ["多/空", "仅多", "仅空"]
     assert any(checkbox.label == "组合要求旧极端失败测试" for checkbox in app.checkbox)
@@ -130,6 +132,8 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
 
     assert not app.exception
     app.radio[0].set_value("单策略回测").run(timeout=5)
+    assert not any(item.label == "止盈" for item in app.number_input)
+    assert not any(item.label == "止损" for item in app.number_input)
     assert any(item.label == "单策略形态" for item in app.selectbox)
     direction = next(item for item in app.selectbox if item.label == "单策略交易方向")
     assert direction.options == ["多/空", "仅多", "仅空"]
@@ -156,6 +160,18 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
     assert any(checkbox.label == "保存实验产物" for checkbox in app.checkbox)
     assert any(item.label == "输出父目录子文件夹" for item in app.selectbox)
     assert any(button.label == "运行单策略回测" for button in app.button)
+
+
+def test_streamlit_legacy_backtest_keeps_fixed_percent_exit_controls() -> None:
+    root = Path(__file__).resolve().parents[1]
+    app = AppTest.from_file(str(root / "streamlit_app.py"))
+
+    app.run(timeout=5)
+
+    assert not app.exception
+    assert any(item.label == "止盈" for item in app.number_input)
+    assert any(item.label == "止损" for item in app.number_input)
+    assert any(button.label == "运行回测" for button in app.button)
 
 
 def test_streamlit_path_controls_use_folder_picker_instead_of_text_inputs() -> None:
@@ -507,6 +523,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
     assert "策略K线运行区间" in html
+    assert "固定百分比止盈止损只属于旧突破回测" in html
 
 
 def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
@@ -530,6 +547,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "交易区间上沿：失败突破做空" in html
     assert "通道突破：顺势延续" in html
     assert "主要反转：第二次信号才切换" in html
+    assert "旧突破显示固定止盈止损" in html
+    assert "单策略和组合策略使用信号 K 止损价" in html
     assert "策略K线运行区间" in html
     assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6
