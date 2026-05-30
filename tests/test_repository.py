@@ -649,6 +649,37 @@ def test_summarize_data_inventory_reports_all_unavailable_cache_statuses() -> No
     assert stats["data_inventory_no_valid_rows_count"] == 1.0
 
 
+def test_inventory_snapshot_signature_includes_missing_column_schema(tmp_path: Path) -> None:
+    root = tmp_path / "market"
+    cache_root = resolve_timeframe_root(root, "30m") / "qfq"
+    cache_root.mkdir(parents=True)
+    broken = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.1],
+            "high": [10.2, 10.3],
+            "low": [9.9, 10.0],
+            "close": [10.1, 10.2],
+        }
+    )
+    broken.to_parquet(cache_root / "000001.SZ.parquet", index=False)
+
+    inventory = inventory_local_data(
+        data_root=root,
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        timeframes=("30m",),
+    )
+    changed_schema_inventory = inventory.assign(missing_columns=["amount"])
+
+    assert inventory.loc[0, "status"] == "missing_columns"
+    assert inventory.loc[0, "missing_columns"] == "amount,volume"
+    assert summarize_data_inventory(inventory)["data_inventory_signature"] != summarize_data_inventory(
+        changed_schema_inventory
+    )["data_inventory_signature"]
+
+
 def test_daily_repository_uses_existing_market_daily_layout(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     daily_root = data_root / "qfq"

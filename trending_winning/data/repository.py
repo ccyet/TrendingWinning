@@ -161,6 +161,7 @@ INVENTORY_COLUMNS = [
     "end",
     "file_size_bytes",
     "modified_at",
+    "missing_columns",
     "path",
     "message",
 ]
@@ -576,6 +577,7 @@ def _inventory_symbol_file(
             base,
             status="missing_columns",
             rows=_parquet_num_rows(parquet_file),
+            missing_columns=",".join(missing_columns),
             message=f"缺少标准行情字段：{', '.join(missing_columns)}。",
         )
     try:
@@ -619,6 +621,7 @@ def _inventory_record(base: dict[str, object], **overrides: object) -> dict[str,
         "rows": 0,
         "start": pd.NaT,
         "end": pd.NaT,
+        "missing_columns": "",
         "message": "",
     }
     record.update(overrides)
@@ -1201,6 +1204,7 @@ def _data_inventory_signature(data_inventory: pd.DataFrame) -> str:
         "start",
         "end",
         "file_size_bytes",
+        "missing_columns",
     )
     records = [
         {
