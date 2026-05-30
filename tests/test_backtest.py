@@ -104,6 +104,36 @@ def test_legacy_backtest_applies_fee_and_slippage_to_actual_trade_prices() -> No
     assert result.stats["total_return"] == pytest.approx(expected_return_pct / 100.0)
 
 
+def test_legacy_backtest_uses_single_full_position_across_symbols() -> None:
+    rows: list[dict[str, object]] = []
+    for symbol, base_price in (("000001.SZ", 10.0), ("000002.SZ", 20.0)):
+        for index in range(4):
+            price = base_price + index * 0.2
+            rows.append(
+                {
+                    "date": pd.Timestamp("2026-05-25 09:30:00") + pd.Timedelta(minutes=30 * index),
+                    "stock_code": symbol,
+                    "open": price,
+                    "high": price + 0.3,
+                    "low": price - 0.2,
+                    "close": price,
+                    "volume": 1000.0,
+                    "amount": price * 1000.0,
+                    "breakout_trigger": index == 0,
+                    "trigger_price": base_price if index == 0 else pd.NA,
+                }
+            )
+    scanned = pd.DataFrame(rows)
+
+    result = run_backtest(
+        scanned,
+        BacktestConfig(take_profit_pct=0.20, stop_loss_pct=0.05, max_holding_bars=3),
+    )
+
+    assert result.trades["stock_code"].tolist() == ["000001.SZ"]
+    assert result.stats["trade_count"] == 1.0
+
+
 def test_legacy_backtest_reuses_vectorized_exit_scan_not_cursor_loop() -> None:
     source = getsource(_simulate_trade)
 

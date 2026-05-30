@@ -129,20 +129,30 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
     cfg = config or BacktestConfig()
     validate_backtest_config(cfg)
 
-    trades: list[dict[str, object]] = []
+    candidates: list[dict[str, object]] = []
     for symbol, group in scanned_bars.sort_values(["stock_code", "date"]).groupby("stock_code", sort=False):
         group = group.reset_index(drop=True)
-        index = 0
-        while index < len(group) - 1:
+        for index in range(len(group) - 1):
             if not bool(group.loc[index, "breakout_trigger"]):
-                index += 1
                 continue
             trade = _simulate_trade(group, index, str(symbol), cfg)
             if trade is None:
-                index += 1
                 continue
-            trades.append(trade)
-            index = int(trade["_exit_index"]) + 1
+            candidates.append({"trade": trade})
+
+    trades: list[dict[str, object]] = []
+    open_until_date: pd.Timestamp | None = None
+    # 旧版突破回测也按单策略满仓处理：任意股票有持仓时，全局不再开第二笔。
+    for candidate in sorted(candidates, key=_single_position_candidate_sort_key):
+        trade = candidate["trade"]
+        if not isinstance(trade, Mapping):
+            continue
+        entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
+        if open_until_date is not None and pd.notna(entry_date) and entry_date <= open_until_date:
+            continue
+        trades.append(dict(trade))
+        exit_date = pd.to_datetime(trade.get("exit_date", pd.NaT), errors="coerce")
+        open_until_date = pd.Timestamp(exit_date) if pd.notna(exit_date) else None
 
     trades_df = pd.DataFrame(trades)
     if trades_df.empty:
