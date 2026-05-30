@@ -56,6 +56,7 @@ Parallels 默认配置：
 Web 回测页里的“单策略回测”和“组合策略回测”与 CLI 复用同一套实验运行器。
 Web 页面所有文件夹路径都通过“选择文件夹”按钮弹出系统选择框；若本机窗口环境不可用，页面会明确提示并保留站内目录浏览器。
 单策略只绑定一种形态识别模块，不进入组合仓位分配层；组合策略才启用策略优先级、资金上限、行业上限和持仓互斥。
+回测结果页会展示“策略K线运行区间”，按股票切换完整样本 K 线，并标注开多、开空和止损价位，方便检查信号和风控是否落在正确 K 线上。
 需要 60m 判主方向、15m/5m 触发时，可用 `HigherTimeframeAlignmentStrategy` 包装任一基础策略；它按订单 `signal_date` 向前匹配大周期上下文，拒绝方向不一致或上下文过旧的订单，基础形态识别仍保持独立，拒绝原因会单独写入策略层过滤日志。
 “高级形态识别参数”在 Web 里按单策略和组合策略分开配置，可单独调整趋势、区间、通道、反转识别阈值。
 勾选“保存实验产物”后会把 `config.json`、`stats.json`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`data_inventory.csv`、`symbol_metadata.csv` 和数据审计文件写入页面指定的输出目录。

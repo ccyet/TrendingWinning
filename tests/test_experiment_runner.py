@@ -185,6 +185,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
 
     assert result.config.name == "case-001"
     assert result.backtest.equity_curve is not None
+    assert result.bars["date"].tolist() == bars["date"].tolist()
     assert (output_dir / "config.json").exists()
     assert (output_dir / "stats.json").exists()
     assert (output_dir / "trades.csv").exists()

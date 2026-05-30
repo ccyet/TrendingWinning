@@ -6,6 +6,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 from streamlit_app import (
+    _build_strategy_kline_altair_chart,
     _equity_chart_frame,
     _equity_y_domain,
     _format_display_value,
@@ -15,6 +16,10 @@ from streamlit_app import (
     _prepare_display_frame,
     _resolve_native_directory_choice,
     _style_display_frame,
+    _strategy_kline_chart_frame,
+    _strategy_kline_symbol_options,
+    _strategy_stop_segment_frame,
+    _strategy_trade_marker_frame,
 )
 
 
@@ -310,6 +315,109 @@ def test_backtest_equity_chart_uses_relative_net_value_starting_at_one() -> None
     assert chart["交易序号"].tolist() == [0, 1, 2]
 
 
+def test_strategy_kline_chart_frame_keeps_full_symbol_backtest_window() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00", "2026-05-25 10:30", "2026-05-25 11:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2, 10.1],
+            "high": [10.4, 10.5, 10.3],
+            "low": [9.9, 10.0, 9.8],
+            "close": [10.2, 10.1, 10.0],
+            "volume": [1000.0, 1100.0, 1200.0],
+            "amount": [10200.0, 11110.0, 12000.0],
+        }
+    )
+
+    chart = _strategy_kline_chart_frame(bars, "000001.SZ")
+
+    assert chart["时间"].tolist() == bars["date"].tolist()
+    assert chart["开盘"].tolist() == [10.0, 10.2, 10.1]
+    assert chart["收盘"].tolist() == [10.2, 10.1, 10.0]
+    assert chart["涨跌"].tolist() == ["上涨", "下跌", "下跌"]
+
+
+def test_strategy_trade_markers_include_long_short_entries_and_stop_loss() -> None:
+    trades = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "side": ["long", "short"],
+            "entry_date": pd.to_datetime(["2026-05-25 10:30", "2026-05-25 11:00"]),
+            "entry_price": [10.5, 10.1],
+            "stop_price": [10.0, 10.6],
+            "exit_date": pd.to_datetime(["2026-05-25 11:30", "2026-05-25 14:00"]),
+            "exit_price": [10.0, 9.8],
+            "exit_reason": ["stop_loss", "take_profit"],
+        }
+    )
+
+    markers = _strategy_trade_marker_frame(trades, "000001.SZ")
+    stops = _strategy_stop_segment_frame(trades, "000001.SZ")
+
+    assert markers["标注"].tolist() == ["开多", "开空", "止损"]
+    assert markers["价格"].tolist() == [10.5, 10.1, 10.0]
+    assert stops["止损价"].tolist() == [10.0, 10.6]
+    assert stops["开始时间"].tolist() == trades["entry_date"].tolist()
+    assert stops["结束时间"].tolist() == trades["exit_date"].tolist()
+
+
+def test_strategy_kline_altair_chart_contains_candles_entries_and_stop_layers() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00", "2026-05-25 10:30"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.2],
+            "high": [10.4, 10.5],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.1],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11110.0],
+        }
+    )
+    trades = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ"],
+            "side": ["long"],
+            "entry_date": pd.to_datetime(["2026-05-25 10:30"]),
+            "entry_price": [10.5],
+            "stop_price": [10.0],
+            "exit_date": pd.to_datetime(["2026-05-25 11:00"]),
+            "exit_price": [10.0],
+            "exit_reason": ["stop_loss"],
+        }
+    )
+
+    chart = _build_strategy_kline_altair_chart(
+        _strategy_kline_chart_frame(bars, "000001.SZ"),
+        _strategy_trade_marker_frame(trades, "000001.SZ"),
+        _strategy_stop_segment_frame(trades, "000001.SZ"),
+    )
+    spec = chart.to_dict()
+
+    assert spec["height"] == 420
+    assert len(spec["layer"]) == 5
+    assert "开多" in str(spec)
+    assert "止损" in str(spec)
+
+
+def test_strategy_kline_symbol_options_prioritize_symbols_with_trades() -> None:
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00"] * 3),
+            "stock_code": ["000001.SZ", "600519.SH", "300750.SZ"],
+            "open": [10.0, 20.0, 30.0],
+            "high": [10.2, 20.2, 30.2],
+            "low": [9.9, 19.9, 29.9],
+            "close": [10.1, 20.1, 30.1],
+            "volume": [1000.0, 1000.0, 1000.0],
+            "amount": [10100.0, 20100.0, 30100.0],
+        }
+    )
+    trades = pd.DataFrame({"stock_code": ["300750.SZ", "000001.SZ"]})
+
+    assert _strategy_kline_symbol_options(bars, trades) == ["300750.SZ", "000001.SZ", "600519.SH"]
+
+
 def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     html = (Path(__file__).resolve().parents[1] / "docs" / "usage_guide.html").read_text(encoding="utf-8")
 
@@ -325,6 +433,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "symbol_metadata.csv" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
+    assert "策略K线运行区间" in html
 
 
 def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
@@ -348,6 +457,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "交易区间上沿：失败突破做空" in html
     assert "通道突破：顺势延续" in html
     assert "主要反转：第二次信号才切换" in html
+    assert "策略K线运行区间" in html
+    assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6
     assert "门禁" not in html
     assert "高周期门控" not in html

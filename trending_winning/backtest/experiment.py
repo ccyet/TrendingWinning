@@ -327,6 +327,7 @@ class PortfolioExperimentResult:
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
+    bars: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -353,6 +354,7 @@ class SingleStrategyExperimentResult:
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
+    bars: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -441,6 +443,7 @@ def run_single_strategy_experiment(
     result = SingleStrategyExperimentResult(
         config=config,
         backtest=backtest,
+        bars=data.bars,
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
@@ -510,6 +513,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
     result = PortfolioExperimentResult(
         config=config,
         backtest=backtest,
+        bars=data.bars,
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         data_coverage=data.data_audit,

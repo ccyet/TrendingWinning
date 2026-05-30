@@ -19,6 +19,7 @@ from trending_winning.backtest.experiment import (
     run_single_strategy_experiment,
 )
 from trending_winning.data.repository import BacktestDataBundle, MarketDataRepository, available_symbols
+from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE
 from trending_winning.multitimeframe import scan_timeframes
 from trending_winning.strategy import StrategyConfig, scan_bars
@@ -890,6 +891,244 @@ def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
         chart_data = chart_data.dropna(subset=[x_column])
     x_label = "时间" if x_column == "date" else "交易序号"
     return chart_data.rename(columns={x_column: x_label})[[x_label, "净值比例"]].reset_index(drop=True)
+
+
+def _strategy_kline_symbol_options(bars: pd.DataFrame, trades: pd.DataFrame) -> list[str]:
+    """K 线图股票列表：有交易的股票优先，其余按行情出现顺序补齐。"""
+    normalized = normalize_bars(bars)
+    if normalized.empty:
+        return []
+    bar_symbols = [str(symbol) for symbol in normalized["stock_code"].drop_duplicates().tolist()]
+    trade_symbols: list[str] = []
+    if not trades.empty and "stock_code" in trades.columns:
+        for raw_symbol in trades["stock_code"].dropna().tolist():
+            symbol = normalize_symbol(raw_symbol)
+            if symbol and symbol not in trade_symbols and symbol in bar_symbols:
+                trade_symbols.append(symbol)
+    return [*trade_symbols, *[symbol for symbol in bar_symbols if symbol not in trade_symbols]]
+
+
+def _strategy_kline_chart_frame(bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """把单只股票的完整回测窗口 K 线转成图表字段，不因交易区间裁剪样本。"""
+    normalized = normalize_bars(bars)
+    normalized_symbol = normalize_symbol(symbol)
+    if normalized.empty or not normalized_symbol:
+        return pd.DataFrame(columns=["时间", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"])
+    frame = normalized.loc[normalized["stock_code"].eq(normalized_symbol)].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=["时间", "股票代码", "开盘", "最高", "最低", "收盘", "涨跌"])
+    frame = frame.sort_values("date")
+    chart = frame.rename(
+        columns={
+            "date": "时间",
+            "stock_code": "股票代码",
+            "open": "开盘",
+            "high": "最高",
+            "low": "最低",
+            "close": "收盘",
+        }
+    )[["时间", "股票代码", "开盘", "最高", "最低", "收盘"]]
+    chart["涨跌"] = chart["收盘"].ge(chart["开盘"]).map({True: "上涨", False: "下跌"})
+    return chart.reset_index(drop=True)
+
+
+def _strategy_trade_marker_frame(trades: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """把成交表转成 K 线图上的开多、开空和真实止损标注。"""
+    columns = ["时间", "价格", "标注", "方向", "订单ID"]
+    normalized_symbol = normalize_symbol(symbol)
+    required = {"stock_code", "side", "entry_date", "entry_price", "exit_date", "exit_price", "exit_reason"}
+    if trades.empty or not normalized_symbol or not required.issubset(trades.columns):
+        return pd.DataFrame(columns=columns)
+
+    records: list[dict[str, object]] = []
+    trade_rows = trades.loc[trades["stock_code"].map(normalize_symbol).eq(normalized_symbol)]
+    for row in trade_rows.to_dict("records"):
+        side = str(row.get("side", "")).lower()
+        entry_date = pd.Timestamp(row.get("entry_date"))
+        entry_price = pd.to_numeric(row.get("entry_price"), errors="coerce")
+        if pd.notna(entry_date) and pd.notna(entry_price):
+            label = "开空" if side == "short" else "开多"
+            records.append(
+                {
+                    "时间": entry_date,
+                    "价格": float(entry_price),
+                    "标注": label,
+                    "方向": "空头" if side == "short" else "多头",
+                    "订单ID": str(row.get("order_id", "")),
+                    "_priority": 0,
+                }
+            )
+        if str(row.get("exit_reason", "")) == "stop_loss":
+            exit_date = pd.Timestamp(row.get("exit_date"))
+            exit_price = pd.to_numeric(row.get("exit_price"), errors="coerce")
+            if pd.notna(exit_date) and pd.notna(exit_price):
+                records.append(
+                    {
+                        "时间": exit_date,
+                        "价格": float(exit_price),
+                        "标注": "止损",
+                        "方向": "空头" if side == "short" else "多头",
+                        "订单ID": str(row.get("order_id", "")),
+                        "_priority": 1,
+                    }
+                )
+    if not records:
+        return pd.DataFrame(columns=columns)
+    frame = pd.DataFrame(records).sort_values(["时间", "_priority"]).drop(columns=["_priority"])
+    return frame[columns].reset_index(drop=True)
+
+
+def _strategy_stop_segment_frame(trades: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """每笔交易的止损价横线，从入场延伸到退出，辅助检查策略风险边界。"""
+    columns = ["开始时间", "结束时间", "止损价", "方向", "订单ID"]
+    normalized_symbol = normalize_symbol(symbol)
+    required = {"stock_code", "side", "entry_date", "exit_date", "stop_price"}
+    if trades.empty or not normalized_symbol or not required.issubset(trades.columns):
+        return pd.DataFrame(columns=columns)
+
+    records: list[dict[str, object]] = []
+    trade_rows = trades.loc[trades["stock_code"].map(normalize_symbol).eq(normalized_symbol)]
+    for row in trade_rows.to_dict("records"):
+        start = pd.Timestamp(row.get("entry_date"))
+        end = pd.Timestamp(row.get("exit_date"))
+        stop_price = pd.to_numeric(row.get("stop_price"), errors="coerce")
+        if pd.isna(start) or pd.isna(end) or pd.isna(stop_price):
+            continue
+        side = str(row.get("side", "")).lower()
+        records.append(
+            {
+                "开始时间": start,
+                "结束时间": end,
+                "止损价": float(stop_price),
+                "方向": "空头" if side == "short" else "多头",
+                "订单ID": str(row.get("order_id", "")),
+            }
+        )
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(records, columns=columns).reset_index(drop=True)
+
+
+def _build_strategy_kline_altair_chart(
+    chart_data: pd.DataFrame,
+    markers: pd.DataFrame,
+    stops: pd.DataFrame,
+) -> alt.LayerChart | None:
+    if chart_data.empty:
+        return None
+
+    base = alt.Chart(chart_data).encode(
+        x=alt.X("时间:T", title="时间"),
+        tooltip=[
+            alt.Tooltip("时间:T", title="时间"),
+            alt.Tooltip("开盘:Q", format=".3f"),
+            alt.Tooltip("最高:Q", format=".3f"),
+            alt.Tooltip("最低:Q", format=".3f"),
+            alt.Tooltip("收盘:Q", format=".3f"),
+        ],
+    )
+    wick = base.mark_rule(color="#475569", opacity=0.75).encode(
+        y=alt.Y("最低:Q", title="价格", scale=alt.Scale(zero=False)),
+        y2="最高:Q",
+    )
+    body = base.mark_bar(size=5).encode(
+        y=alt.Y("开盘:Q", title="价格", scale=alt.Scale(zero=False)),
+        y2="收盘:Q",
+        color=alt.Color(
+            "涨跌:N",
+            title="K线",
+            scale=alt.Scale(domain=["上涨", "下跌"], range=["#dc2626", "#16a34a"]),
+        ),
+    )
+    layers: list[alt.Chart] = [wick, body]
+
+    if not stops.empty:
+        layers.append(
+            alt.Chart(stops)
+            .mark_rule(color="#ea580c", strokeDash=[5, 4], strokeWidth=1.5)
+            .encode(
+                x=alt.X("开始时间:T", title="时间"),
+                x2="结束时间:T",
+                y=alt.Y("止损价:Q", title="价格", scale=alt.Scale(zero=False)),
+                tooltip=[
+                    alt.Tooltip("订单ID:N", title="订单"),
+                    alt.Tooltip("方向:N", title="方向"),
+                    alt.Tooltip("止损价:Q", title="止损价", format=".3f"),
+                    alt.Tooltip("开始时间:T", title="入场"),
+                    alt.Tooltip("结束时间:T", title="退出"),
+                ],
+            )
+        )
+
+    if not markers.empty:
+        marker_base = alt.Chart(markers).encode(
+            x=alt.X("时间:T", title="时间"),
+            y=alt.Y("价格:Q", title="价格", scale=alt.Scale(zero=False)),
+            shape=alt.Shape(
+                "标注:N",
+                title="标注",
+                scale=alt.Scale(domain=["开多", "开空", "止损"], range=["triangle-up", "triangle-down", "cross"]),
+            ),
+            color=alt.Color(
+                "标注:N",
+                title="标注",
+                scale=alt.Scale(domain=["开多", "开空", "止损"], range=["#dc2626", "#2563eb", "#ea580c"]),
+            ),
+            tooltip=[
+                alt.Tooltip("标注:N"),
+                alt.Tooltip("方向:N"),
+                alt.Tooltip("价格:Q", format=".3f"),
+                alt.Tooltip("时间:T"),
+                alt.Tooltip("订单ID:N", title="订单"),
+            ],
+        )
+        layers.append(marker_base.mark_point(filled=True, size=120, stroke="#111827", strokeWidth=0.6))
+        layers.append(
+            alt.Chart(markers).mark_text(dy=-15, fontSize=11, fontWeight="bold").encode(
+                x=alt.X("时间:T", title="时间"),
+                y=alt.Y("价格:Q", title="价格", scale=alt.Scale(zero=False)),
+                text="标注:N",
+                color=alt.Color(
+                    "标注:N",
+                    title="标注",
+                    scale=alt.Scale(domain=["开多", "开空", "止损"], range=["#dc2626", "#2563eb", "#ea580c"]),
+                ),
+            )
+        )
+
+    return alt.layer(*layers).resolve_scale(y="shared").properties(height=420)
+
+
+def _render_strategy_kline_chart(
+    bars: pd.DataFrame,
+    trades: pd.DataFrame,
+    *,
+    stock_names: Mapping[str, str] | None = None,
+) -> None:
+    symbols = _strategy_kline_symbol_options(bars, trades)
+    if not symbols:
+        return
+
+    st.markdown("##### 策略K线运行区间")
+    if len(symbols) > 1:
+        selected_symbol = st.selectbox(
+            "K线图股票",
+            symbols,
+            key="backtest_kline_symbol",
+            format_func=lambda value: _stock_name_label(value, stock_names),
+        )
+    else:
+        selected_symbol = symbols[0]
+        st.caption(f"K线图股票：{_stock_name_label(selected_symbol, stock_names)}")
+
+    chart_data = _strategy_kline_chart_frame(bars, selected_symbol)
+    if chart_data.empty:
+        return
+    markers = _strategy_trade_marker_frame(trades, selected_symbol)
+    stops = _strategy_stop_segment_frame(trades, selected_symbol)
+    chart = _build_strategy_kline_altair_chart(chart_data, markers, stops)
+    if chart is not None:
+        st.altair_chart(chart, use_container_width=True)
 
 
 def _symbol_input(label: str, default: str = "000001.SZ", *, key: str, help_text: str | None = None) -> list[str]:
@@ -2067,6 +2306,7 @@ def _execute_single_strategy_experiment(
     stock_names = _backtest_stock_names(data_root, scope.symbols)
     _render_backtest_result(
         experiment.backtest,
+        bars=experiment.bars,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
         stock_names=stock_names,
@@ -2152,6 +2392,7 @@ def _execute_portfolio_strategy_experiment(
     stock_names = _backtest_stock_names(data_root, scope.symbols)
     _render_backtest_result(
         experiment.backtest,
+        bars=experiment.bars,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
         stock_names=stock_names,
@@ -2165,6 +2406,7 @@ def _render_backtest_result(
     result,
     bundle: BacktestDataBundle | None = None,
     *,
+    bars: pd.DataFrame | None = None,
     filtered_limit_open_count: int | None = None,
     data_coverage: pd.DataFrame | None = None,
     stock_names: Mapping[str, str] | None = None,
@@ -2179,6 +2421,9 @@ def _render_backtest_result(
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")
     if data_coverage is not None and not data_coverage.empty:
         _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
+    chart_bars = bundle.bars if bundle is not None else bars
+    if chart_bars is not None and not chart_bars.empty:
+        _render_strategy_kline_chart(chart_bars, result.trades, stock_names=stock_names)
     _render_display_table("逐笔交易", result.trades, stock_names=stock_names)
     if not result.equity_curve.empty:
         st.markdown("##### 净值曲线")
