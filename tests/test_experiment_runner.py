@@ -541,6 +541,9 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
     def fail_single_backtest(*args, **kwargs):
         raise AssertionError("单策略实验入口不应重复走会重新 normalize 的回测入口。")
 
+    def fail_order_backtest(*args, **kwargs):
+        raise AssertionError("单策略实验入口不应绕过统一的 normalized 单策略回测入口。")
+
     def spy_single_backtest_from_normalized(*args, **kwargs):
         cfg = args[2]
         captured["fee_rate"] = cfg.fee_rate
@@ -550,7 +553,13 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
     monkeypatch.setattr(experiment_module, "run_single_strategy_backtest", fail_single_backtest, raising=False)
-    monkeypatch.setattr(experiment_module, "run_order_backtest_from_normalized", spy_single_backtest_from_normalized)
+    monkeypatch.setattr(experiment_module, "run_order_backtest_from_normalized", fail_order_backtest)
+    monkeypatch.setattr(
+        experiment_module,
+        "run_single_strategy_backtest_from_normalized",
+        spy_single_backtest_from_normalized,
+        raising=False,
+    )
     config = SingleStrategyExperimentConfig(
         name="single-cost",
         data_root=str(data_root),

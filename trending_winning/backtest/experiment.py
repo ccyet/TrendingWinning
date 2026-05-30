@@ -16,6 +16,7 @@ from trending_winning.backtest.engine import (
     BacktestConfig,
     BacktestResult,
     run_order_backtest_from_normalized,
+    run_single_strategy_backtest_from_normalized,
 )
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,
@@ -442,14 +443,11 @@ def run_single_strategy_experiment(
         config,
         data.higher_bars,
     )[0]
-    strategy_run = execute_strategy(strategy, data.bars, timeframe=config.timeframe)
-    backtest = _with_strategy_filter_decisions(
-        run_order_backtest_from_normalized(
-            data.bars,
-            strategy_run.orders,
-            _backtest_config(config),
-        ),
-        strategy_run.filter_decisions,
+    backtest = run_single_strategy_backtest_from_normalized(
+        data.bars,
+        strategy,
+        _backtest_config(config),
+        timeframe=config.timeframe,
     )
     backtest = _with_data_management_statistics(backtest, data, min_coverage_ratio=config.min_coverage_ratio)
     monthly_returns = compute_period_returns(_trade_dated_equity_curve(backtest), freq="M")
