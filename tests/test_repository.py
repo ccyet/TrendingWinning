@@ -204,6 +204,46 @@ def test_inventory_local_data_reports_cached_and_missing_symbols(tmp_path: Path)
     assert missing_other_timeframe["status"] == "missing_file"
 
 
+def test_inventory_local_data_reads_only_identity_columns_for_cached_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.1],
+            "high": [10.3, 10.4],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.3],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11330.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    original_read_parquet = pd.read_parquet
+    read_columns: list[tuple[str, ...] | None] = []
+
+    def spy_read_parquet(*args: object, **kwargs: object) -> pd.DataFrame:
+        columns = kwargs.get("columns")
+        read_columns.append(tuple(columns) if isinstance(columns, list) else None)
+        return original_read_parquet(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_parquet", spy_read_parquet)
+
+    inventory = inventory_local_data(
+        data_root=data_root,
+        adjust="qfq",
+        timeframes=("30m",),
+        symbols=("000001.SZ",),
+    )
+
+    assert read_columns == [("date", "stock_code")]
+    assert inventory.loc[0, "status"] == "cached"
+    assert inventory.loc[0, "rows"] == 2
+
+
 def test_inventory_local_data_discovers_symbols_when_symbols_omitted(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

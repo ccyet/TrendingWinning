@@ -110,7 +110,7 @@ python -m trending_winning.cli prepare-data \
   --data-root /Users/a1234/Desktop/trend-backtest/data/market/daily
 ```
 
-`inventory-data` 只列本地缓存库存，不做覆盖率判断；指定 `--symbols` 时会把缺失的 `stock_code/timeframe` 标成 `missing_file`，不指定时会按已有 parquet 自动发现代码。
+`inventory-data` 只列本地缓存库存，不做覆盖率判断；指定 `--symbols` 时会把缺失的 `stock_code/timeframe` 标成 `missing_file`，不指定时会按已有 parquet 自动发现代码。库存扫描只读取 parquet 元数据和 `date/stock_code` 两列，不会为了看行数和起止时间加载完整 OHLCV。
 `plan-data` 只读取本地 parquet 和日 K 交易日锚点，不请求 TDX；它会把每个 `stock_code/timeframe` 标成 `cached` 或 `fetch`，并写明 `missing_file / quality_error / coverage_below_min / local_ok`。
 `prepare-data` 会输出每个 `stock_code/timeframe` 的 `cached/fetched` 动作、补数前后状态、写入行数、补前/补后覆盖率、补前/补后缺失 K 数、补前/补后最长连续缺口、补前/补后全局缺口首尾时间、补前/补后最长连续缺口起止时间和本地 parquet 路径；默认补完后仍不达标会直接失败。
 `plan-data` 和 `prepare-data` 遇到分钟周期会自动把 `1d` 作为依赖先审计/补齐；补完日 K 后再用它锚定分钟线交易日覆盖率和一字涨停开盘过滤。

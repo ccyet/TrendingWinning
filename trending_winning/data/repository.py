@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from trending_winning.data.filters import filter_limit_open_days, limit_open_dates
 from trending_winning.data.schema import (
@@ -527,28 +528,49 @@ def _inventory_symbol_file(
     if not path.exists():
         return _inventory_record(base, status="missing_file", message="本地 parquet 不存在。")
     try:
-        raw = pd.read_parquet(path)
+        parquet_file = pq.ParquetFile(path)
     except Exception as exc:  # noqa: BLE001
-        return _inventory_record(base, status="read_error", message=f"parquet 读取失败：{exc}")
+        return _inventory_record(base, status="read_error", message=f"parquet 元数据读取失败：{exc}")
 
-    missing_columns = sorted(set(CANONICAL_COLUMNS).difference(raw.columns))
+    missing_columns = sorted(set(CANONICAL_COLUMNS).difference(parquet_file.schema.names))
     if missing_columns:
         return _inventory_record(
             base,
             status="missing_columns",
-            rows=int(len(raw)),
+            rows=_parquet_num_rows(parquet_file),
             message=f"缺少标准行情字段：{', '.join(missing_columns)}。",
         )
-    normalized = normalize_bars(raw, symbol)
-    if normalized.empty:
+    try:
+        identity = pd.read_parquet(path, columns=["date", "stock_code"])
+    except Exception as exc:  # noqa: BLE001
+        return _inventory_record(base, status="read_error", message=f"parquet 关键列读取失败：{exc}")
+    valid_identity = _valid_inventory_identity(identity)
+    if valid_identity.empty:
         return _inventory_record(base, status="no_valid_rows", message="文件存在，但没有可用标准 K 线。")
     return _inventory_record(
         base,
         status="cached",
-        rows=int(len(normalized)),
-        start=normalized["date"].min(),
-        end=normalized["date"].max(),
+        rows=int(len(valid_identity)),
+        start=valid_identity["date"].min(),
+        end=valid_identity["date"].max(),
         message="本地 parquet 可用于读取；回测前仍建议执行覆盖率审计。",
+    )
+
+
+def _parquet_num_rows(parquet_file: pq.ParquetFile) -> int:
+    metadata = parquet_file.metadata
+    return int(metadata.num_rows) if metadata is not None else 0
+
+
+def _valid_inventory_identity(identity: pd.DataFrame) -> pd.DataFrame:
+    """库存扫描只需要代码和日期；完整 OHLC 质量交给 audit-data。"""
+    result = identity.loc[:, ["date", "stock_code"]].copy()
+    result["date"] = pd.to_datetime(result["date"], errors="coerce")
+    result["stock_code"] = result["stock_code"].map(normalize_symbol).replace("", pd.NA)
+    result = result.dropna(subset=["date", "stock_code"])
+    return result.drop_duplicates(subset=["stock_code", "date"], keep="last").sort_values(
+        ["stock_code", "date"],
+        kind="mergesort",
     )
 
 
