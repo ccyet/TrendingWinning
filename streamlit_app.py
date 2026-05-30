@@ -105,6 +105,7 @@ DISPLAY_COLUMN_LABELS = {
     "timeframe": "周期",
     "date": "日期",
     "period": "周期",
+    "data_inventory_signature": "数据快照指纹",
     "start": "开始",
     "end": "结束",
     "signal_date": "信号时间",

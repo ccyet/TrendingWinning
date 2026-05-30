@@ -83,6 +83,37 @@ def test_experiment_json_ready_replaces_non_finite_numbers_for_strict_json() -> 
     json.dumps(payload, allow_nan=False)
 
 
+def test_data_inventory_statistics_reports_stable_snapshot_signature() -> None:
+    inventory = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "timeframe": ["1d", "30m"],
+            "adjust": ["qfq", "qfq"],
+            "status": ["cached", "cached"],
+            "exists": [True, True],
+            "rows": [2, 8],
+            "start": [pd.Timestamp("2026-05-24"), pd.Timestamp("2026-05-25 10:00:00")],
+            "end": [pd.Timestamp("2026-05-25"), pd.Timestamp("2026-05-25 15:00:00")],
+            "file_size_bytes": [1024, 4096],
+            "modified_at": [pd.Timestamp("2026-05-30 09:00:00"), pd.Timestamp("2026-05-30 09:01:00")],
+            "path": ["/mac/path/000001.SZ.parquet", "/mac/path/30m/000001.SZ.parquet"],
+            "message": ["", ""],
+        }
+    )
+    same_snapshot_different_path = inventory.assign(
+        path=["D:/market/1d/000001.SZ.parquet", "D:/market/30m/000001.SZ.parquet"]
+    )
+    changed_snapshot = inventory.assign(file_size_bytes=[1024, 4097])
+
+    stats = experiment_module._data_inventory_statistics(inventory)
+    same_stats = experiment_module._data_inventory_statistics(same_snapshot_different_path)
+    changed_stats = experiment_module._data_inventory_statistics(changed_snapshot)
+
+    assert len(stats["data_inventory_signature"]) == 64
+    assert stats["data_inventory_signature"] == same_stats["data_inventory_signature"]
+    assert stats["data_inventory_signature"] != changed_stats["data_inventory_signature"]
+
+
 def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Path) -> None:
     data_root = tmp_path / "market" / "daily"
     output_dir = tmp_path / "runs" / "case-001"
@@ -173,6 +204,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert saved_stats["data_inventory_row_count"] == 2.0
     assert saved_stats["data_inventory_cached_count"] == 1.0
     assert saved_stats["data_inventory_missing_file_count"] == 1.0
+    assert len(saved_stats["data_inventory_signature"]) == 64
     assert saved_stats["monthly_count"] == float(len(result.monthly_returns))
     assert saved_stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert result.backtest.stats["monthly_count"] == float(len(result.monthly_returns))
@@ -741,6 +773,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "generated_order_count",
         "candidate_count",
         "candidate_rejection_count",
+        "data_inventory_signature",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
         "monthly_count",
@@ -751,6 +784,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert result.table["monthly_count"].ge(1.0).all()
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert result.table["data_inventory_signature"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert result.table["case_config_hash"].is_unique
     assert result.table.columns[0] == "sweep_rank"
     assert result.table.columns[1] == "pareto_rank"
@@ -796,6 +830,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
         "generated_order_count",
         "candidate_count",
         "candidate_rejection_count",
+        "data_inventory_signature",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
         "monthly_count",
@@ -806,6 +841,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_sweep["monthly_count"].ge(1.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert saved_sweep["data_inventory_signature"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert saved_pareto["pareto_rank"].eq(1).all()
     assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
         saved_sweep["pareto_rank"].eq(1), "case_config_hash"
@@ -897,6 +933,7 @@ def test_portfolio_parameter_sweep_reuses_loaded_data_and_saves_ranked_table(tmp
     assert saved_summary["pareto_case_count"] >= 1
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
+    assert saved_summary["data_inventory_signature"] == saved_sweep.loc[0, "data_inventory_signature"]
     assert saved_summary["input_bar_count"] == 24
     assert saved_summary["filtered_limit_open_count"] == 0
     assert saved_summary["order_cache_miss_count"] == 4
@@ -1408,6 +1445,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "generated_order_count",
         "order_count",
         "strategy_signal_count",
+        "data_inventory_signature",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
         "monthly_count",
@@ -1418,6 +1456,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert result.table["monthly_count"].eq(0.0).all()
     assert result.table["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert result.table["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert result.table["data_inventory_signature"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert result.table["case_config_hash"].is_unique
     assert result.table.columns[0] == "sweep_rank"
     assert result.table.columns[1] == "pareto_rank"
@@ -1455,6 +1494,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
         "slippage_bps",
         "order_cache_status",
         "generated_order_count",
+        "data_inventory_signature",
         "data_weighted_coverage_ratio",
         "filtered_limit_open_count",
         "monthly_count",
@@ -1465,6 +1505,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_sweep["monthly_count"].eq(0.0).all()
     assert saved_sweep["sweep_rank"].tolist() == [1, 2, 3, 4]
     assert saved_sweep["case_config_hash"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert saved_sweep["data_inventory_signature"].str.fullmatch(r"[0-9a-f]{64}").all()
     assert saved_pareto["pareto_rank"].eq(1).all()
     assert saved_pareto["case_config_hash"].tolist() == saved_sweep.loc[
         saved_sweep["pareto_rank"].eq(1), "case_config_hash"
@@ -1548,6 +1589,7 @@ def test_single_strategy_parameter_sweep_reuses_loaded_data_and_saves_ranked_tab
     assert saved_summary["pareto_case_count"] >= 1
     assert saved_summary["best_case_name"] == saved_sweep.loc[0, "case_name"]
     assert saved_summary["best_case_config_hash"] == saved_sweep.loc[0, "case_config_hash"]
+    assert saved_summary["data_inventory_signature"] == saved_sweep.loc[0, "data_inventory_signature"]
     assert saved_summary["input_bar_count"] == 2
     assert saved_summary["filtered_limit_open_count"] == 0
     assert saved_summary["order_cache_hit_count"] == 3
@@ -2176,6 +2218,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_stats["data_inventory_row_count"] == 2.0
     assert saved_stats["data_inventory_cached_count"] == 1.0
     assert saved_stats["data_inventory_missing_file_count"] == 1.0
+    assert len(saved_stats["data_inventory_signature"]) == 64
     assert saved_stats["monthly_count"] == float(len(result.monthly_returns))
     assert saved_stats["monthly_worst_return"] == pytest.approx(result.monthly_returns["return"].min())
     assert result.backtest.stats["monthly_count"] == float(len(result.monthly_returns))

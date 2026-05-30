@@ -114,6 +114,7 @@ SWEEP_SUMMARY_CONTEXT_COLUMNS = (
     "data_inventory_read_error_count",
     "data_inventory_total_rows",
     "data_inventory_total_file_size_bytes",
+    "data_inventory_signature",
     "data_audit_row_count",
     "data_audit_ok_count",
     "data_audit_failed_count",
@@ -1143,15 +1144,16 @@ def _data_management_statistics(
     return stats
 
 
-def _data_inventory_statistics(data_inventory: pd.DataFrame | None) -> dict[str, float]:
+def _data_inventory_statistics(data_inventory: pd.DataFrame | None) -> dict[str, object]:
     """把本地缓存库存压成统计字段；用于快速判断结果是否基于完整缓存快照。"""
-    keys = {
+    keys: dict[str, object] = {
         "data_inventory_row_count": 0.0,
         "data_inventory_cached_count": 0.0,
         "data_inventory_missing_file_count": 0.0,
         "data_inventory_read_error_count": 0.0,
         "data_inventory_total_rows": 0.0,
         "data_inventory_total_file_size_bytes": 0.0,
+        "data_inventory_signature": "",
     }
     if data_inventory is None or data_inventory.empty:
         return keys
@@ -1169,7 +1171,57 @@ def _data_inventory_statistics(data_inventory: pd.DataFrame | None) -> dict[str,
         "data_inventory_read_error_count": float(status.eq("read_error").sum()),
         "data_inventory_total_rows": float(rows.sum()),
         "data_inventory_total_file_size_bytes": float(file_size.sum()),
+        "data_inventory_signature": _data_inventory_signature(data_inventory),
     }
+
+
+def _data_inventory_signature(data_inventory: pd.DataFrame) -> str:
+    """按缓存元数据生成跨机器稳定签名；不包含本机绝对路径。"""
+    signature_columns = (
+        "stock_code",
+        "timeframe",
+        "adjust",
+        "status",
+        "exists",
+        "rows",
+        "start",
+        "end",
+        "file_size_bytes",
+        "modified_at",
+    )
+    records = [
+        {
+            column: _inventory_signature_value(row.get(column))
+            for column in signature_columns
+        }
+        for row in _sorted_inventory_records(data_inventory, signature_columns)
+    ]
+    payload = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sorted_inventory_records(data_inventory: pd.DataFrame, columns: tuple[str, ...]) -> list[dict[str, object]]:
+    available = [column for column in columns if column in data_inventory.columns]
+    if not available:
+        return []
+    frame = data_inventory.loc[:, available].copy()
+    sort_columns = [column for column in ("stock_code", "timeframe", "adjust") if column in frame.columns]
+    if sort_columns:
+        frame = frame.sort_values(sort_columns, kind="mergesort")
+    return frame.to_dict("records")
+
+
+def _inventory_signature_value(value: object) -> object:
+    if pd.isna(value):
+        return ""
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        return int(numeric) if numeric.is_integer() else numeric
+    return str(value)
 
 
 def _inventory_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:

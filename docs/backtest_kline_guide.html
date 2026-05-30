@@ -637,7 +637,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>胜率和平均收益是否可信？</td><td><code>stats.json</code>、<code>setup_stats.csv</code></td><td><code>win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability</code></td></tr>
           <tr><td>哪类信号形态被拒最多？</td><td><code>setup_order_decision_stats.csv</code></td><td><code>reason / decision_count / group_decision_rate</code></td></tr>
           <tr><td>组合收益来自哪里？</td><td><code>strategy_stats.csv</code></td><td><code>return_contribution / capital_turnover / capital_weighted_raw_return</code></td></tr>
-          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at</code></td></tr>
+          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature</code></td></tr>
           <tr><td>代码对应哪只股票？</td><td><code>symbol_metadata.csv</code></td><td><code>stock_code / stock_name / source</code></td></tr>
           <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing</code></td></tr>
           <tr><td>月度是否稳定？</td><td><code>monthly_returns.csv</code> 和 <code>stats.json</code></td><td><code>monthly_win_rate / monthly_worst_return / monthly_max_consecutive_losses</code></td></tr>
