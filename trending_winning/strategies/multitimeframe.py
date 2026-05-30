@@ -172,6 +172,7 @@ def _filter_decision_frame(
             "strategy_name": strategy_name,
             "base_strategy_name": base_strategy_name,
             "detector_name": aligned["detector_name"].fillna("").astype(str).to_numpy(),
+            "event_type": aligned["event_type"].fillna("").astype(str).to_numpy(),
             "stock_code": aligned["stock_code"].fillna("").astype(str).to_numpy(),
             "timeframe": aligned["timeframe"].fillna("").astype(str).to_numpy(),
             "signal_date": aligned["signal_date"].to_numpy(),

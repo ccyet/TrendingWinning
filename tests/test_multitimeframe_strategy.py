@@ -40,6 +40,7 @@ def _order(order_id: str, *, symbol: str, side: str, signal_date: str) -> dict[s
         "strategy_name": "fixed_signal_bar",
         "detector_name": "fixed",
         "event_id": f"event:{order_id}",
+        "event_type": "bull_h2_setup" if side == "long" else "bear_l2_setup",
         "stock_code": symbol,
         "timeframe": "15m",
         "signal_date": pd.Timestamp(signal_date),
@@ -63,6 +64,7 @@ def _filter_decision(order_id: str, *, status: str, reason: str) -> dict[str, ob
         "strategy_name": "fixed_signal_bar",
         "base_strategy_name": "fixed_signal_bar",
         "detector_name": "fixed",
+        "event_type": "bull_h2_setup",
         "stock_code": "000001.SZ",
         "timeframe": "15m",
         "signal_date": pd.Timestamp("2026-05-25 10:00:00"),
@@ -174,6 +176,33 @@ def test_higher_timeframe_alignment_records_filter_decisions_for_all_base_orders
     assert decisions.loc["mismatch", "reason"] == "higher_timeframe_mismatch"
     assert decisions.loc["stale", "reason"] == "higher_timeframe_stale"
     assert decisions.loc["no-context", "reason"] == "higher_timeframe_no_context"
+
+
+def test_higher_timeframe_alignment_preserves_setup_event_type_in_filter_decisions() -> None:
+    base = FixedOrderStrategy(
+        [
+            _order("accepted", symbol="000001.SZ", side="long", signal_date="2026-05-25 10:00:00"),
+            _order("rejected", symbol="000001.SZ", side="short", signal_date="2026-05-25 10:00:00"),
+        ]
+    )
+    higher_context = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-05-25 09:30:00")],
+            "stock_code": ["000001.SZ"],
+            "direction": ["long"],
+        }
+    )
+    strategy = HigherTimeframeAlignmentStrategy(
+        base,
+        higher_context,
+        TimeframeAlignmentConfig(name="mtf_aligned", context_timeframe="60m", context_column="direction"),
+    )
+
+    strategy.generate_orders(pd.DataFrame(), timeframe="15m")
+    decisions = strategy.last_filter_decisions.set_index("order_id")
+
+    assert decisions.loc["accepted", "event_type"] == "bull_h2_setup"
+    assert decisions.loc["rejected", "event_type"] == "bear_l2_setup"
 
 
 def test_higher_timeframe_alignment_preserves_base_strategy_filter_decisions() -> None:
