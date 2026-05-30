@@ -66,13 +66,13 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         "--trailing-take-profit-activation-pct",
         type=float,
         default=0.0,
-        help="回撤止盈启动浮盈，小数比例；0 表示关闭。",
+        help="回撤止盈启动浮盈，小数比例；按上一根已完成 K 确认，0 表示关闭。",
     )
     parser.add_argument(
         "--trailing-take-profit-drawdown-pct",
         type=float,
         default=0.0,
-        help="回撤止盈回撤幅度，小数比例；0 表示关闭。",
+        help="回撤止盈回撤幅度，小数比例；按上一根已完成 K 的峰值/谷值计算，0 表示关闭。",
     )
 
 

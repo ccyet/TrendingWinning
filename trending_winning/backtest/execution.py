@@ -304,7 +304,7 @@ def _trailing_take_profit_masks(
     activation_pct: float,
     drawdown_pct: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """计算回撤止盈触发点；先达到浮盈阈值，再按峰值/谷值回撤退出。"""
+    """计算回撤止盈触发点；只用上一根完成 K 的峰值/谷值确认回撤线。"""
     empty_mask = np.full(len(opens), False)
     empty_prices = np.full(len(opens), np.nan)
     if len(opens) == 0 or entry_price <= 0 or activation_pct <= 0 or drawdown_pct <= 0:
@@ -312,26 +312,20 @@ def _trailing_take_profit_masks(
 
     if side == "long":
         peak = np.maximum.accumulate(highs)
-        trailing_prices = peak * (1.0 - drawdown_pct)
-        armed = peak >= entry_price * (1.0 + activation_pct)
         previous_peak = np.concatenate(([entry_price], peak[:-1]))
-        previous_prices = previous_peak * (1.0 - drawdown_pct)
-        previous_armed = previous_peak >= entry_price * (1.0 + activation_pct)
+        trailing_prices = previous_peak * (1.0 - drawdown_pct)
+        armed = previous_peak >= entry_price * (1.0 + activation_pct)
         profitable = trailing_prices > entry_price
-        previous_profitable = previous_prices > entry_price
-        gap_trailing = liquid & previous_armed & previous_profitable & (opens <= previous_prices)
+        gap_trailing = liquid & armed & profitable & (opens <= trailing_prices)
         hit_trailing = liquid & armed & profitable & (lows <= trailing_prices)
         return gap_trailing, hit_trailing, trailing_prices
 
     trough = np.minimum.accumulate(lows)
-    trailing_prices = trough * (1.0 + drawdown_pct)
-    armed = trough <= entry_price * (1.0 - activation_pct)
     previous_trough = np.concatenate(([entry_price], trough[:-1]))
-    previous_prices = previous_trough * (1.0 + drawdown_pct)
-    previous_armed = previous_trough <= entry_price * (1.0 - activation_pct)
+    trailing_prices = previous_trough * (1.0 + drawdown_pct)
+    armed = previous_trough <= entry_price * (1.0 - activation_pct)
     profitable = trailing_prices < entry_price
-    previous_profitable = previous_prices < entry_price
-    gap_trailing = liquid & previous_armed & previous_profitable & (opens >= previous_prices)
+    gap_trailing = liquid & armed & profitable & (opens >= trailing_prices)
     hit_trailing = liquid & armed & profitable & (highs >= trailing_prices)
     return gap_trailing, hit_trailing, trailing_prices
 

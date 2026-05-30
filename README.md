@@ -28,7 +28,7 @@ TDX-only A 股 K 线趋势策略工作台。
 - Detector 参数透传：趋势强收盘/实体/回撤窗口、区间中部/失败突破/区间评分、通道突破缓冲/摆动锚点、反转强收盘/实体阈值都可配置
 - 回测统计：逐笔统计与净值曲线统计分离，输出总收益、最大回撤、最大回撤开始/触底/修复时间、当前回撤、当前水下 K 数、胜率置信区间、平均收益标准误、正期望概率、平均回撤、Ulcer Index、水下时间比例、年化收益、年化波动、Calmar、`market_bar_count`、`exposure_bar_ratio`、现金占比、净暴露、总暴露、持仓数和策略/标的/方向/退出原因拆分
 - 事件类型拆分：订单和成交透传 `event_type`，可单独评估 H1/H2、失败突破、通道突破、二次反转等 setup 表现
-- 真实撮合边界：跳空穿越按开盘成交；同 K 同时触发止盈止损时默认保守止损优先，可显式改为乐观止盈优先
+- 真实撮合边界：跳空穿越按开盘成交；同 K 同时触发止盈止损时默认保守止损优先，可显式改为乐观止盈优先；回撤止盈按上一根已完成 K 的峰值/谷值确认，避免同一根 K 同时启动和退出
 - 流动性检查：分钟 K 的 `volume` 或 `amount` 为 0 时会从回测数据包剔除；裸策略/撮合入口仍不允许用这类 K 入场、止盈止损或统计路径波动
 - 回测数据过滤：按主板/科创/创业/BJ 的日 K 涨停开盘规则剔除污染交易日
 - 多周期数据包：`5m / 15m / 30m / 60m` 可统一审计、统一日线过滤、按周期拆分给扫描和回测
@@ -204,7 +204,7 @@ python -m trending_winning.cli single-backtest \
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，避免参数对比时再手工汇总月度收益、最差月份和连续亏损风险。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动；退出原因同步给出 `take_profit_exit_count / take_profit_exit_rate / trailing_take_profit_exit_count / trailing_take_profit_exit_rate / stop_loss_exit_count / stop_loss_exit_rate / max_holding_exit_count / max_holding_exit_rate`，方便直接比较止盈、回撤止盈、止损和持有到期占比。
 单策略 `equity_curve.csv` 从 `trade_no=0` 的初始资金点开始；成交存在 `entry_date / exit_date` 时会同步写入 `date`，自然周期收益和年化统计直接使用这条时间轴。即使没有成交也会保留初始资金行；`stats.json` 同时包含逐笔交易统计和净值曲线统计，例如 `annualized_return / annualized_volatility / equity_sharpe / calmar_ratio / ulcer_index / time_under_water_ratio / market_bar_count / exposure_bars / exposure_bar_ratio / max_drawdown_start_at / max_drawdown_trough_at / max_drawdown_recovery_at / current_drawdown / current_underwater_bars`。单策略按满仓进出，`market_bar_count` 是样本内唯一 K 线时间点数量，`exposure_bar_ratio` 是持仓 K 数占市场时间轴的比例，可直接定位最大回撤和场内时间压力。
-`--trailing-take-profit-activation-pct` 和 `--trailing-take-profit-drawdown-pct` 是回撤止盈参数：前者表示实际入场后达到多少浮盈才启动，后者表示从持仓峰值或谷值回撤多少退出；任一为 `0` 时关闭。
+`--trailing-take-profit-activation-pct` 和 `--trailing-take-profit-drawdown-pct` 是回撤止盈参数：前者表示实际入场后上一根已完成 K 达到多少浮盈才启动，后者表示从上一根已完成 K 的持仓峰值或谷值回撤多少退出；任一为 `0` 时关闭。当前 K 可以刷新峰值或谷值，但不会在同一根 K 里同时完成启动和退出。
 `trades.csv` 保留 `order_id / event_id / event_type / signal_date / signal_bar_index / side / planned_entry_price / stop_price / target_price / risk_per_share / r_multiple / mae_pct / mfe_pct / mae_r / mfe_r / metadata`，
 可直接回查每笔成交来自哪根信号 K、哪个形态识别事件和哪类信号形态。
 `order_decisions.csv` 记录单策略订单是否 `accepted`，以及 `invalid_order`、`duplicate_order_id`、`no_fill`、`no_liquidity`、`already_open`、`no_bars`、`actual_risk_too_high`、`chase_too_far`、`target_not_favorable` 等未成交原因；同时写入 `actual_entry_price / actual_risk_pct / actual_chase_pct / actual_reward_to_risk`，用于解释坏订单字段、重复订单身份、零流动性入场、跳空成交、过度追价和目标价失效。
@@ -270,7 +270,7 @@ python -m trending_winning.cli portfolio-backtest \
 `limit_filter_audit.csv` 记录日线过滤状态；严格模式下 `daily_missing / daily_read_error / daily_missing_columns / daily_quality_error` 会中止回测，关闭严格数据质量检查排查时重点看这些状态和 `filtered_days`。
 `order_decision_stats.csv` 和 `strategy_filter_stats.csv` 分别汇总撮合层与策略门控层的决策分布；`setup_order_decision_stats.csv` 和 `setup_strategy_filter_stats.csv` 用同一口径按 setup 继续拆分拒绝结构；`decision_rate` 是全局占比，`group_decision_rate` 是当前策略、setup 或过滤器组内占比，撮合层聚合表包含实际风险、追价和实际盈亏比摘要。
 手续费率、滑点 bps 和初始资金会写入 `config.json`，并直接传给单策略、组合策略和参数遍历撮合层。
-组合回测同样支持 `--trailing-take-profit-activation-pct / --trailing-take-profit-drawdown-pct`；退出原因会在 `trades.csv` 和 `exit_reason_stats.csv` 中显示为 `trailing_take_profit`，并在 `stats.json`、`sweep.csv` 和 `parameter_summary.csv` 中同步汇总回撤止盈退出次数和占比。
+组合回测同样支持 `--trailing-take-profit-activation-pct / --trailing-take-profit-drawdown-pct`，口径也是上一根已完成 K 确认；退出原因会在 `trades.csv` 和 `exit_reason_stats.csv` 中显示为 `trailing_take_profit`，并在 `stats.json`、`sweep.csv` 和 `parameter_summary.csv` 中同步汇总回撤止盈退出次数和占比。
 `--benchmark` 复用本次组合回测结果生成 `benchmark.json`，不再重复加载数据或重复撮合。
 `stats.json` 同时保存逐笔交易指标和净值曲线指标：`annualized_return`、`annualized_volatility`、
 `annualized_sharpe`、`annualized_sortino`、`calmar_ratio`、`avg_drawdown`、`ulcer_index`、`time_under_water_ratio`、`avg_gross_exposure`、`max_gross_exposure`、

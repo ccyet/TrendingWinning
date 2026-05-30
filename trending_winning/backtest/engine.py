@@ -398,14 +398,15 @@ def _legacy_long_trailing_take_profit(
     entry_price: float,
     cfg: BacktestConfig,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """旧版长仓复用回撤止盈口径；只在浮盈达到阈值后启用。"""
+    """旧版长仓复用回撤止盈口径；回撤线只使用上一根完成 K 的峰值。"""
     if not _trailing_take_profit_enabled(cfg) or path.empty or entry_price <= 0:
         return np.full(len(path), False), np.full(len(path), np.nan)
     highs = pd.to_numeric(path["high"], errors="coerce").astype(float).to_numpy()
     lows = pd.to_numeric(path["low"], errors="coerce").astype(float).to_numpy()
     peak = np.maximum.accumulate(highs)
-    trailing_prices = peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
-    armed = peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
+    previous_peak = np.concatenate(([entry_price], peak[:-1]))
+    trailing_prices = previous_peak * (1.0 - float(cfg.trailing_take_profit_drawdown_pct))
+    armed = previous_peak >= entry_price * (1.0 + float(cfg.trailing_take_profit_activation_pct))
     profitable = trailing_prices > entry_price
     return armed & profitable & (lows <= trailing_prices), trailing_prices
 
