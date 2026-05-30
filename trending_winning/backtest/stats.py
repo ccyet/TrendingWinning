@@ -56,6 +56,7 @@ STAT_KEYS = [
     "avg_mae_r",
     "avg_mfe_r",
     "return_contribution",
+    "return_per_exposure_bar",
     "capital_turnover",
     "avg_capital_fraction",
     "max_capital_fraction",
@@ -66,6 +67,8 @@ STAT_KEYS = [
     "margin_exposure_bars",
     "avg_capital_exposure_per_trade",
     "avg_margin_exposure_per_trade",
+    "return_per_capital_exposure_bar",
+    "return_per_margin_exposure_bar",
     "capital_weighted_raw_return",
 ]
 
@@ -308,6 +311,10 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     return_p75 = _quantile_or_zero(returns, 0.75)
     return_p95 = _quantile_or_zero(returns, 0.95)
     capital_turnover = _round_float(capital_fraction.sum()) if not capital_fraction.empty else 0.0
+    return_contribution = _round_float(returns.sum())
+    exposure_bar_count = _round_float(exposure_bars.sum())
+    capital_exposure_bars = _round_float(capital_exposure.sum()) if not capital_exposure.empty else 0.0
+    margin_exposure_bars = _round_float(margin_exposure.sum()) if not margin_exposure.empty else 0.0
     confidence_stats = _sample_confidence_statistics(returns)
 
     return {
@@ -327,7 +334,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "avg_win": avg_win,
         "avg_loss": avg_loss,
         "payoff_ratio": _ratio_or_zero(avg_win, abs(avg_loss)),
-        "exposure_bars": _round_float(exposure_bars.sum()),
+        "exposure_bars": exposure_bar_count,
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "return_std": return_std,
@@ -356,17 +363,20 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "avg_mfe_pct": _mean_or_zero(mfe_pct),
         "avg_mae_r": _mean_or_zero(mae_r),
         "avg_mfe_r": _mean_or_zero(mfe_r),
-        "return_contribution": _round_float(returns.sum()),
+        "return_contribution": return_contribution,
+        "return_per_exposure_bar": _ratio_or_zero(return_contribution, exposure_bar_count),
         "capital_turnover": capital_turnover,
         "avg_capital_fraction": _mean_or_zero(capital_fraction),
         "max_capital_fraction": _max_or_zero(capital_fraction),
         "margin_turnover": _round_float(margin_fraction.sum()) if not margin_fraction.empty else 0.0,
         "avg_margin_fraction": _mean_or_zero(margin_fraction),
         "max_margin_fraction": _max_or_zero(margin_fraction),
-        "capital_exposure_bars": _round_float(capital_exposure.sum()) if not capital_exposure.empty else 0.0,
-        "margin_exposure_bars": _round_float(margin_exposure.sum()) if not margin_exposure.empty else 0.0,
+        "capital_exposure_bars": capital_exposure_bars,
+        "margin_exposure_bars": margin_exposure_bars,
         "avg_capital_exposure_per_trade": _mean_or_zero(capital_exposure),
         "avg_margin_exposure_per_trade": _mean_or_zero(margin_exposure),
+        "return_per_capital_exposure_bar": _ratio_or_zero(return_contribution, capital_exposure_bars),
+        "return_per_margin_exposure_bar": _ratio_or_zero(return_contribution, margin_exposure_bars),
         "capital_weighted_raw_return": _weighted_mean_or_zero(raw_returns, capital_fraction),
     }
 

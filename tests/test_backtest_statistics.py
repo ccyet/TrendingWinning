@@ -191,6 +191,9 @@ def test_compute_trade_statistics_reports_portfolio_capital_contribution_metrics
     assert stats["margin_exposure_bars"] == pytest.approx(1.75)
     assert stats["avg_capital_exposure_per_trade"] == pytest.approx(0.65)
     assert stats["avg_margin_exposure_per_trade"] == pytest.approx(0.875)
+    assert stats["return_per_exposure_bar"] == pytest.approx(0.005 / 5.0)
+    assert stats["return_per_capital_exposure_bar"] == pytest.approx(0.005 / 1.3)
+    assert stats["return_per_margin_exposure_bar"] == pytest.approx(0.005 / 1.75)
     assert stats["capital_weighted_raw_return"] == pytest.approx(0.01)
     assert grouped.loc["trend_signal_bar", "return_contribution"] == pytest.approx(0.02)
     assert grouped.loc["trend_signal_bar", "capital_weighted_raw_return"] == pytest.approx(0.1)
@@ -210,7 +213,11 @@ def test_compute_trade_statistics_reports_single_strategy_return_contribution() 
     grouped = compute_grouped_trade_statistics(trades, by="event_type").set_index("event_type")
 
     assert stats["return_contribution"] == pytest.approx(0.04)
+    assert stats["return_per_exposure_bar"] == pytest.approx(0.04 / 6.0)
+    assert stats["return_per_capital_exposure_bar"] == pytest.approx(0.0)
+    assert stats["return_per_margin_exposure_bar"] == pytest.approx(0.0)
     assert grouped.loc["bull_h2_setup", "return_contribution"] == pytest.approx(0.03)
+    assert grouped.loc["bull_h2_setup", "return_per_exposure_bar"] == pytest.approx(0.03 / 5.0)
     assert grouped.loc["failed_breakout", "return_contribution"] == pytest.approx(0.01)
 
 
