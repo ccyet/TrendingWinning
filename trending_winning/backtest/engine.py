@@ -11,6 +11,7 @@ from trending_winning.backtest.execution import (
     apply_slippage,
     coerce_order_execution_result,
     compute_order_execution_metrics,
+    is_protective_stop,
     simulate_order_trade_with_rejection,
     trade_path_metrics,
     validate_backtest_config,
@@ -605,7 +606,8 @@ def order_preflight_reject_reason(order: Mapping[str, object]) -> str:
         return "invalid_order"
     if not normalize_symbol(order.get("stock_code", "")):
         return "invalid_order"
-    if str(order.get("side", "")).strip().lower() not in {"long", "short"}:
+    side = str(order.get("side", "")).strip().lower()
+    if side not in {"long", "short"}:
         return "invalid_order"
     if pd.isna(pd.to_datetime(order.get("signal_date", pd.NaT), errors="coerce")):
         return "invalid_order"
@@ -617,7 +619,9 @@ def order_preflight_reject_reason(order: Mapping[str, object]) -> str:
         return "invalid_order"
     if not all(_is_positive_number(order.get(column, None)) for column in ("entry_price", "stop_price", "target_price")):
         return "invalid_order"
-    if _as_float(order.get("entry_price", 0.0)) == _as_float(order.get("stop_price", 0.0)):
+    entry_price = _as_float(order.get("entry_price", 0.0))
+    stop_price = _as_float(order.get("stop_price", 0.0))
+    if not is_protective_stop(side, entry_price, stop_price):
         return "invalid_order"
     max_holding = order.get("max_holding_bars", 1)
     if not pd.isna(max_holding) and _as_int(max_holding, default=0) < 1:

@@ -65,6 +65,8 @@ def simulate_order_trade_with_rejection(
     max_holding = _order_max_holding_bars(order, cfg)
     if entry_price <= 0 or stop_price <= 0 or target_price <= 0 or max_holding < 1:
         return OrderExecutionResult(reject_reason="invalid_order")
+    if not is_protective_stop(side, entry_price, stop_price):
+        return OrderExecutionResult(reject_reason="invalid_order")
     if signal_index < 0:
         return OrderExecutionResult(reject_reason="invalid_order")
     if signal_index >= len(group):
@@ -372,6 +374,15 @@ def _target_is_favorable(side: str, entry_price: float, target_price: float) -> 
         return target_price > entry_price
     if side == "short":
         return target_price < entry_price
+    return False
+
+
+def is_protective_stop(side: str, entry_price: float, stop_price: float) -> bool:
+    """校验止损方向：多头止损在入场下方，空头止损在入场上方。"""
+    if side == "long":
+        return stop_price < entry_price
+    if side == "short":
+        return stop_price > entry_price
     return False
 
 

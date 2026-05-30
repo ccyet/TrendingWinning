@@ -211,6 +211,59 @@ def test_order_backtest_rejects_duplicate_order_ids_after_first_occurrence() -> 
     assert result.stats["rejected_duplicate_order_id_count"] == 1.0
 
 
+@pytest.mark.parametrize(
+    ("side", "entry_price", "stop_price", "target_price"),
+    [
+        ("long", 10.2, 10.4, 11.0),
+        ("short", 10.2, 10.0, 9.4),
+    ],
+)
+def test_order_backtest_rejects_non_protective_stop_before_simulation(
+    side: str,
+    entry_price: float,
+    stop_price: float,
+    target_price: float,
+) -> None:
+    bars = _bars(
+        [
+            {"open": 10.0, "high": 10.4, "low": 9.8, "close": 10.0},
+            {"open": 10.2, "high": 10.6, "low": 9.6, "close": 10.1},
+        ]
+    )
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": "bad-stop",
+                "strategy_name": "execution_case",
+                "detector_name": "trend",
+                "event_id": "event-bad-stop",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": bars.loc[0, "date"],
+                "signal_bar_index": 0,
+                "side": side,
+                "signal_price": 10.0,
+                "entry_price": entry_price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "max_holding_bars": 1,
+                "max_actual_risk_pct": None,
+                "max_chase_pct": None,
+                "metadata": {},
+            }
+        ]
+    )
+
+    result = run_order_backtest(bars, orders, BacktestConfig(max_holding_bars=1))
+
+    assert result.trades.empty
+    decision = result.order_decisions.iloc[0]
+    assert decision["status"] == "rejected"
+    assert decision["reason"] == "invalid_order"
+    assert decision["actual_entry_price"] == 0.0
+    assert result.stats["rejected_invalid_order_count"] == 1.0
+
+
 @pytest.mark.parametrize("order_id", ["", "   ", None])
 def test_order_backtest_rejects_orders_without_traceable_order_id(order_id: object) -> None:
     bars = _bars(
