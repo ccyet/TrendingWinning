@@ -78,15 +78,32 @@ def run_portfolio_backtest(
     *,
     timeframe: str = "",
 ) -> BacktestResult:
+    return run_portfolio_backtest_from_normalized(
+        normalize_bars(bars),
+        strategies,
+        config or BacktestConfig(),
+        portfolio_config or PortfolioConfig(),
+        timeframe=timeframe,
+    )
+
+
+def run_portfolio_backtest_from_normalized(
+    normalized_bars: pd.DataFrame,
+    strategies: Sequence[Strategy],
+    config: BacktestConfig | None = None,
+    portfolio_config: PortfolioConfig | None = None,
+    *,
+    timeframe: str = "",
+) -> BacktestResult:
+    """基于已标准化 K 线执行组合回测；实验入口用它避免重复 normalize。"""
     cfg = config or BacktestConfig()
     pcfg = portfolio_config or PortfolioConfig()
     validate_backtest_config(cfg)
     _validate_portfolio_config(pcfg)
 
-    normalized = normalize_bars(bars)
-    strategy_runs = execute_strategies(strategies, normalized, timeframe=timeframe)
+    strategy_runs = execute_strategies(strategies, normalized_bars, timeframe=timeframe)
     return _run_portfolio_orders(
-        normalized,
+        normalized_bars,
         strategy_runs.orders,
         cfg,
         pcfg,

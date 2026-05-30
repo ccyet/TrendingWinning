@@ -389,8 +389,26 @@ def run_single_strategy_backtest(
     *,
     timeframe: str = "",
 ) -> BacktestResult:
-    strategy_run = execute_strategy(strategy, bars, timeframe=timeframe)
-    result = run_order_backtest(bars, strategy_run.orders, config or BacktestConfig())
+    return run_single_strategy_backtest_from_normalized(
+        normalize_bars(bars),
+        strategy,
+        config or BacktestConfig(),
+        timeframe=timeframe,
+    )
+
+
+def run_single_strategy_backtest_from_normalized(
+    normalized_bars: pd.DataFrame,
+    strategy: Strategy,
+    config: BacktestConfig | None = None,
+    *,
+    timeframe: str = "",
+) -> BacktestResult:
+    """基于已标准化 K 线执行单策略回测；实验和 sweep 热路径复用同一批 K。"""
+    cfg = config or BacktestConfig()
+    validate_backtest_config(cfg)
+    strategy_run = execute_strategy(strategy, normalized_bars, timeframe=timeframe)
+    result = run_order_backtest_from_normalized(normalized_bars, strategy_run.orders, cfg)
     return _with_strategy_filter_decisions(result, strategy_run.filter_decisions)
 
 

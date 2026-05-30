@@ -538,7 +538,10 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
     write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
     captured: dict[str, float] = {}
 
-    def spy_single_backtest(*args, **kwargs):
+    def fail_single_backtest(*args, **kwargs):
+        raise AssertionError("单策略实验入口不应重复走会重新 normalize 的回测入口。")
+
+    def spy_single_backtest_from_normalized(*args, **kwargs):
         cfg = args[2]
         captured["fee_rate"] = cfg.fee_rate
         captured["slippage_bps"] = cfg.slippage_bps
@@ -546,7 +549,8 @@ def test_single_strategy_experiment_passes_cost_model_to_backtest_config(tmp_pat
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
-    monkeypatch.setattr(experiment_module, "run_single_strategy_backtest", spy_single_backtest)
+    monkeypatch.setattr(experiment_module, "run_single_strategy_backtest", fail_single_backtest, raising=False)
+    monkeypatch.setattr(experiment_module, "run_order_backtest_from_normalized", spy_single_backtest_from_normalized)
     config = SingleStrategyExperimentConfig(
         name="single-cost",
         data_root=str(data_root),
@@ -583,7 +587,10 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
     write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
     captured: dict[str, float] = {}
 
-    def spy_portfolio_backtest(*args, **kwargs):
+    def fail_portfolio_backtest(*args, **kwargs):
+        raise AssertionError("组合实验入口不应重复走会重新 normalize 的回测入口。")
+
+    def spy_portfolio_backtest_from_normalized(*args, **kwargs):
         cfg = args[2]
         captured["fee_rate"] = cfg.fee_rate
         captured["slippage_bps"] = cfg.slippage_bps
@@ -591,7 +598,13 @@ def test_portfolio_experiment_passes_cost_model_to_backtest_config(tmp_path: Pat
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
-    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", spy_portfolio_backtest)
+    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", fail_portfolio_backtest, raising=False)
+    monkeypatch.setattr(
+        experiment_module,
+        "run_portfolio_backtest_from_normalized",
+        spy_portfolio_backtest_from_normalized,
+        raising=False,
+    )
     config = PortfolioExperimentConfig(
         name="portfolio-cost",
         data_root=str(data_root),
@@ -627,7 +640,7 @@ def test_portfolio_experiment_passes_allocation_limits_to_portfolio_config(tmp_p
     write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
     captured: dict[str, object] = {}
 
-    def spy_portfolio_backtest(*args, **kwargs):
+    def spy_portfolio_backtest_from_normalized(*args, **kwargs):
         pcfg = args[3]
         captured["capital_per_trade"] = pcfg.capital_per_trade
         captured["reserve_cash"] = pcfg.reserve_cash
@@ -641,7 +654,12 @@ def test_portfolio_experiment_passes_allocation_limits_to_portfolio_config(tmp_p
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
-    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", spy_portfolio_backtest)
+    monkeypatch.setattr(
+        experiment_module,
+        "run_portfolio_backtest_from_normalized",
+        spy_portfolio_backtest_from_normalized,
+        raising=False,
+    )
     config = PortfolioExperimentConfig(
         name="allocation-limits",
         data_root=str(data_root),
@@ -721,12 +739,17 @@ def test_portfolio_experiment_passes_detector_parameters_to_strategy_suite(
         captured["reversal_old_extreme_tolerance_pct"] = cfg.reversal_old_extreme_tolerance_pct
         return []
 
-    def spy_portfolio_backtest(*args, **kwargs):
+    def spy_portfolio_backtest_from_normalized(*args, **kwargs):
         trades = pd.DataFrame(columns=["strategy_name", "stock_code", "return_pct", "holding_bars"])
         return BacktestResult(trades=trades, equity_curve=pd.DataFrame(), stats={"trade_count": 0.0})
 
     monkeypatch.setattr(experiment_module, "create_default_strategy_suite", spy_suite)
-    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", spy_portfolio_backtest)
+    monkeypatch.setattr(
+        experiment_module,
+        "run_portfolio_backtest_from_normalized",
+        spy_portfolio_backtest_from_normalized,
+        raising=False,
+    )
     config = PortfolioExperimentConfig(
         name="detector-params",
         data_root=str(data_root),
@@ -2403,7 +2426,7 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     def fail_if_portfolio_called(*args, **kwargs):
         raise AssertionError("single strategy experiment must not call portfolio backtest")
 
-    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", fail_if_portfolio_called)
+    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", fail_if_portfolio_called, raising=False)
     config = SingleStrategyExperimentConfig(
         name="single-trend",
         data_root=str(data_root),

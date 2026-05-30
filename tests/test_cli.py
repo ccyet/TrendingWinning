@@ -270,7 +270,7 @@ def test_cli_portfolio_backtest_benchmark_reuses_single_backtest_run(tmp_path: P
                 }
             )
     write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=pd.DataFrame(rows))
-    original_backtest = experiment_module.run_portfolio_backtest
+    original_backtest = experiment_module.run_portfolio_backtest_from_normalized
     backtest_calls = 0
 
     def spy_backtest(*args, **kwargs):
@@ -278,7 +278,7 @@ def test_cli_portfolio_backtest_benchmark_reuses_single_backtest_run(tmp_path: P
         backtest_calls += 1
         return original_backtest(*args, **kwargs)
 
-    monkeypatch.setattr(experiment_module, "run_portfolio_backtest", spy_backtest)
+    monkeypatch.setattr(experiment_module, "run_portfolio_backtest_from_normalized", spy_backtest)
     monkeypatch.setattr(
         sys,
         "argv",
