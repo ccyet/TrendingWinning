@@ -338,6 +338,15 @@ def test_streamlit_backtest_result_renders_core_performance_overview() -> None:
     assert "_performance_summary_frame" in source
 
 
+def test_streamlit_backtest_result_prioritizes_kline_before_statistics() -> None:
+    source = getsource(streamlit_app._render_backtest_result)
+
+    kline_index = source.index("_render_strategy_kline_chart")
+    assert kline_index < source.index('"核心绩效概览"')
+    assert kline_index < source.index("_render_order_decision_charts")
+    assert kline_index < source.index('"逐笔交易"')
+
+
 def test_equity_drawdown_chart_frame_uses_running_high_watermark() -> None:
     equity = pd.DataFrame(
         {
@@ -438,15 +447,22 @@ def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
 
     assert "下方三个参数" in help_text
     assert "两个参数" not in help_text
+    assert "互相独立" in help_text
+    assert "不依赖结构止损" in help_text
     drawdown_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"]
+    assert "比例止盈" in drawdown_help
     assert "最大盈利" in drawdown_help
     assert "回撤" in drawdown_help
     assert "幅度" in drawdown_help
     assert "最高浮盈" in drawdown_help
     assert "平仓" in drawdown_help
+    activation_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_activation_pct"]
+    assert "可选" in activation_help
+    assert "0 表示不设门槛" in activation_help
     ma_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_ma_period"]
     assert "用户输入" in ma_help
     assert "当前回测周期" in ma_help
+    assert "独立于比例止盈" in ma_help
 
 
 def test_streamlit_stop_loss_and_risk_reward_help_are_actionable() -> None:
@@ -467,6 +483,7 @@ def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:
     assert resolver is not None
     assert resolver(False, 0.05, 0.02, 20) == (0.0, 0.0, 0)
     assert resolver(True, 0.05, 0.02, 20) == (0.05, 0.02, 20)
+    assert resolver(True, 0.0, 0.02, 20) == (0.0, 0.02, 20)
 
 
 def test_backtest_display_tables_are_localized_and_formatted() -> None:
@@ -832,6 +849,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "周期稳定性" in html
     assert "数据覆盖率概览" in html
     assert "策略K线运行区间" in html
+    assert "先看策略K线运行区间" in html
     assert "avg_accepted_actual_risk_pct" in html
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
@@ -839,6 +857,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "结构止损价说明" in html
     assert "结构止损最大风险" in html
     assert "最大盈利回撤幅度" in html
+    assert "比例止盈" in html
+    assert "均线回撤止盈" in html
     assert "最高浮盈" in html
     assert "目标平仓价" in html
     assert "开仓信号" in html
@@ -886,6 +906,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "平仓信号" in html
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
+    assert "先看策略K线运行区间" in html
     assert "核心绩效概览" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html

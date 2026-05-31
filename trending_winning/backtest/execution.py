@@ -31,8 +31,8 @@ class OrderExecutionResult:
 
 def validate_backtest_config(cfg: Any) -> None:
     """校验回测撮合参数；供单策略和组合策略共用。"""
-    if cfg.take_profit_pct <= 0 or cfg.stop_loss_pct <= 0:
-        raise ValueError("take_profit_pct 和 stop_loss_pct 必须大于 0。")
+    if cfg.take_profit_pct < 0 or cfg.stop_loss_pct < 0:
+        raise ValueError("take_profit_pct 和 stop_loss_pct 不能为负数。")
     if cfg.max_holding_bars < 1:
         raise ValueError("max_holding_bars 至少需要 1。")
     if cfg.fee_rate < 0 or cfg.slippage_bps < 0:
@@ -48,8 +48,6 @@ def validate_backtest_config(cfg: Any) -> None:
         raise ValueError("trailing_take_profit 参数必须非负，且回撤幅度必须小于 1。")
     if ma_period == 1:
         raise ValueError("trailing_take_profit 均线周期只能为 0 或至少 2。")
-    if activation_pct == 0 and (drawdown_pct > 0 or ma_period > 0):
-        raise ValueError("trailing_take_profit 启动浮盈必须与比例回撤或均线周期同时启用。")
     if activation_pct > 0 and drawdown_pct == 0 and ma_period == 0:
         raise ValueError("trailing_take_profit 启动浮盈必须与比例回撤或均线周期同时启用。")
 

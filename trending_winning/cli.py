@@ -71,19 +71,19 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         "--trailing-take-profit-activation-pct",
         type=float,
         default=0.0,
-        help="回撤止盈启动浮盈，小数比例；按上一根已完成 K 确认，0 表示关闭。",
+        help="回撤止盈可选启动浮盈，小数比例；按上一根已完成 K 确认，0 表示不设门槛。",
     )
     parser.add_argument(
         "--trailing-take-profit-drawdown-pct",
         type=float,
         default=0.0,
-        help="最大盈利回撤幅度，小数比例；按上一根已完成 K 的最大盈利价位计算平仓线，例如多头最高浮盈后回撤到线即平仓，0 表示关闭。",
+        help="比例止盈参数，也就是最大盈利回撤幅度；按上一根已完成 K 的最大盈利价位计算平仓线，例如多头最高浮盈后回撤到线即平仓，0 表示关闭。",
     )
     parser.add_argument(
         "--trailing-take-profit-ma-period",
         type=int,
         default=0,
-        help="回撤止盈当前周期均线周期；由用户输入 K 数，按当前周期上一根已完成 K 的均线触发，0 表示关闭。",
+        help="均线回撤止盈当前周期均线周期；由用户输入 K 数，按当前周期上一根已完成 K 的均线触发，独立于比例止盈，0 表示关闭。",
     )
 
 

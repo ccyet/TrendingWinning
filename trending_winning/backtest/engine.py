@@ -50,6 +50,8 @@ from trending_winning.strategies.runtime import execute_strategy
 def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = None) -> BacktestResult:
     cfg = config or BacktestConfig()
     validate_backtest_config(cfg)
+    if cfg.take_profit_pct <= 0 or cfg.stop_loss_pct <= 0:
+        raise ValueError("旧突破回测的 take_profit_pct 和 stop_loss_pct 必须大于 0。")
 
     trigger_records = _legacy_trigger_records(scanned_bars)
     candidates: list[dict[str, object]] = []

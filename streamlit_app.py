@@ -42,10 +42,10 @@ BACKTEST_HELP_TEXT = {
     "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标平仓价由结构止损距离和盈亏比计算。",
     "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K结构止损价。",
     "structural_stop_loss": "现代策略的止损参数不是固定百分比；每笔订单使用信号K或形态模块输出的结构止损价，再用“结构止损最大风险”限制止损距离。",
-    "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理，不影响结构止损。",
-    "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭动态止盈。",
-    "trailing_take_profit_drawdown_pct": "最大盈利回撤幅度。启动后按上一根已完成 K 的最大盈利价位计算平仓线：例，多头入场 100、最高浮盈到 108，参数 0.020 时回撤线约 105.84，跌破即平仓；空头按最低价后的反弹计算。",
-    "trailing_take_profit_ma_period": "当前周期均线周期。由用户输入 K 数，用当前回测周期上一根已完成 K 的均线作为移动平仓线；0 表示关闭。",
+    "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理。比例止盈、均线回撤止盈和启动浮盈门槛互相独立，不依赖结构止损、固定止盈或盈亏比目标。",
+    "trailing_take_profit_activation_pct": "可选的盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示不设门槛，不会关闭比例止盈或均线回撤止盈。",
+    "trailing_take_profit_drawdown_pct": "比例止盈参数，也就是最大盈利回撤幅度。按上一根已完成 K 的最大盈利价位计算平仓线：例，多头入场 100、最高浮盈到 108，参数 0.020 时回撤线约 105.84，跌破即平仓；空头按最低价后的反弹计算。",
+    "trailing_take_profit_ma_period": "均线回撤止盈周期。由用户输入 K 数，用当前回测周期上一根已完成 K 的均线作为移动平仓线，独立于比例止盈；0 表示关闭。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
@@ -3104,23 +3104,24 @@ def _render_backtest_result(
     c2.metric("胜率", f"{result.stats['win_rate']:.1%}")
     c3.metric("总收益", f"{result.stats['total_return']:.1%}")
     c4.metric("最大回撤", f"{result.stats['max_drawdown']:.1%}")
-    _render_display_table("核心绩效概览", _performance_summary_frame(result.stats), stock_names=stock_names)
     filtered_count = len(bundle.filtered_limit_open_days) if bundle is not None else int(filtered_limit_open_count or 0)
     if filtered_count > 0:
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")
-    if data_coverage is not None and not data_coverage.empty:
-        _render_data_coverage_chart(data_coverage, stock_names=stock_names)
-        _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
-    _render_order_decision_charts(result.order_decisions)
     chart_bars = bundle.bars if bundle is not None else bars
     if chart_bars is not None and not chart_bars.empty:
         _render_strategy_kline_chart(chart_bars, result.trades, stock_names=stock_names)
-    _render_display_table("逐笔交易", result.trades, stock_names=stock_names)
+    _render_display_table("核心绩效概览", _performance_summary_frame(result.stats), stock_names=stock_names)
     if not result.equity_curve.empty:
         st.markdown("##### 净值曲线")
         _render_equity_chart(result.equity_curve)
         st.markdown("##### 回撤曲线")
         _render_equity_drawdown_chart(result.equity_curve)
+    if data_coverage is not None and not data_coverage.empty:
+        _render_data_coverage_chart(data_coverage, stock_names=stock_names)
+        _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
+    _render_order_decision_charts(result.order_decisions)
+    _render_display_table("逐笔交易", result.trades, stock_names=stock_names)
+    if not result.equity_curve.empty:
         _render_display_table("净值明细", result.equity_curve, tail=200, stock_names=stock_names)
 
 

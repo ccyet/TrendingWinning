@@ -1137,6 +1137,56 @@ def test_order_execution_trailing_take_profit_exits_after_profit_pullback(
     assert result.stats["stop_loss_exit_count"] == 0.0
 
 
+@pytest.mark.parametrize(
+    ("side", "target_price", "expected_exit"),
+    [
+        ("long", 12.0, 10.67),
+        ("short", 8.0, 9.27),
+    ],
+)
+def test_order_execution_ratio_trailing_take_profit_does_not_require_activation_pct(
+    side: str,
+    target_price: float,
+    expected_exit: float,
+) -> None:
+    if side == "long":
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+                {"open": 10.8, "high": 11.0, "low": 10.7, "close": 10.9},
+                {"open": 10.8, "high": 10.9, "low": 10.6, "close": 10.6},
+            ]
+        )
+        stop_price = 9.5
+    else:
+        bars = _bars(
+            [
+                {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
+                {"open": 10.0, "high": 10.1, "low": 9.8, "close": 9.9},
+                {"open": 9.2, "high": 9.3, "low": 9.0, "close": 9.1},
+                {"open": 9.2, "high": 9.35, "low": 9.1, "close": 9.3},
+            ]
+        )
+        stop_price = 10.5
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side=side, entry_price=10.0, stop_price=stop_price, target_price=target_price),
+        signal_index=0,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.0,
+            trailing_take_profit_drawdown_pct=0.03,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx(expected_exit)
+    assert trade["return_pct"] > 0.0
+
+
 @pytest.mark.parametrize("side", ["long", "short"])
 def test_order_execution_trailing_take_profit_waits_for_completed_profit_bar(side: str) -> None:
     if side == "long":
@@ -1230,6 +1280,66 @@ def test_order_execution_trailing_take_profit_can_exit_by_current_timeframe_ma()
     assert trade["exit_reason"] == "trailing_take_profit"
     assert trade["exit_price"] == pytest.approx((10.2 + 10.1 + 10.8) / 3)
     assert trade["return_pct"] > 0.0
+
+
+def test_order_execution_ma_trailing_take_profit_does_not_require_activation_pct() -> None:
+    bars = _bars(
+        [
+            {"open": 9.9, "high": 10.1, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.1, "high": 10.3, "low": 10.0, "close": 10.2},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.8, "high": 10.9, "low": 10.7, "close": 10.8},
+            {"open": 10.55, "high": 10.6, "low": 10.25, "close": 10.3},
+        ]
+    )
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side="long", entry_price=10.0, stop_price=9.5, target_price=12.0),
+        signal_index=2,
+        cfg=BacktestConfig(
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.0,
+            trailing_take_profit_drawdown_pct=0.0,
+            trailing_take_profit_ma_period=3,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "trailing_take_profit"
+    assert trade["exit_price"] == pytest.approx((10.2 + 10.1 + 10.8) / 3)
+    assert trade["return_pct"] > 0.0
+
+
+def test_order_execution_trailing_take_profit_does_not_depend_on_legacy_fixed_pct_fields() -> None:
+    bars = _bars(
+        [
+            {"open": 9.9, "high": 10.1, "low": 9.8, "close": 10.0},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.1, "high": 10.3, "low": 10.0, "close": 10.2},
+            {"open": 10.0, "high": 10.2, "low": 9.9, "close": 10.1},
+            {"open": 10.8, "high": 10.9, "low": 10.7, "close": 10.8},
+            {"open": 10.55, "high": 10.6, "low": 10.25, "close": 10.3},
+        ]
+    )
+
+    trade = simulate_order_trade(
+        bars,
+        _order(side="long", entry_price=10.0, stop_price=9.5, target_price=12.0),
+        signal_index=2,
+        cfg=BacktestConfig(
+            take_profit_pct=0.0,
+            stop_loss_pct=0.0,
+            max_holding_bars=3,
+            trailing_take_profit_activation_pct=0.0,
+            trailing_take_profit_drawdown_pct=0.0,
+            trailing_take_profit_ma_period=3,
+        ),
+    )
+
+    assert trade is not None
+    assert trade["exit_reason"] == "trailing_take_profit"
 
 
 @pytest.mark.parametrize(
@@ -1381,19 +1491,7 @@ def test_backtest_config_rejects_invalid_trailing_take_profit_ma_period() -> Non
         )
 
 
-@pytest.mark.parametrize(
-    ("activation_pct", "drawdown_pct", "ma_period"),
-    [
-        (0.05, 0.0, 0),
-        (0.0, 0.03, 0),
-        (0.0, 0.0, 3),
-    ],
-)
-def test_backtest_config_rejects_half_enabled_trailing_take_profit(
-    activation_pct: float,
-    drawdown_pct: float,
-    ma_period: int,
-) -> None:
+def test_backtest_config_rejects_activation_without_trailing_exit_line() -> None:
     bars = _bars(
         [
             {"open": 10.0, "high": 10.2, "low": 9.8, "close": 10.0},
@@ -1408,9 +1506,9 @@ def test_backtest_config_rejects_half_enabled_trailing_take_profit(
             signal_index=0,
             cfg=BacktestConfig(
                 max_holding_bars=1,
-                trailing_take_profit_activation_pct=activation_pct,
-                trailing_take_profit_drawdown_pct=drawdown_pct,
-                trailing_take_profit_ma_period=ma_period,
+                trailing_take_profit_activation_pct=0.05,
+                trailing_take_profit_drawdown_pct=0.0,
+                trailing_take_profit_ma_period=0,
             ),
         )
 
