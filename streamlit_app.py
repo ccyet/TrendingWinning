@@ -179,6 +179,9 @@ DISPLAY_COLUMN_LABELS = {
     "win_rate_ci_upper": "胜率95%上限",
     "total_return": "总收益",
     "avg_return": "平均收益",
+    "annualized_return": "年化收益",
+    "annualized_sharpe": "年化Sharpe",
+    "annualized_sortino": "年化Sortino",
     "avg_return_standard_error": "平均收益标准误",
     "avg_return_ci_lower": "平均收益95%下限",
     "avg_return_ci_upper": "平均收益95%上限",
@@ -192,6 +195,8 @@ DISPLAY_COLUMN_LABELS = {
     "max_drawdown_recovery_at": "最大回撤修复",
     "current_drawdown": "当前回撤",
     "current_underwater_bars": "当前水下K数",
+    "calmar_ratio": "Calmar比率",
+    "ulcer_index": "Ulcer指数",
     "profit_factor": "盈亏因子",
     "expectancy": "期望收益",
     "avg_win": "平均盈利",
@@ -212,6 +217,7 @@ DISPLAY_COLUMN_LABELS = {
     "mfe_pct": "最大有利波动",
     "r_multiple": "R倍数",
     "avg_r_multiple": "平均R倍数",
+    "system_quality_number": "SQN系统质量",
     "actual_risk_pct": "实际风险",
     "actual_chase_pct": "追价距离",
     "actual_reward_to_risk": "实际盈亏比",
@@ -233,6 +239,7 @@ DISPLAY_COLUMN_LABELS = {
     "risk_fraction": "风险占用",
     "margin_fraction": "保证金占用",
     "margin_exposure": "保证金暴露",
+    "avg_cash_ratio": "平均现金比例",
     "avg_margin_exposure": "平均保证金暴露",
     "max_margin_exposure": "最大保证金暴露",
     "coverage_ratio": "K线覆盖率",
@@ -731,6 +738,36 @@ def _render_display_table(
         use_container_width=True,
         hide_index=True,
     )
+
+
+def _performance_summary_frame(stats: Mapping[str, object]) -> pd.DataFrame:
+    """把核心回测指标分组展示，避免用户在 stats.json 字段里逐项查找。"""
+    columns = ["模块", "指标", "数值", "说明"]
+    items = (
+        ("收益", "total_return", "首尾净值累计收益。"),
+        ("收益", "annualized_return", "按净值时间轴估算的复合年化收益。"),
+        ("风险", "max_drawdown", "净值高点到后续低点的最大回撤。"),
+        ("风险", "current_drawdown", "最新净值相对历史高点的回撤。"),
+        ("交易质量", "win_rate", "盈利交易占全部交易的比例。"),
+        ("交易质量", "profit_factor", "总盈利除以总亏损，越高越好。"),
+        ("交易质量", "avg_r_multiple", "平均每笔交易相对初始风险的 R 倍数。"),
+        ("交易质量", "system_quality_number", "R 倍数均值、波动和样本数的综合质量。"),
+        ("资金效率", "exposure_bar_ratio", "持仓 K 数占市场 K 数的比例。"),
+        ("资金效率", "avg_cash_ratio", "组合逐 K 净值中的平均现金比例。"),
+    )
+    rows: list[dict[str, str]] = []
+    for module, key, note in items:
+        if key not in stats or _is_missing(stats[key]):
+            continue
+        rows.append(
+            {
+                "模块": module,
+                "指标": _display_column_label(key),
+                "数值": _format_display_value(key, stats[key]),
+                "说明": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _display_column_label(column: str) -> str:
@@ -2839,6 +2876,7 @@ def _render_backtest_result(
     c2.metric("胜率", f"{result.stats['win_rate']:.1%}")
     c3.metric("总收益", f"{result.stats['total_return']:.1%}")
     c4.metric("最大回撤", f"{result.stats['max_drawdown']:.1%}")
+    _render_display_table("核心绩效概览", _performance_summary_frame(result.stats), stock_names=stock_names)
     filtered_count = len(bundle.filtered_limit_open_days) if bundle is not None else int(filtered_limit_open_count or 0)
     if filtered_count > 0:
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")

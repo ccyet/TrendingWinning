@@ -12,6 +12,7 @@ from streamlit_app import (
     _equity_chart_frame,
     _equity_y_domain,
     _format_display_value,
+    _performance_summary_frame,
     _parse_float_mapping,
     _parse_int_mapping,
     _parse_text_mapping,
@@ -284,6 +285,51 @@ def test_streamlit_experiment_breakdowns_include_signal_lifecycle_stats() -> Non
 
     assert "开平仓路径绩效" in source
     assert "signal_lifecycle_stats" in source
+
+
+def test_streamlit_performance_summary_groups_key_backtest_metrics() -> None:
+    frame = _performance_summary_frame(
+        {
+            "total_return": 0.125,
+            "annualized_return": 0.28,
+            "max_drawdown": -0.08,
+            "current_drawdown": -0.02,
+            "win_rate": 2 / 3,
+            "profit_factor": 1.8,
+            "avg_r_multiple": 0.45,
+            "system_quality_number": 1.25,
+            "exposure_bar_ratio": 0.34,
+            "avg_cash_ratio": 0.22,
+        }
+    )
+
+    assert frame.columns.tolist() == ["模块", "指标", "数值", "说明"]
+    assert frame["模块"].tolist() == [
+        "收益",
+        "收益",
+        "风险",
+        "风险",
+        "交易质量",
+        "交易质量",
+        "交易质量",
+        "交易质量",
+        "资金效率",
+        "资金效率",
+    ]
+    values = frame.set_index("指标")["数值"]
+    assert values.loc["总收益"] == "12.50%"
+    assert values.loc["年化收益"] == "28.00%"
+    assert values.loc["最大回撤"] == "-8.00%"
+    assert values.loc["胜率"] == "66.67%"
+    assert values.loc["盈亏因子"] == "1.80"
+    assert values.loc["平均现金比例"] == "22.00%"
+
+
+def test_streamlit_backtest_result_renders_core_performance_overview() -> None:
+    source = getsource(streamlit_app._render_backtest_result)
+
+    assert "核心绩效概览" in source
+    assert "_performance_summary_frame" in source
 
 
 def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
@@ -720,6 +766,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "目标平仓价" in html
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
+    assert "核心绩效概览" in html
     assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6
