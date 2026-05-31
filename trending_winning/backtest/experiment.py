@@ -16,12 +16,11 @@ from trending_winning.backtest.engine import run_order_backtest_from_normalized,
 from trending_winning.backtest.models import BacktestConfig, BacktestResult
 from trending_winning.backtest.periods import compute_period_return_statistics, compute_period_returns
 from trending_winning.backtest.portfolio import (
-    PortfolioConfig,
-    PortfolioCandidateSet,
     prepare_portfolio_candidates_from_normalized,
     run_portfolio_candidate_backtest_from_normalized,
     run_portfolio_backtest_from_normalized,
 )
+from trending_winning.backtest.portfolio_models import PortfolioConfig, PortfolioCandidateSet
 from trending_winning.backtest.reporting import (
     SETUP_STAT_FIELDS,
     detector_trade_statistics as _detector_trade_statistics,
