@@ -28,6 +28,15 @@ from trending_winning.data.repository import (
     write_local_bars,
 )
 from trending_winning.data.schema import CANONICAL_COLUMNS, normalize_bars
+from trending_winning.data.summary import (
+    DATA_AUDIT_SUMMARY_KEYS as DATA_AUDIT_SUMMARY_KEYS_FROM_SUMMARY,
+    DATA_INVENTORY_SUMMARY_KEYS as DATA_INVENTORY_SUMMARY_KEYS_FROM_SUMMARY,
+    LIMIT_FILTER_SUMMARY_KEYS as LIMIT_FILTER_SUMMARY_KEYS_FROM_SUMMARY,
+    summarize_data_audit as summarize_data_audit_from_summary,
+    summarize_data_inventory as summarize_data_inventory_from_summary,
+    summarize_data_management as summarize_data_management_from_summary,
+    summarize_limit_filter_audit as summarize_limit_filter_audit_from_summary,
+)
 
 
 class FakeTq:
@@ -545,6 +554,43 @@ def test_data_audit_summaries_report_coverage_quality_and_filter_gate() -> None:
         "limit_filter_daily_quality_error_count": 0.0,
         "limit_filter_filtered_days": 2.0,
     }
+
+
+def test_data_summary_has_independent_module_entrypoint() -> None:
+    data_audit = pd.DataFrame(
+        {
+            "status": ["ok", "quality_error"],
+            "expected_rows": [8, 8],
+            "missing_rows": [1, 4],
+            "coverage_ratio": [0.875, 0.5],
+            "max_missing_gap_minutes": [30, 90],
+        }
+    )
+    filter_audit = pd.DataFrame({"status": ["ok"], "filter_enabled": [True], "filtered_days": [1]})
+    inventory = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ"],
+            "timeframe": ["30m"],
+            "adjust": ["qfq"],
+            "status": ["cached"],
+            "exists": [True],
+            "rows": [8],
+            "file_size_bytes": [1024],
+        }
+    )
+
+    assert "data_audit_row_count" in DATA_AUDIT_SUMMARY_KEYS_FROM_SUMMARY
+    assert "limit_filter_audit_row_count" in LIMIT_FILTER_SUMMARY_KEYS_FROM_SUMMARY
+    assert "data_inventory_signature" in DATA_INVENTORY_SUMMARY_KEYS_FROM_SUMMARY
+    assert summarize_data_audit_from_summary(data_audit)["data_audit_row_count"] == 2.0
+    assert summarize_limit_filter_audit_from_summary(filter_audit)["limit_filter_filtered_days"] == 1.0
+    assert summarize_data_inventory_from_summary(inventory)["data_inventory_cached_count"] == 1.0
+    assert summarize_data_management_from_summary(
+        data_audit,
+        filter_audit,
+        filtered_limit_open_count=1,
+        data_inventory=inventory,
+    )["filtered_limit_open_count"] == 1.0
 
 
 def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> None:
