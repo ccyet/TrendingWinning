@@ -11,6 +11,7 @@ from trending_winning.backtest.drawdown import (
     equity_drawdown_statistics,
     max_drawdown_duration,
 )
+from trending_winning.backtest.equity_exposure import equity_exposure_statistics
 from trending_winning.backtest.exposure import trade_exposure_statistics
 from trending_winning.backtest.equity_metrics import equity_return_statistics
 from trending_winning.backtest.periods import (
@@ -404,11 +405,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     drawdown_stats = equity_drawdown_statistics(data, net_value)
     max_drawdown = float(drawdown_stats["max_drawdown"])
     equity_return_stats = equity_return_statistics(data, net_value, max_drawdown=max_drawdown, periods_per_year=periods_per_year)
-    gross_exposure = _numeric_column(data, "gross_exposure")
-    margin_exposure = _numeric_column(data, "margin_exposure")
-    open_positions = _numeric_column(data, "open_positions")
-    cash_ratio = _ratio_column_to_net_value(data, "cash", net_value)
-    net_exposure = _ratio_column_to_net_value(data, "position_value", net_value)
+    equity_exposure_stats = equity_exposure_statistics(data, net_value)
     return {
         "total_return": equity_return_stats["total_return"],
         **drawdown_stats,
@@ -420,19 +417,19 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         "annualized_sharpe": equity_return_stats["annualized_sharpe"],
         "annualized_sortino": equity_return_stats["annualized_sortino"],
         "calmar_ratio": equity_return_stats["calmar_ratio"],
-        "avg_gross_exposure": _mean_or_zero(gross_exposure),
-        "max_gross_exposure": _round_float(gross_exposure.max()) if not gross_exposure.empty else 0.0,
-        "avg_margin_exposure": _mean_or_zero(margin_exposure),
-        "max_margin_exposure": _round_float(margin_exposure.max()) if not margin_exposure.empty else 0.0,
-        "exposure_bar_ratio": _round_float((gross_exposure > 0).mean()) if not gross_exposure.empty else 0.0,
-        "avg_open_positions": _mean_or_zero(open_positions),
-        "max_open_positions": _round_float(open_positions.max()) if not open_positions.empty else 0.0,
-        "avg_cash_ratio": _mean_or_zero(cash_ratio),
-        "min_cash_ratio": _min_or_zero(cash_ratio),
-        "max_cash_ratio": _max_or_zero(cash_ratio),
-        "avg_net_exposure": _mean_or_zero(net_exposure),
-        "min_net_exposure": _min_or_zero(net_exposure),
-        "max_net_exposure": _max_or_zero(net_exposure),
+        "avg_gross_exposure": equity_exposure_stats["avg_gross_exposure"],
+        "max_gross_exposure": equity_exposure_stats["max_gross_exposure"],
+        "avg_margin_exposure": equity_exposure_stats["avg_margin_exposure"],
+        "max_margin_exposure": equity_exposure_stats["max_margin_exposure"],
+        "exposure_bar_ratio": equity_exposure_stats["exposure_bar_ratio"],
+        "avg_open_positions": equity_exposure_stats["avg_open_positions"],
+        "max_open_positions": equity_exposure_stats["max_open_positions"],
+        "avg_cash_ratio": equity_exposure_stats["avg_cash_ratio"],
+        "min_cash_ratio": equity_exposure_stats["min_cash_ratio"],
+        "max_cash_ratio": equity_exposure_stats["max_cash_ratio"],
+        "avg_net_exposure": equity_exposure_stats["avg_net_exposure"],
+        "min_net_exposure": equity_exposure_stats["min_net_exposure"],
+        "max_net_exposure": equity_exposure_stats["max_net_exposure"],
     }
 
 
@@ -731,29 +728,10 @@ def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float).reset_index(drop=True)
 
 
-def _ratio_column_to_net_value(frame: pd.DataFrame, column: str, net_value: pd.Series) -> pd.Series:
-    """把现金或持仓市值转成净值占比；净值无效时显式归零。"""
-    if column not in frame.columns or net_value.empty:
-        return pd.Series(dtype=float)
-    length = min(len(frame), len(net_value))
-    numerator = pd.to_numeric(frame[column].iloc[:length], errors="coerce").fillna(0.0).astype(float).reset_index(
-        drop=True
-    )
-    denominator = pd.to_numeric(net_value.iloc[:length], errors="coerce").astype(float).reset_index(drop=True)
-    ratio = numerator.div(denominator.where(denominator.gt(0))).replace([float("inf"), float("-inf")], pd.NA)
-    return ratio.fillna(0.0).astype(float)
-
-
 def _max_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.max())
-
-
-def _min_or_zero(values: pd.Series) -> float:
-    if values.empty:
-        return 0.0
-    return _round_float(values.min())
 
 
 def _accepted_values(frame: pd.DataFrame, accepted: pd.Series, column: str) -> pd.Series:
