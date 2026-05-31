@@ -271,6 +271,9 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         "trend_h2_min_pullback_legs",
         "range_middle_low",
         "channel_sigma",
+        "terminal_false_breakout_enabled",
+        "terminal_false_breakout_extension_atr_multiple",
+        "terminal_false_breakout_weak_progress_atr",
         "reversal_old_extreme_tolerance_pct",
         "risk_per_trade",
         "save_outputs",
@@ -283,6 +286,9 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     assert "结构止损最大风险" in source
     assert "最大盈利回撤幅度" in source
     assert "当前周期均线周期" in source
+    assert "末端假突破过滤（可选）" in source
+    assert "贴近通道边缘" in source
+    assert "突破推进不足" in source
     assert "bt_enable_trailing_take_profit" in source
 
 
@@ -431,6 +437,17 @@ def test_order_reject_reason_chart_frame_localizes_and_sorts_reasons() -> None:
     assert reasons["订单数"].tolist() == [2, 1, 1]
     assert reasons["占拒绝订单"].tolist() == [0.5, 0.25, 0.25]
     assert reasons["原因代码"].tolist() == ["no_fill", "max_open_positions", "actual_risk_too_high"]
+
+
+def test_streamlit_localizes_terminal_false_breakout_filter_reason() -> None:
+    assert (
+        streamlit_app.DISPLAY_VALUE_MAP["reason"]["terminal_false_breakout_risk"]
+        == "末端假突破风险"
+    )
+    assert (
+        streamlit_app.DISPLAY_VALUE_MAP["filter_name"]["terminal_false_breakout_filter"]
+        == "末端假突破过滤"
+    )
 
 
 def test_streamlit_backtest_result_renders_order_decision_overview() -> None:
@@ -1043,6 +1060,18 @@ def test_streamlit_app_passes_advanced_detector_parameters_to_experiments() -> N
         "channel_break_buffer",
         "channel_swing_left_bars",
         "channel_swing_right_bars",
+        "terminal_false_breakout_enabled",
+        "terminal_false_breakout_detectors",
+        "terminal_false_breakout_lookback",
+        "terminal_false_breakout_atr_period",
+        "terminal_false_breakout_min_regime_bars",
+        "terminal_false_breakout_extension_atr_multiple",
+        "terminal_false_breakout_edge_lookback",
+        "terminal_false_breakout_edge_pos",
+        "terminal_false_breakout_edge_min_count",
+        "terminal_false_breakout_weak_progress_atr",
+        "terminal_false_breakout_wick_ratio",
+        "terminal_false_breakout_min_score",
         "reversal_strong_close_pos",
         "reversal_min_body_ratio",
     ]:

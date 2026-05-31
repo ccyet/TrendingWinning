@@ -56,6 +56,18 @@ BACKTEST_HELP_TEXT = {
     "higher_timeframe": "用更大周期判断主方向，只过滤逆大周期方向的订单，不改形态识别结果。",
     "higher_timeframe_max_age": "大周期信号允许滞后的最长分钟数，0 表示不限制信号年龄。",
     "single_detector": "只测试一种形态识别模块，便于单独评估趋势、区间、通道或反转。",
+    "terminal_false_breakout_enabled": "开启后，只在开仓前过滤同级别趋势或通道末端的疑似假突破；不改变形态识别、撮合和仓位分配。",
+    "terminal_false_breakout_detectors": "选择过滤器作用的形态模块。默认只作用于趋势和通道，区间、反转可单独开启。",
+    "terminal_false_breakout_lookback": "计算通道上沿、下沿和中轴时使用的同级别 K 线数量。",
+    "terminal_false_breakout_atr_period": "ATR 波动率周期，用来把远离中轴、突破推进不足等价格幅度标准化。",
+    "terminal_false_breakout_min_regime_bars": "同向趋势或通道至少持续多少根 K 线后，才认为可能进入末端阶段。",
+    "terminal_false_breakout_extension_atr_multiple": "价格距离通道中轴超过多少个 ATR 才算过度延伸。",
+    "terminal_false_breakout_edge_lookback": "统计最近多少根 K 线是否反复贴近通道边缘。",
+    "terminal_false_breakout_edge_pos": "贴近通道边缘的判定位置；0.90 表示上轨附近 10% 或下轨附近 10%。",
+    "terminal_false_breakout_edge_min_count": "最近窗口内至少多少次贴近通道边缘，才计入末端风险。",
+    "terminal_false_breakout_weak_progress_atr": "突破推进不足阈值；创新高或新低幅度低于该 ATR 倍数时，说明突破力度偏弱。",
+    "terminal_false_breakout_wick_ratio": "上影线/下影线占整根 K 线振幅的比例；比例越大，越像冲高或杀跌失败。",
+    "terminal_false_breakout_min_score": "末端风险命中分。持续、延伸、贴边、弱突破、影线五项中达到该分数才拒绝开仓。",
     "risk_reward": "盈亏比指向平仓信号，不决定开仓信号。开仓信号先给出开仓价和结构止损价；盈亏比只把这段风险距离换算成固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头相反。",
     "trend_lookback": "趋势评分使用的回看 K 线数量，越大越重视较长结构。",
     "trend_min_score": "趋势形态入选的最低评分，越高越严格。",
@@ -130,6 +142,7 @@ DISPLAY_COLUMN_LABELS = {
     "avg_max_holding_exit_rate": "平均持有到期退出比例",
     "status": "状态",
     "reason": "原因",
+    "filter_name": "过滤模块",
     "parameter": "参数",
     "value": "取值",
     "case_count": "参数组数",
@@ -249,6 +262,9 @@ DISPLAY_COLUMN_LABELS = {
     "limit_filter_daily_read_error_count": "日K读取失败数",
     "limit_filter_daily_missing_columns_count": "日K缺字段数",
     "limit_filter_daily_quality_error_count": "日K质量异常数",
+    "strategy_rejected_terminal_false_breakout_risk_count": "末端假突破过滤数",
+    "terminal_false_breakout_score": "末端风险分",
+    "terminal_false_breakout_context": "末端过滤上下文",
 }
 PERCENT_POINT_COLUMNS = {"return_pct", "raw_return_pct", "mae_pct", "mfe_pct", "avg_mae_pct", "avg_mfe_pct"}
 DISPLAY_VALUE_MAP = {
@@ -324,6 +340,11 @@ DISPLAY_VALUE_MAP = {
         "sector_limit": "行业上限",
         "side_mode_filtered": "交易方向过滤",
         "trailing_take_profit": "回撤止盈",
+        "terminal_false_breakout_risk": "末端假突破风险",
+    },
+    "filter_name": {
+        "terminal_false_breakout_filter": "末端假突破过滤",
+        "higher_timeframe_alignment": "大周期方向过滤",
     },
     "side_mode": {"both": "多/空", "long_only": "仅多", "short_only": "仅空"},
 }
@@ -374,6 +395,24 @@ class HigherTimeframeInputs:
 
 
 @dataclass(frozen=True)
+class TerminalFalseBreakoutInputs:
+    """末端假突破开仓过滤设置。"""
+
+    enabled: bool
+    detectors: tuple[str, ...]
+    lookback: int
+    atr_period: int
+    min_regime_bars: int
+    extension_atr_multiple: float
+    edge_lookback: int
+    edge_pos: float
+    edge_min_count: int
+    weak_progress_atr: float
+    wick_ratio: float
+    min_score: int
+
+
+@dataclass(frozen=True)
 class BacktestOutputInputs:
     """保存实验产物和运行按钮状态。"""
 
@@ -404,6 +443,7 @@ class SingleStrategyInputs:
     reversal_require_old_extreme_test: bool
     reversal_require_structure_confirmation: bool
     advanced_detector: dict[str, float | int]
+    terminal_false_breakout: TerminalFalseBreakoutInputs
 
 
 @dataclass(frozen=True)
@@ -445,6 +485,7 @@ class PortfolioDetectorInputs:
     reversal_require_old_extreme_test: bool
     reversal_require_structure_confirmation: bool
     advanced_detector: dict[str, float | int]
+    terminal_false_breakout: TerminalFalseBreakoutInputs
 
 
 def main() -> None:
@@ -1932,6 +1973,150 @@ def _detector_parameter_controls(prefix: str, label_prefix: str = "") -> dict[st
     }
 
 
+def _terminal_false_breakout_controls(prefix: str, label_prefix: str = "") -> TerminalFalseBreakoutInputs:
+    """末端假突破过滤参数；只在现代策略表单出现，旧突破回测不使用。"""
+    title = f"{label_prefix}末端假突破过滤（可选）"
+    with st.expander(title, expanded=False):
+        top1, top2, top3 = st.columns([1, 2, 2])
+        with top1:
+            enabled = st.checkbox(
+                f"{label_prefix}启用末端假突破过滤",
+                value=False,
+                key=f"{prefix}_terminal_false_breakout_enabled",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_enabled"],
+            )
+        with top2:
+            detectors = st.multiselect(
+                f"{label_prefix}适用模块",
+                ["trend", "channel", "range", "reversal"],
+                default=["trend", "channel"],
+                key=f"{prefix}_terminal_false_breakout_detectors",
+                format_func=lambda value: DISPLAY_VALUE_MAP["detector_name"].get(value, value),
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_detectors"],
+                disabled=not enabled,
+            )
+        with top3:
+            st.caption("多/空方向沿用上方交易方向；这里只决定哪些形态模块会被过滤。")
+        row2 = st.columns(5)
+        with row2[0]:
+            lookback = st.number_input(
+                f"{label_prefix}通道计算窗口",
+                min_value=3,
+                value=40,
+                key=f"{prefix}_terminal_false_breakout_lookback",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_lookback"],
+                disabled=not enabled,
+            )
+        with row2[1]:
+            min_regime_bars = st.number_input(
+                f"{label_prefix}持续K数",
+                min_value=1,
+                value=18,
+                key=f"{prefix}_terminal_false_breakout_min_regime_bars",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_min_regime_bars"],
+                disabled=not enabled,
+            )
+        with row2[2]:
+            atr_period = st.number_input(
+                f"{label_prefix}ATR周期",
+                min_value=1,
+                value=14,
+                key=f"{prefix}_terminal_false_breakout_atr_period",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_atr_period"],
+                disabled=not enabled,
+            )
+        with row2[3]:
+            extension_atr_multiple = st.number_input(
+                f"{label_prefix}过度延伸倍数",
+                min_value=0.0,
+                value=2.0,
+                step=0.1,
+                format="%.2f",
+                key=f"{prefix}_terminal_false_breakout_extension_atr_multiple",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_extension_atr_multiple"],
+                disabled=not enabled,
+            )
+        with row2[4]:
+            min_score = st.number_input(
+                f"{label_prefix}最低命中分",
+                min_value=1,
+                max_value=5,
+                value=3,
+                key=f"{prefix}_terminal_false_breakout_min_score",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_min_score"],
+                disabled=not enabled,
+            )
+        row3 = st.columns(5)
+        with row3[0]:
+            edge_lookback = st.number_input(
+                f"{label_prefix}贴边窗口",
+                min_value=1,
+                value=8,
+                key=f"{prefix}_terminal_false_breakout_edge_lookback",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_edge_lookback"],
+                disabled=not enabled,
+            )
+        with row3[1]:
+            edge_pos = st.number_input(
+                f"{label_prefix}贴边阈值",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.90,
+                step=0.01,
+                format="%.2f",
+                key=f"{prefix}_terminal_false_breakout_edge_pos",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_edge_pos"],
+                disabled=not enabled,
+            )
+        with row3[2]:
+            edge_min_count = st.number_input(
+                f"{label_prefix}贴边次数",
+                min_value=1,
+                value=3,
+                key=f"{prefix}_terminal_false_breakout_edge_min_count",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_edge_min_count"],
+                disabled=not enabled,
+            )
+        with row3[3]:
+            weak_progress_atr = st.number_input(
+                f"{label_prefix}弱突破幅度",
+                min_value=0.0,
+                value=0.35,
+                step=0.05,
+                format="%.2f",
+                key=f"{prefix}_terminal_false_breakout_weak_progress_atr",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_weak_progress_atr"],
+                disabled=not enabled,
+            )
+        with row3[4]:
+            wick_ratio = st.number_input(
+                f"{label_prefix}影线比例",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.35,
+                step=0.05,
+                format="%.2f",
+                key=f"{prefix}_terminal_false_breakout_wick_ratio",
+                help=BACKTEST_HELP_TEXT["terminal_false_breakout_wick_ratio"],
+                disabled=not enabled,
+            )
+        st.caption("贴近通道边缘、价格远离中轴、突破推进不足且上影线/下影线明显时，会累计末端风险分。")
+    return TerminalFalseBreakoutInputs(
+        enabled=bool(enabled),
+        detectors=tuple(str(item) for item in detectors),
+        lookback=int(lookback),
+        atr_period=int(atr_period),
+        min_regime_bars=int(min_regime_bars),
+        extension_atr_multiple=float(extension_atr_multiple),
+        edge_lookback=int(edge_lookback),
+        edge_pos=float(edge_pos),
+        edge_min_count=int(edge_min_count),
+        weak_progress_atr=float(weak_progress_atr),
+        wick_ratio=float(wick_ratio),
+        min_score=int(min_score),
+    )
+
+
 def _show_saved_experiment_path(output_dir: str, name: str) -> None:
     saved_path = Path(output_dir or f"runs/{name}").expanduser()
     st.caption(f"实验产物已保存：{saved_path}")
@@ -2583,6 +2768,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
             help=BACKTEST_HELP_TEXT["channel_sigma"],
         )
         advanced_detector = _detector_parameter_controls("single")
+        terminal_false_breakout = _terminal_false_breakout_controls("single")
         r1, r2, r3 = st.columns(3)
         with r1:
             reversal_old_extreme_tolerance_pct = st.number_input(
@@ -2627,6 +2813,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
         reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
         reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
         advanced_detector=advanced_detector,
+        terminal_false_breakout=terminal_false_breakout,
     )
 
 
@@ -2865,6 +3052,7 @@ def _portfolio_detector_module() -> PortfolioDetectorInputs:
             help=BACKTEST_HELP_TEXT["channel_method"],
         )
         advanced_detector = _detector_parameter_controls("pf", "组合")
+        terminal_false_breakout = _terminal_false_breakout_controls("pf", "组合")
         pr1, pr2, pr3 = st.columns(3)
         with pr1:
             reversal_old_extreme_tolerance_pct = st.number_input(
@@ -2903,6 +3091,7 @@ def _portfolio_detector_module() -> PortfolioDetectorInputs:
         reversal_require_old_extreme_test=bool(reversal_require_old_extreme_test),
         reversal_require_structure_confirmation=bool(reversal_require_structure_confirmation),
         advanced_detector=advanced_detector,
+        terminal_false_breakout=terminal_false_breakout,
     )
 
 
@@ -2933,6 +3122,7 @@ def _execute_single_strategy_experiment(
     single: SingleStrategyInputs,
     output: BacktestOutputInputs,
 ) -> None:
+    terminal_false_breakout = single.terminal_false_breakout
     experiment = run_single_strategy_experiment(
         SingleStrategyExperimentConfig(
             name=single.experiment_name,
@@ -2957,6 +3147,18 @@ def _execute_single_strategy_experiment(
             trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
             trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
             trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
+            terminal_false_breakout_enabled=terminal_false_breakout.enabled,
+            terminal_false_breakout_detectors=terminal_false_breakout.detectors,
+            terminal_false_breakout_lookback=terminal_false_breakout.lookback,
+            terminal_false_breakout_atr_period=terminal_false_breakout.atr_period,
+            terminal_false_breakout_min_regime_bars=terminal_false_breakout.min_regime_bars,
+            terminal_false_breakout_extension_atr_multiple=terminal_false_breakout.extension_atr_multiple,
+            terminal_false_breakout_edge_lookback=terminal_false_breakout.edge_lookback,
+            terminal_false_breakout_edge_pos=terminal_false_breakout.edge_pos,
+            terminal_false_breakout_edge_min_count=terminal_false_breakout.edge_min_count,
+            terminal_false_breakout_weak_progress_atr=terminal_false_breakout.weak_progress_atr,
+            terminal_false_breakout_wick_ratio=terminal_false_breakout.wick_ratio,
+            terminal_false_breakout_min_score=terminal_false_breakout.min_score,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",
@@ -3012,6 +3214,7 @@ def _execute_portfolio_strategy_experiment(
     output: BacktestOutputInputs,
 ) -> None:
     advanced_detector = detector.advanced_detector
+    terminal_false_breakout = detector.terminal_false_breakout
     experiment = run_portfolio_experiment(
         PortfolioExperimentConfig(
             name=allocation.experiment_name,
@@ -3047,6 +3250,18 @@ def _execute_portfolio_strategy_experiment(
             trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
             trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
             trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
+            terminal_false_breakout_enabled=terminal_false_breakout.enabled,
+            terminal_false_breakout_detectors=terminal_false_breakout.detectors,
+            terminal_false_breakout_lookback=terminal_false_breakout.lookback,
+            terminal_false_breakout_atr_period=terminal_false_breakout.atr_period,
+            terminal_false_breakout_min_regime_bars=terminal_false_breakout.min_regime_bars,
+            terminal_false_breakout_extension_atr_multiple=terminal_false_breakout.extension_atr_multiple,
+            terminal_false_breakout_edge_lookback=terminal_false_breakout.edge_lookback,
+            terminal_false_breakout_edge_pos=terminal_false_breakout.edge_pos,
+            terminal_false_breakout_edge_min_count=terminal_false_breakout.edge_min_count,
+            terminal_false_breakout_weak_progress_atr=terminal_false_breakout.weak_progress_atr,
+            terminal_false_breakout_wick_ratio=terminal_false_breakout.wick_ratio,
+            terminal_false_breakout_min_score=terminal_false_breakout.min_score,
             strict_data_quality=quality.strict_data_quality,
             min_coverage_ratio=quality.min_coverage_ratio,
             output_dir=output.output_dir if output.save_outputs else "",

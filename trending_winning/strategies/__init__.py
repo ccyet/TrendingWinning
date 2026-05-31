@@ -5,6 +5,10 @@ from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentS
 from trending_winning.strategies.runtime import StrategyBatchRunResult, StrategyRunResult, execute_strategies, execute_strategy
 from trending_winning.strategies.signal_bar import SignalBarStopStrategy, SignalBarStopStrategyConfig
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
+from trending_winning.strategies.terminal_false_breakout import (
+    TerminalFalseBreakoutFilterConfig,
+    TerminalFalseBreakoutFilterStrategy,
+)
 
 __all__ = [
     "HigherTimeframeAlignmentStrategy",
@@ -16,6 +20,8 @@ __all__ = [
     "StrategyRunResult",
     "StrategySuiteConfig",
     "TimeframeAlignmentConfig",
+    "TerminalFalseBreakoutFilterConfig",
+    "TerminalFalseBreakoutFilterStrategy",
     "create_default_strategy_suite",
     "create_strategy_for_detector",
     "execute_strategies",

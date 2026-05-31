@@ -39,6 +39,18 @@ class StrategySuiteConfig:
     channel_break_buffer: float = 0.0
     channel_swing_left_bars: int = 2
     channel_swing_right_bars: int = 2
+    terminal_false_breakout_enabled: bool = False
+    terminal_false_breakout_detectors: tuple[str, ...] = ("trend", "channel")
+    terminal_false_breakout_lookback: int = 40
+    terminal_false_breakout_atr_period: int = 14
+    terminal_false_breakout_min_regime_bars: int = 18
+    terminal_false_breakout_extension_atr_multiple: float = 2.0
+    terminal_false_breakout_edge_lookback: int = 8
+    terminal_false_breakout_edge_pos: float = 0.90
+    terminal_false_breakout_edge_min_count: int = 3
+    terminal_false_breakout_weak_progress_atr: float = 0.35
+    terminal_false_breakout_wick_ratio: float = 0.35
+    terminal_false_breakout_min_score: int = 3
     reversal_lookback: int = 20
     reversal_strong_close_pos: float = 0.65
     reversal_min_body_ratio: float = 0.45
@@ -168,6 +180,7 @@ def _validate_common_strategy_parameters(cfg: StrategySuiteConfig) -> None:
         raise ValueError("max_chase_pct 必须大于 0 或设为 None。")
     if str(cfg.side_mode).strip().lower() not in SUPPORTED_SIDE_MODES:
         raise ValueError("side_mode 仅支持 both、long_only 或 short_only。")
+    _validate_terminal_false_breakout_parameters(cfg)
 
 
 def _validate_detector_parameters(detector_name: str, cfg: StrategySuiteConfig) -> None:
@@ -215,6 +228,28 @@ def _validate_channel_parameters(cfg: StrategySuiteConfig) -> None:
         raise ValueError("channel_break_buffer 不能为负数。")
     if cfg.channel_swing_left_bars < 1 or cfg.channel_swing_right_bars < 1:
         raise ValueError("channel_swing_left_bars/channel_swing_right_bars 至少需要 1。")
+
+
+def _validate_terminal_false_breakout_parameters(cfg: StrategySuiteConfig) -> None:
+    unknown = set(cfg.terminal_false_breakout_detectors).difference(SUPPORTED_STRATEGY_DETECTORS)
+    if unknown:
+        raise ValueError(f"terminal_false_breakout_detectors 包含不支持的 detector：{', '.join(sorted(unknown))}")
+    if cfg.terminal_false_breakout_lookback < 3:
+        raise ValueError("terminal_false_breakout_lookback 至少需要 3。")
+    if cfg.terminal_false_breakout_atr_period < 1:
+        raise ValueError("terminal_false_breakout_atr_period 至少需要 1。")
+    if cfg.terminal_false_breakout_min_regime_bars < 1:
+        raise ValueError("terminal_false_breakout_min_regime_bars 至少需要 1。")
+    if cfg.terminal_false_breakout_extension_atr_multiple < 0:
+        raise ValueError("terminal_false_breakout_extension_atr_multiple 不能为负数。")
+    if cfg.terminal_false_breakout_edge_lookback < 1 or cfg.terminal_false_breakout_edge_min_count < 1:
+        raise ValueError("terminal_false_breakout edge 参数至少需要 1。")
+    if not 0 <= cfg.terminal_false_breakout_edge_pos <= 1:
+        raise ValueError("terminal_false_breakout_edge_pos 必须在 0 到 1 之间。")
+    if cfg.terminal_false_breakout_weak_progress_atr < 0 or not 0 <= cfg.terminal_false_breakout_wick_ratio <= 1:
+        raise ValueError("terminal_false_breakout 突破推进和影线参数非法。")
+    if cfg.terminal_false_breakout_min_score < 1:
+        raise ValueError("terminal_false_breakout_min_score 至少需要 1。")
 
 
 def _validate_reversal_parameters(cfg: StrategySuiteConfig) -> None:

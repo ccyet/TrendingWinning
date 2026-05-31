@@ -371,6 +371,11 @@ def test_cli_portfolio_backtest_passes_higher_timeframe_gate_config(monkeypatch,
             "/tmp/trend-data",
             "--detectors",
             "trend",
+            "--enable-terminal-false-breakout-filter",
+            "--terminal-false-breakout-detectors",
+            "trend,channel",
+            "--terminal-false-breakout-min-regime-bars",
+            "20",
         ],
     )
 
@@ -382,6 +387,9 @@ def test_cli_portfolio_backtest_passes_higher_timeframe_gate_config(monkeypatch,
     assert config.higher_timeframe == "60m"
     assert config.higher_timeframe_max_age_minutes == 90
     assert config.side_mode == "short_only"
+    assert config.terminal_false_breakout_enabled is True
+    assert config.terminal_false_breakout_detectors == ("trend", "channel")
+    assert config.terminal_false_breakout_min_regime_bars == 20
     assert captured["save"] is False
 
 
@@ -731,6 +739,29 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
             "0.02",
             "--trailing-take-profit-ma-period",
             "10",
+            "--enable-terminal-false-breakout-filter",
+            "--terminal-false-breakout-detectors",
+            "trend",
+            "--terminal-false-breakout-lookback",
+            "30",
+            "--terminal-false-breakout-atr-period",
+            "10",
+            "--terminal-false-breakout-min-regime-bars",
+            "12",
+            "--terminal-false-breakout-extension-atr-multiple",
+            "1.8",
+            "--terminal-false-breakout-edge-lookback",
+            "6",
+            "--terminal-false-breakout-edge-pos",
+            "0.85",
+            "--terminal-false-breakout-edge-min-count",
+            "2",
+            "--terminal-false-breakout-weak-progress-atr",
+            "0.25",
+            "--terminal-false-breakout-wick-ratio",
+            "0.4",
+            "--terminal-false-breakout-min-score",
+            "4",
             "--trend-lookback",
             "5",
             "--trend-min-score",
@@ -798,6 +829,18 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
     assert saved_config["trailing_take_profit_activation_pct"] == 0.05
     assert saved_config["trailing_take_profit_drawdown_pct"] == 0.02
     assert saved_config["trailing_take_profit_ma_period"] == 10
+    assert saved_config["terminal_false_breakout_enabled"] is True
+    assert saved_config["terminal_false_breakout_detectors"] == ["trend"]
+    assert saved_config["terminal_false_breakout_lookback"] == 30
+    assert saved_config["terminal_false_breakout_atr_period"] == 10
+    assert saved_config["terminal_false_breakout_min_regime_bars"] == 12
+    assert saved_config["terminal_false_breakout_extension_atr_multiple"] == 1.8
+    assert saved_config["terminal_false_breakout_edge_lookback"] == 6
+    assert saved_config["terminal_false_breakout_edge_pos"] == 0.85
+    assert saved_config["terminal_false_breakout_edge_min_count"] == 2
+    assert saved_config["terminal_false_breakout_weak_progress_atr"] == 0.25
+    assert saved_config["terminal_false_breakout_wick_ratio"] == 0.4
+    assert saved_config["terminal_false_breakout_min_score"] == 4
     assert saved_config["trend_strong_close_pos"] == 0.7
     assert saved_config["trend_min_body_ratio"] == 0.55
     assert saved_config["trend_pullback_lookback"] == 4

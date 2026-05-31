@@ -87,6 +87,52 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _parse_csv_tuple(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _add_terminal_false_breakout_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--enable-terminal-false-breakout-filter",
+        action="store_true",
+        help="启用末端假突破过滤；只在策略层过滤开仓订单，不改变形态识别和撮合逻辑。",
+    )
+    parser.add_argument(
+        "--terminal-false-breakout-detectors",
+        default="trend,channel",
+        help="末端假突破过滤适用的形态模块，逗号分隔；默认 trend,channel。",
+    )
+    parser.add_argument("--terminal-false-breakout-lookback", type=int, default=40)
+    parser.add_argument("--terminal-false-breakout-atr-period", type=int, default=14)
+    parser.add_argument("--terminal-false-breakout-min-regime-bars", type=int, default=18)
+    parser.add_argument("--terminal-false-breakout-extension-atr-multiple", type=float, default=2.0)
+    parser.add_argument("--terminal-false-breakout-edge-lookback", type=int, default=8)
+    parser.add_argument("--terminal-false-breakout-edge-pos", type=float, default=0.90)
+    parser.add_argument("--terminal-false-breakout-edge-min-count", type=int, default=3)
+    parser.add_argument("--terminal-false-breakout-weak-progress-atr", type=float, default=0.35)
+    parser.add_argument("--terminal-false-breakout-wick-ratio", type=float, default=0.35)
+    parser.add_argument("--terminal-false-breakout-min-score", type=int, default=3)
+
+
+def _terminal_false_breakout_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "terminal_false_breakout_enabled": bool(args.enable_terminal_false_breakout_filter),
+        "terminal_false_breakout_detectors": _parse_csv_tuple(str(args.terminal_false_breakout_detectors)),
+        "terminal_false_breakout_lookback": int(args.terminal_false_breakout_lookback),
+        "terminal_false_breakout_atr_period": int(args.terminal_false_breakout_atr_period),
+        "terminal_false_breakout_min_regime_bars": int(args.terminal_false_breakout_min_regime_bars),
+        "terminal_false_breakout_extension_atr_multiple": float(
+            args.terminal_false_breakout_extension_atr_multiple
+        ),
+        "terminal_false_breakout_edge_lookback": int(args.terminal_false_breakout_edge_lookback),
+        "terminal_false_breakout_edge_pos": float(args.terminal_false_breakout_edge_pos),
+        "terminal_false_breakout_edge_min_count": int(args.terminal_false_breakout_edge_min_count),
+        "terminal_false_breakout_weak_progress_atr": float(args.terminal_false_breakout_weak_progress_atr),
+        "terminal_false_breakout_wick_ratio": float(args.terminal_false_breakout_wick_ratio),
+        "terminal_false_breakout_min_score": int(args.terminal_false_breakout_min_score),
+    }
+
+
 def _parse_generic_sweep_grid(items: list[str], config: object) -> dict[str, list[object]]:
     """解析通用参数网格；字段合法性由实验配置 dataclass 决定。"""
     if not items:
@@ -283,6 +329,7 @@ def main() -> None:
     single_parser.add_argument("--initial-equity", type=float, default=1.0)
     single_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
     _add_trailing_take_profit_args(single_parser)
+    _add_terminal_false_breakout_args(single_parser)
     single_parser.add_argument("--allow-bad-data", action="store_true")
     single_parser.add_argument("--output-dir", default="")
     single_parser.add_argument("--trend-lookback", type=int, default=20)
@@ -333,6 +380,7 @@ def main() -> None:
     single_sweep_parser.add_argument("--initial-equity", type=float, default=1.0)
     single_sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
     _add_trailing_take_profit_args(single_sweep_parser)
+    _add_terminal_false_breakout_args(single_sweep_parser)
     single_sweep_parser.add_argument("--allow-bad-data", action="store_true")
     single_sweep_parser.add_argument("--output-dir", default="")
     single_sweep_parser.add_argument("--trend-lookback", type=int, default=20)
@@ -394,6 +442,7 @@ def main() -> None:
     portfolio_parser.add_argument("--default-sector", default="UNKNOWN")
     portfolio_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
     _add_trailing_take_profit_args(portfolio_parser)
+    _add_terminal_false_breakout_args(portfolio_parser)
     portfolio_parser.add_argument("--trend-lookback", type=int, default=20)
     portfolio_parser.add_argument("--trend-min-score", type=float, default=1.0)
     portfolio_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
@@ -457,6 +506,7 @@ def main() -> None:
     sweep_parser.add_argument("--default-sector", default="UNKNOWN")
     sweep_parser.add_argument("--intrabar-exit-policy", choices=["conservative", "optimistic"], default="conservative")
     _add_trailing_take_profit_args(sweep_parser)
+    _add_terminal_false_breakout_args(sweep_parser)
     sweep_parser.add_argument("--trend-lookback", type=int, default=20)
     sweep_parser.add_argument("--trend-min-score", type=float, default=1.0)
     sweep_parser.add_argument("--trend-strong-close-pos", type=float, default=0.65)
@@ -615,6 +665,7 @@ def main() -> None:
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
+            **_terminal_false_breakout_kwargs(args),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -674,6 +725,7 @@ def main() -> None:
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
+            **_terminal_false_breakout_kwargs(args),
             strict_data_quality=not bool(args.allow_bad_data),
             output_dir=args.output_dir,
             trend_lookback=int(args.trend_lookback),
@@ -759,6 +811,7 @@ def main() -> None:
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
+            **_terminal_false_breakout_kwargs(args),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),
@@ -841,6 +894,7 @@ def main() -> None:
             trailing_take_profit_activation_pct=float(args.trailing_take_profit_activation_pct),
             trailing_take_profit_drawdown_pct=float(args.trailing_take_profit_drawdown_pct),
             trailing_take_profit_ma_period=int(args.trailing_take_profit_ma_period),
+            **_terminal_false_breakout_kwargs(args),
             trend_lookback=int(args.trend_lookback),
             trend_min_score=float(args.trend_min_score),
             trend_strong_close_pos=float(args.trend_strong_close_pos),

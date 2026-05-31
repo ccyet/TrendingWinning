@@ -50,6 +50,7 @@ from trending_winning.backtest.experiment_config import (
     portfolio_config as _portfolio_config,
     strategy_suite_config as _strategy_suite_config,
     wrap_higher_timeframe_strategies as _wrap_higher_timeframe_strategies_impl,
+    wrap_terminal_false_breakout_strategies as _wrap_terminal_false_breakout_strategies,
 )
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport as PortfolioBenchmarkReport,
@@ -136,7 +137,11 @@ def run_single_strategy_experiment(
     repo = MarketDataRepository(config.data_root, adjust=config.adjust)
     data = _load_experiment_data(repo, config)
     strategy = _wrap_higher_timeframe_strategies(
-        [create_strategy_for_detector(config.detector, _strategy_suite_config(config))],
+        _wrap_terminal_false_breakout_strategies(
+            [create_strategy_for_detector(config.detector, _strategy_suite_config(config))],
+            config,
+            data.bars,
+        ),
         config,
         data.higher_bars,
     )[0]
@@ -206,7 +211,11 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
     repo = MarketDataRepository(config.data_root, adjust=config.adjust)
     data = _load_experiment_data(repo, config)
     strategies = _wrap_higher_timeframe_strategies(
-        create_default_strategy_suite(_strategy_suite_config(config)),
+        _wrap_terminal_false_breakout_strategies(
+            create_default_strategy_suite(_strategy_suite_config(config)),
+            config,
+            data.bars,
+        ),
         config,
         data.higher_bars,
     )
@@ -312,7 +321,11 @@ def run_portfolio_parameter_sweep(
         if orders is None:
             order_cache_status = "miss"
             strategies = _wrap_higher_timeframe_strategies(
-                create_default_strategy_suite(suite_config),
+                _wrap_terminal_false_breakout_strategies(
+                    create_default_strategy_suite(suite_config),
+                    variant,
+                    data.bars,
+                ),
                 variant,
                 data.higher_bars,
             )
@@ -492,7 +505,11 @@ def run_single_strategy_parameter_sweep(
         if orders is None:
             order_cache_status = "miss"
             strategy = _wrap_higher_timeframe_strategies(
-                [create_strategy_for_detector(variant.detector, suite_config)],
+                _wrap_terminal_false_breakout_strategies(
+                    [create_strategy_for_detector(variant.detector, suite_config)],
+                    variant,
+                    data.bars,
+                ),
                 variant,
                 data.higher_bars,
             )[0]

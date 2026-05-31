@@ -1675,6 +1675,35 @@ def test_portfolio_parameter_sweep_does_not_reuse_orders_when_higher_timeframe_g
     assert by_age["order_cache_status"].tolist() == ["miss", "miss"]
 
 
+def test_order_cache_key_includes_terminal_false_breakout_filter_parameters() -> None:
+    base = PortfolioExperimentConfig(
+        name="sweep-terminal-filter-cache",
+        data_root="/tmp/trend-data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        terminal_false_breakout_enabled=True,
+        terminal_false_breakout_weak_progress_atr=0.35,
+    )
+    changed = PortfolioExperimentConfig(
+        name="sweep-terminal-filter-cache",
+        data_root="/tmp/trend-data",
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detectors=("trend",),
+        terminal_false_breakout_enabled=True,
+        terminal_false_breakout_weak_progress_atr=0.55,
+    )
+
+    assert experiment_module._order_cache_key(base, experiment_module._strategy_suite_config(base)) != (
+        experiment_module._order_cache_key(changed, experiment_module._strategy_suite_config(changed))
+    )
+
+
 def test_portfolio_parameter_sweep_uses_loaded_normalized_bars_without_portfolio_renormalization(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -2773,6 +2802,101 @@ def test_single_strategy_experiment_uses_one_detector_without_portfolio_layer(tm
     assert saved_symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
     assert result.data_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
     assert saved_inventory.set_index(["stock_code", "timeframe"]).loc[("000001.SZ", "30m"), "status"] == "cached"
+
+
+def test_single_strategy_experiment_saves_terminal_false_breakout_filter_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "market" / "daily"
+    output_dir = tmp_path / "runs" / "terminal-filter"
+    closes = [10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.35, 13.55, 13.7, 13.82, 13.92]
+    rows: list[dict[str, object]] = []
+    for index, close in enumerate(closes):
+        open_ = close - 0.08
+        high = close + 0.18
+        low = close - 0.20
+        if index == len(closes) - 1:
+            open_ = close - 0.02
+            high = close + 1.10
+            low = close - 0.18
+        rows.append(
+            {
+                "date": pd.Timestamp("2026-05-25 09:30:00") + pd.Timedelta(minutes=30 * index),
+                "stock_code": "000001.SZ",
+                "open": open_,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": 1000.0 + index,
+                "amount": close * (1000.0 + index),
+            }
+        )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=pd.DataFrame(rows))
+
+    class OneTerminalOrderStrategy:
+        name = "trend_signal_bar"
+
+        def generate_orders(self, bars: pd.DataFrame, *, timeframe: str = "") -> pd.DataFrame:
+            signal_bar_index = len(bars) - 1
+            return pd.DataFrame(
+                [
+                    {
+                        "order_id": "terminal-long",
+                        "strategy_name": self.name,
+                        "detector_name": "trend",
+                        "event_id": "event:terminal-long",
+                        "event_type": "bull_h2_setup",
+                        "stock_code": "000001.SZ",
+                        "timeframe": timeframe,
+                        "signal_date": bars.iloc[signal_bar_index]["date"],
+                        "signal_bar_index": signal_bar_index,
+                        "side": "long",
+                        "signal_price": 14.0,
+                        "entry_price": 14.01,
+                        "stop_price": 13.0,
+                        "target_price": 16.0,
+                        "max_holding_bars": 4,
+                        "max_actual_risk_pct": None,
+                        "max_chase_pct": None,
+                        "metadata": {},
+                    }
+                ],
+                columns=ORDER_COLUMNS,
+            )
+
+    monkeypatch.setattr(experiment_module, "create_strategy_for_detector", lambda detector, cfg: OneTerminalOrderStrategy())
+    result = run_single_strategy_experiment(
+        SingleStrategyExperimentConfig(
+            name="terminal-filter",
+            data_root=str(data_root),
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-05-25",
+            end="2026-05-25",
+            detector="trend",
+            strict_data_quality=False,
+            terminal_false_breakout_enabled=True,
+            terminal_false_breakout_lookback=5,
+            terminal_false_breakout_atr_period=3,
+            terminal_false_breakout_min_regime_bars=4,
+            terminal_false_breakout_extension_atr_multiple=0.6,
+            terminal_false_breakout_edge_lookback=4,
+            terminal_false_breakout_edge_pos=0.70,
+            terminal_false_breakout_edge_min_count=2,
+            terminal_false_breakout_weak_progress_atr=0.8,
+            terminal_false_breakout_wick_ratio=0.30,
+            terminal_false_breakout_min_score=3,
+            output_dir=str(output_dir),
+        ),
+        save=True,
+    )
+
+    saved_filter_decisions = pd.read_csv(output_dir / "strategy_filter_decisions.csv")
+    assert result.backtest.trades.empty
+    assert result.backtest.stats["strategy_rejected_terminal_false_breakout_risk_count"] == 1.0
+    assert saved_filter_decisions.loc[0, "filter_name"] == "terminal_false_breakout_filter"
+    assert saved_filter_decisions.loc[0, "reason"] == "terminal_false_breakout_risk"
 
 
 def test_single_strategy_experiment_builds_strategy_without_default_suite(tmp_path: Path, monkeypatch) -> None:

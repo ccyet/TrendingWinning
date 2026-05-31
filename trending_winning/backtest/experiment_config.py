@@ -9,6 +9,22 @@ from trending_winning.backtest.models import BacktestConfig
 from trending_winning.backtest.portfolio_models import PortfolioConfig
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
 from trending_winning.strategies.suite import StrategySuiteConfig
+from trending_winning.strategies.terminal_false_breakout import (
+    TerminalFalseBreakoutFilterConfig,
+    TerminalFalseBreakoutFilterStrategy,
+)
+
+
+def wrap_terminal_false_breakout_strategies(
+    strategies: Sequence[object],
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+    bars: pd.DataFrame,
+) -> list[object]:
+    """按实验配置给策略套上同级别末端假突破过滤；关闭时不改变策略对象。"""
+    if not bool(config.terminal_false_breakout_enabled):
+        return list(strategies)
+    terminal_config = terminal_false_breakout_config(config)
+    return [TerminalFalseBreakoutFilterStrategy(strategy, terminal_config) for strategy in strategies]
 
 
 def wrap_higher_timeframe_strategies(
@@ -42,6 +58,26 @@ def wrap_higher_timeframe_strategies(
         )
         for strategy in strategies
     ]
+
+
+def terminal_false_breakout_config(
+    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
+) -> TerminalFalseBreakoutFilterConfig:
+    """把实验配置映射成末端假突破过滤参数。"""
+    return TerminalFalseBreakoutFilterConfig(
+        enabled=bool(config.terminal_false_breakout_enabled),
+        detectors=tuple(config.terminal_false_breakout_detectors),
+        lookback=int(config.terminal_false_breakout_lookback),
+        atr_period=int(config.terminal_false_breakout_atr_period),
+        min_regime_bars=int(config.terminal_false_breakout_min_regime_bars),
+        extension_atr_multiple=float(config.terminal_false_breakout_extension_atr_multiple),
+        edge_lookback=int(config.terminal_false_breakout_edge_lookback),
+        edge_pos=float(config.terminal_false_breakout_edge_pos),
+        edge_min_count=int(config.terminal_false_breakout_edge_min_count),
+        weak_progress_atr=float(config.terminal_false_breakout_weak_progress_atr),
+        wick_ratio=float(config.terminal_false_breakout_wick_ratio),
+        min_score=int(config.terminal_false_breakout_min_score),
+    )
 
 
 def higher_timeframe_context(
@@ -147,7 +183,27 @@ def active_strategy_suite_cache_key(
         parts.append((detector_name, detector_cache_parameters(detector_name, suite_config)))
     if include_trend_context and "trend" not in enabled:
         parts.append(("higher_trend_context", detector_cache_parameters("trend", suite_config)))
+    parts.append(("terminal_false_breakout", terminal_false_breakout_cache_parameters(suite_config)))
     return tuple(parts)
+
+
+def terminal_false_breakout_cache_parameters(suite_config: StrategySuiteConfig) -> tuple[object, ...]:
+    if not suite_config.terminal_false_breakout_enabled:
+        return (False,)
+    return (
+        True,
+        tuple(suite_config.terminal_false_breakout_detectors),
+        int(suite_config.terminal_false_breakout_lookback),
+        int(suite_config.terminal_false_breakout_atr_period),
+        int(suite_config.terminal_false_breakout_min_regime_bars),
+        float(suite_config.terminal_false_breakout_extension_atr_multiple),
+        int(suite_config.terminal_false_breakout_edge_lookback),
+        float(suite_config.terminal_false_breakout_edge_pos),
+        int(suite_config.terminal_false_breakout_edge_min_count),
+        float(suite_config.terminal_false_breakout_weak_progress_atr),
+        float(suite_config.terminal_false_breakout_wick_ratio),
+        int(suite_config.terminal_false_breakout_min_score),
+    )
 
 
 def detector_cache_parameters(detector_name: str, suite_config: StrategySuiteConfig) -> tuple[object, ...]:
@@ -218,6 +274,18 @@ def strategy_suite_config(config: PortfolioExperimentConfig | SingleStrategyExpe
         channel_break_buffer=config.channel_break_buffer,
         channel_swing_left_bars=config.channel_swing_left_bars,
         channel_swing_right_bars=config.channel_swing_right_bars,
+        terminal_false_breakout_enabled=config.terminal_false_breakout_enabled,
+        terminal_false_breakout_detectors=tuple(config.terminal_false_breakout_detectors),
+        terminal_false_breakout_lookback=config.terminal_false_breakout_lookback,
+        terminal_false_breakout_atr_period=config.terminal_false_breakout_atr_period,
+        terminal_false_breakout_min_regime_bars=config.terminal_false_breakout_min_regime_bars,
+        terminal_false_breakout_extension_atr_multiple=config.terminal_false_breakout_extension_atr_multiple,
+        terminal_false_breakout_edge_lookback=config.terminal_false_breakout_edge_lookback,
+        terminal_false_breakout_edge_pos=config.terminal_false_breakout_edge_pos,
+        terminal_false_breakout_edge_min_count=config.terminal_false_breakout_edge_min_count,
+        terminal_false_breakout_weak_progress_atr=config.terminal_false_breakout_weak_progress_atr,
+        terminal_false_breakout_wick_ratio=config.terminal_false_breakout_wick_ratio,
+        terminal_false_breakout_min_score=config.terminal_false_breakout_min_score,
         reversal_lookback=config.reversal_lookback,
         reversal_strong_close_pos=config.reversal_strong_close_pos,
         reversal_min_body_ratio=config.reversal_min_body_ratio,
