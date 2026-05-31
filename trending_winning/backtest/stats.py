@@ -18,6 +18,11 @@ from trending_winning.backtest.drawdown import (
 from trending_winning.backtest.equity_exposure import equity_exposure_statistics
 from trending_winning.backtest.exposure import trade_exposure_statistics
 from trending_winning.backtest.equity_metrics import equity_return_statistics
+from trending_winning.backtest.exit_stats import (
+    EXIT_REASONS as EXIT_REASONS,
+    EXIT_REASON_STAT_KEYS as EXIT_REASON_STAT_KEYS,
+    summarize_exit_reasons as summarize_exit_reasons,
+)
 from trending_winning.backtest.periods import (
     PERIOD_STAT_KEYS as PERIOD_STAT_KEYS,
     compute_period_return_statistics as compute_period_return_statistics,
@@ -127,21 +132,6 @@ EQUITY_STAT_KEYS = [
     "min_net_exposure",
     "max_net_exposure",
 ]
-
-EXIT_REASONS = (
-    "take_profit",
-    "trailing_take_profit",
-    "stop_loss",
-    "max_holding",
-    "end_of_data",
-)
-
-EXIT_REASON_STAT_KEYS = tuple(
-    key
-    for reason in (*EXIT_REASONS, "other")
-    for key in (f"{reason}_exit_count", f"{reason}_exit_rate")
-)
-
 
 def build_equity_curve(trades: pd.DataFrame, initial_equity: float = 1.0) -> pd.DataFrame:
     """把逐笔收益转成净值曲线；有成交日期时同步保留时间轴。"""
@@ -255,24 +245,6 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "return_per_margin_exposure_bar": exposure_stats["return_per_margin_exposure_bar"],
         "capital_weighted_raw_return": exposure_stats["capital_weighted_raw_return"],
     }
-
-
-def summarize_exit_reasons(trades: pd.DataFrame) -> dict[str, float]:
-    """汇总平仓原因分布；固定字段便于 stats.json 和参数遍历直接对比。"""
-    if trades.empty or "exit_reason" not in trades.columns:
-        return {key: 0.0 for key in EXIT_REASON_STAT_KEYS}
-    reason = trades["exit_reason"].fillna("").astype(str)
-    total = float(len(reason))
-    known = set(EXIT_REASONS)
-    result: dict[str, float] = {}
-    for exit_reason in EXIT_REASONS:
-        count = float(reason.eq(exit_reason).sum())
-        result[f"{exit_reason}_exit_count"] = count
-        result[f"{exit_reason}_exit_rate"] = _ratio_or_zero(count, total)
-    other_count = float((~reason.isin(known)).sum())
-    result["other_exit_count"] = other_count
-    result["other_exit_rate"] = _ratio_or_zero(other_count, total)
-    return result
 
 
 def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: float | None = None) -> dict[str, object]:
