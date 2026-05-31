@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, fields, replace
 import hashlib
 from itertools import product
 import json
@@ -13,6 +13,10 @@ import numpy as np
 import pandas as pd
 
 from trending_winning.backtest.engine import run_order_backtest_from_normalized, run_single_strategy_backtest_from_normalized
+from trending_winning.backtest.experiment_data import (
+    load_experiment_data as _load_experiment_data,
+    with_data_management_statistics as _with_data_management_statistics,
+)
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport as PortfolioBenchmarkReport,
     PortfolioExperimentConfig as PortfolioExperimentConfig,
@@ -159,18 +163,6 @@ SWEEP_CASE_SYMBOL_COLUMNS = (
     "stock_code",
     *STAT_KEYS,
 )
-
-
-@dataclass(frozen=True)
-class _LoadedExperimentData:
-    """实验装载后的标准数据包；集中携带主周期、高周期和审计结果。"""
-
-    bars: pd.DataFrame
-    higher_bars: pd.DataFrame
-    data_audit: pd.DataFrame
-    data_inventory: pd.DataFrame
-    limit_filter_audit: pd.DataFrame
-    filtered_limit_open_days: pd.DataFrame
 
 
 def run_single_strategy_experiment(
@@ -691,61 +683,6 @@ def run_single_strategy_parameter_sweep(
     return result
 
 
-def _load_experiment_data(
-    repo: MarketDataRepository,
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-) -> _LoadedExperimentData:
-    higher_timeframe = str(config.higher_timeframe).strip()
-    data_inventory = repo.inventory(
-        timeframes=tuple(_experiment_inventory_timeframes(config)),
-        symbols=config.symbols,
-    )
-    if higher_timeframe:
-        if higher_timeframe == config.timeframe:
-            raise ValueError("higher_timeframe 不能和 timeframe 相同。")
-        bundle = repo.load_multi_timeframe_backtest_data(
-            timeframes=(config.timeframe, higher_timeframe),
-            symbols=config.symbols,
-            start=config.start,
-            end=config.end,
-            strict_data_quality=config.strict_data_quality,
-            min_coverage_ratio=config.min_coverage_ratio,
-        )
-        return _LoadedExperimentData(
-            bars=bundle.bars_by_timeframe.get(config.timeframe, pd.DataFrame()),
-            higher_bars=bundle.bars_by_timeframe.get(higher_timeframe, pd.DataFrame()),
-            data_audit=bundle.data_audit,
-            data_inventory=data_inventory,
-            limit_filter_audit=bundle.limit_filter_audit,
-            filtered_limit_open_days=bundle.filtered_limit_open_days,
-        )
-    bundle = repo.load_backtest_data(
-        timeframe=config.timeframe,
-        symbols=config.symbols,
-        start=config.start,
-        end=config.end,
-        strict_data_quality=config.strict_data_quality,
-        min_coverage_ratio=config.min_coverage_ratio,
-    )
-    return _LoadedExperimentData(
-        bars=bundle.bars,
-        higher_bars=pd.DataFrame(),
-        data_audit=bundle.data_audit,
-        data_inventory=data_inventory,
-        limit_filter_audit=bundle.limit_filter_audit,
-        filtered_limit_open_days=bundle.filtered_limit_open_days,
-    )
-
-
-def _experiment_inventory_timeframes(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> list[str]:
-    """实验结果需要保存日 K 依赖、主周期和可选高周期的本地缓存快照。"""
-    timeframes = ["1d", str(config.timeframe)]
-    higher_timeframe = str(config.higher_timeframe).strip()
-    if higher_timeframe and higher_timeframe not in timeframes:
-        timeframes.append(higher_timeframe)
-    return timeframes
-
-
 def _wrap_higher_timeframe_strategies(
     strategies: Sequence[object],
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
@@ -946,32 +883,6 @@ def _with_strategy_filter_decisions(result: BacktestResult, filter_decisions: pd
         stats=stats,
         order_decisions=result.order_decisions,
         strategy_filter_decisions=filter_decisions,
-    )
-
-
-def _with_data_management_statistics(
-    result: BacktestResult,
-    data: _LoadedExperimentData,
-    *,
-    min_coverage_ratio: float | None,
-) -> BacktestResult:
-    """运行态结果也携带数据审计摘要，保证 Web/CLI 和保存产物统计口径一致。"""
-    stats = dict(result.stats)
-    stats.update(
-        summarize_data_management(
-            data.data_audit,
-            data.limit_filter_audit,
-            filtered_limit_open_count=len(data.filtered_limit_open_days),
-            data_inventory=data.data_inventory,
-            min_coverage_ratio=min_coverage_ratio,
-        )
-    )
-    return BacktestResult(
-        trades=result.trades,
-        equity_curve=result.equity_curve,
-        stats=stats,
-        order_decisions=result.order_decisions,
-        strategy_filter_decisions=result.strategy_filter_decisions,
     )
 
 
