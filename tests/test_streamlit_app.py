@@ -15,6 +15,8 @@ from streamlit_app import (
     _equity_drawdown_chart_frame,
     _equity_y_domain,
     _format_display_value,
+    _order_decision_funnel_frame,
+    _order_reject_reason_chart_frame,
     _performance_summary_frame,
     _parse_float_mapping,
     _parse_int_mapping,
@@ -384,6 +386,51 @@ def test_streamlit_backtest_result_renders_data_coverage_overview_chart() -> Non
 
     assert "_render_data_coverage_chart" in result_source
     assert "数据覆盖率概览" in chart_source
+
+
+def test_order_decision_funnel_frame_counts_execution_path() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["accepted", "accepted", "rejected", "rejected", "rejected"],
+            "reason": ["", "", "no_fill", "actual_risk_too_high", "max_open_positions"],
+            "actual_entry_price": [10.0, 11.0, 0.0, 12.0, 13.0],
+        }
+    )
+
+    funnel = _order_decision_funnel_frame(decisions)
+
+    assert funnel.columns.tolist() == ["阶段", "订单数", "占全部订单", "说明"]
+    assert funnel["阶段"].tolist() == ["全部订单", "触发入场价", "最终成交", "未成交/被拒"]
+    assert funnel["订单数"].tolist() == [5, 4, 2, 3]
+    assert funnel["占全部订单"].tolist() == [1.0, 0.8, 0.4, 0.6]
+    assert "挂单价" in funnel.loc[1, "说明"]
+
+
+def test_order_reject_reason_chart_frame_localizes_and_sorts_reasons() -> None:
+    decisions = pd.DataFrame(
+        {
+            "status": ["accepted", "rejected", "rejected", "rejected", "rejected"],
+            "reason": ["", "no_fill", "actual_risk_too_high", "no_fill", "max_open_positions"],
+            "actual_entry_price": [10.0, 0.0, 12.0, 0.0, 13.0],
+        }
+    )
+
+    reasons = _order_reject_reason_chart_frame(decisions)
+
+    assert reasons.columns.tolist() == ["拒绝原因", "订单数", "占拒绝订单", "原因代码"]
+    assert reasons["拒绝原因"].tolist() == ["未成交", "达到最大持仓数", "止损风险过大"]
+    assert reasons["订单数"].tolist() == [2, 1, 1]
+    assert reasons["占拒绝订单"].tolist() == [0.5, 0.25, 0.25]
+    assert reasons["原因代码"].tolist() == ["no_fill", "max_open_positions", "actual_risk_too_high"]
+
+
+def test_streamlit_backtest_result_renders_order_decision_overview() -> None:
+    source = getsource(streamlit_app._render_backtest_result)
+    chart_source = getsource(streamlit_app._render_order_decision_charts)
+
+    assert "_render_order_decision_charts" in source
+    assert "订单决策概览" in chart_source
+    assert "拒绝原因分布" in chart_source
 
 
 def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
@@ -777,6 +824,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
     assert "数据覆盖率概览" in html
+    assert "订单决策概览" in html
+    assert "拒绝原因分布" in html
     assert "signal_lifecycle_stats.csv" in html
     assert "回撤曲线" in html
     assert "monthly_win_rate" in html
@@ -838,6 +887,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
     assert "核心绩效概览" in html
+    assert "订单决策概览" in html
+    assert "拒绝原因分布" in html
     assert "回撤曲线" in html
     assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html

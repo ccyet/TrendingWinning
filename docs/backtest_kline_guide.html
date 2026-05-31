@@ -323,7 +323,7 @@
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
         <div class="card"><b>设置风控</b><span>查看结构止损价说明，设置最大持有 K 数、启用盈利通道回撤止盈、交易方向、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
-        <div class="card"><b>读取产物</b><span>先看核心绩效概览、数据覆盖率概览、净值曲线、回撤曲线和策略K线运行区间里的开多、开空、止损标注，再看未成交原因、开平仓路径绩效、信号形态绩效和月度稳定性。</span></div>
+        <div class="card"><b>读取产物</b><span>先看核心绩效概览、数据覆盖率概览、订单决策概览、拒绝原因分布、净值曲线、回撤曲线和策略K线运行区间里的开多、开空、止损标注，再看开平仓路径绩效、信号形态绩效和月度稳定性。</span></div>
       </div>
       <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
     </section>
@@ -341,6 +341,7 @@
           <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、止损风险和追价过滤。</td><td>单策略回测</td></tr>
           <tr><td>5. 组合仓位与资金</td><td>组合形态、交易方向、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
+          <tr><td>回测结果：订单决策概览</td><td>展示全部订单、触发入场价、最终成交、未成交/被拒四段数量，并用拒绝原因分布定位未成交、容量、资金、止损风险或追价问题。</td><td>运行后显示</td></tr>
           <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，横轴和价格轴都可缩放；长样本不受 5000 行默认限制，SVG 矢量渲染放大后仍保持清晰，并标注开多、开空、止损横线、止损点和盈利通道回撤止盈点。</td><td>运行后显示</td></tr>
         </tbody>
       </table>
@@ -639,7 +640,7 @@ min_coverage_ratio = 0.95</code></pre>
       <table>
         <thead><tr><th>想回答的问题</th><th>优先看</th><th>关键字段</th></tr></thead>
         <tbody>
-          <tr><td>为什么没有成交？</td><td><code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
+          <tr><td>为什么没有成交？</td><td>订单决策概览、拒绝原因分布、<code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
           <tr><td>哪类信号形态有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code>；只有信号但没有成交的 setup 也保留零值行。</td></tr>
           <tr><td>同一类开仓信号最后怎么平仓？</td><td><code>signal_lifecycle_stats.csv</code>、开平仓路径绩效</td><td><code>detector_name / event_type / side / exit_reason / trade_count / total_return / win_rate</code></td></tr>

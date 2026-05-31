@@ -309,9 +309,14 @@ DISPLAY_VALUE_MAP = {
         "no_fill": "未成交",
         "no_bars": "无K线数据",
         "no_liquidity": "无有效成交区间",
+        "invalid_order": "订单字段无效",
+        "duplicate_order_id": "订单ID重复",
         "already_open": "已有持仓未平仓",
+        "actual_risk_too_high": "止损风险过大",
         "risk_too_large": "止损风险过大",
+        "chase_too_far": "追价过远",
         "chase_too_large": "追价过远",
+        "target_not_favorable": "目标价无效",
         "same_symbol_overlap": "同票已有持仓",
         "max_open_positions": "达到最大持仓数",
         "no_capital": "资金不足",
@@ -801,6 +806,123 @@ def _data_coverage_chart_frame(
         .sort_values(["K线覆盖率", "样本"], ascending=[True, True], kind="mergesort")
         .reset_index(drop=True)
     )
+
+
+def _render_order_decision_charts(order_decisions: pd.DataFrame) -> None:
+    funnel_data = _order_decision_funnel_frame(order_decisions)
+    reason_data = _order_reject_reason_chart_frame(order_decisions)
+    if funnel_data.empty and reason_data.empty:
+        return
+    st.markdown("##### 订单决策概览")
+    funnel_col, reason_col = st.columns([1, 1])
+    with funnel_col:
+        if not funnel_data.empty:
+            funnel_chart = (
+                alt.Chart(funnel_data.reset_index(names="顺序"))
+                .mark_bar(cornerRadiusEnd=3)
+                .encode(
+                    x=alt.X("订单数:Q", title="订单数"),
+                    y=alt.Y("阶段:N", title="", sort=alt.SortField(field="顺序", order="ascending")),
+                    color=alt.Color("阶段:N", title="阶段", legend=None),
+                    tooltip=[
+                        "阶段:N",
+                        alt.Tooltip("订单数:Q", format=".0f"),
+                        alt.Tooltip("占全部订单:Q", format=".2%"),
+                        "说明:N",
+                    ],
+                )
+            )
+            st.altair_chart(funnel_chart, use_container_width=True)
+    with reason_col:
+        if not reason_data.empty:
+            st.markdown("###### 拒绝原因分布")
+            reason_chart = (
+                alt.Chart(reason_data)
+                .mark_bar(cornerRadiusEnd=3)
+                .encode(
+                    x=alt.X("订单数:Q", title="订单数"),
+                    y=alt.Y("拒绝原因:N", title="", sort="-x"),
+                    color=alt.Color("拒绝原因:N", title="拒绝原因", legend=None),
+                    tooltip=[
+                        "拒绝原因:N",
+                        "原因代码:N",
+                        alt.Tooltip("订单数:Q", format=".0f"),
+                        alt.Tooltip("占拒绝订单:Q", format=".2%"),
+                    ],
+                )
+            )
+            st.altair_chart(reason_chart, use_container_width=True)
+
+
+def _order_decision_funnel_frame(order_decisions: pd.DataFrame) -> pd.DataFrame:
+    """把订单决策转成回测漏斗；只依赖标准决策字段，不绑定具体策略。"""
+    columns = ["阶段", "订单数", "占全部订单", "说明"]
+    if order_decisions.empty or "status" not in order_decisions.columns:
+        return pd.DataFrame(columns=columns)
+    total = int(len(order_decisions))
+    if total <= 0:
+        return pd.DataFrame(columns=columns)
+    status = order_decisions["status"].fillna("").astype(str)
+    actual_entry = pd.to_numeric(
+        order_decisions.get("actual_entry_price", pd.Series([0.0] * total, index=order_decisions.index)),
+        errors="coerce",
+    ).fillna(0.0)
+    rows = [
+        ("全部订单", total, "策略层生成并进入撮合层的候选订单。"),
+        ("触发入场价", int(actual_entry.gt(0).sum()), "价格到达挂单价，后续仍可能被风控、容量或资金拒绝。"),
+        ("最终成交", int(status.eq("accepted").sum()), "通过撮合和风控，实际进入持仓。"),
+        ("未成交/被拒", int(status.eq("rejected").sum()), "未触发挂单价，或被风控、容量、资金等规则拒绝。"),
+    ]
+    return pd.DataFrame(
+        [{"阶段": stage, "订单数": count, "占全部订单": count / total, "说明": note} for stage, count, note in rows],
+        columns=columns,
+    )
+
+
+def _order_reject_reason_chart_frame(order_decisions: pd.DataFrame) -> pd.DataFrame:
+    """汇总订单拒绝原因；保留原因代码，展示字段使用中文说明。"""
+    columns = ["拒绝原因", "订单数", "占拒绝订单", "原因代码"]
+    if order_decisions.empty or "status" not in order_decisions.columns:
+        return pd.DataFrame(columns=columns)
+    status = order_decisions["status"].fillna("").astype(str)
+    rejected = order_decisions.loc[status.eq("rejected")].copy()
+    if rejected.empty:
+        return pd.DataFrame(columns=columns)
+    reason = rejected.get("reason", pd.Series([""] * len(rejected), index=rejected.index)).fillna("").astype(str)
+    reason = reason.replace("", "unknown")
+    total = int(len(rejected))
+    grouped = reason.value_counts(sort=False).rename_axis("原因代码").reset_index(name="订单数")
+    grouped["拒绝原因"] = grouped["原因代码"].map(lambda value: DISPLAY_VALUE_MAP.get("reason", {}).get(value, value))
+    grouped["占拒绝订单"] = grouped["订单数"].map(lambda count: float(count) / total)
+    grouped["排序"] = grouped["原因代码"].map(_reject_reason_sort_priority)
+    return (
+        grouped.sort_values(["订单数", "排序", "拒绝原因"], ascending=[False, True, True], kind="mergesort")
+        .loc[:, columns]
+        .reset_index(drop=True)
+    )
+
+
+def _reject_reason_sort_priority(reason: object) -> int:
+    priority = {
+        "no_fill": 10,
+        "no_liquidity": 20,
+        "no_bars": 30,
+        "max_open_positions": 40,
+        "same_symbol_overlap": 50,
+        "no_capital": 60,
+        "capital_limit": 70,
+        "sector_limit": 80,
+        "actual_risk_too_high": 90,
+        "risk_too_large": 90,
+        "chase_too_far": 100,
+        "chase_too_large": 100,
+        "target_not_favorable": 110,
+        "invalid_order": 120,
+        "duplicate_order_id": 130,
+        "already_open": 140,
+        "unknown": 999,
+    }
+    return priority.get(str(reason), 500)
 
 
 def _performance_summary_frame(stats: Mapping[str, object]) -> pd.DataFrame:
@@ -2989,6 +3111,7 @@ def _render_backtest_result(
     if data_coverage is not None and not data_coverage.empty:
         _render_data_coverage_chart(data_coverage, stock_names=stock_names)
         _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
+    _render_order_decision_charts(result.order_decisions)
     chart_bars = bundle.bars if bundle is not None else bars
     if chart_bars is not None and not chart_bars.empty:
         _render_strategy_kline_chart(chart_bars, result.trades, stock_names=stock_names)
