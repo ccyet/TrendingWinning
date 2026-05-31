@@ -11,14 +11,16 @@ from trending_winning.backtest.allocation import (
     order_margin_fraction,
 )
 from trending_winning.backtest.engine import (
-    BacktestConfig,
-    BacktestResult,
-    ORDER_DECISION_COLUMNS,
-    TRADE_COLUMNS,
     order_decision_record,
     order_duplicate_reject_reason,
     order_preflight_reject_reason,
     validate_order_frame_columns,
+)
+from trending_winning.backtest.models import (
+    BacktestConfig,
+    BacktestResult,
+    ORDER_DECISION_COLUMNS,
+    TRADE_COLUMNS,
 )
 from trending_winning.backtest.execution import (
     OrderExecutionResult,

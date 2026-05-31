@@ -12,12 +12,8 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from trending_winning.backtest.engine import (
-    BacktestConfig,
-    BacktestResult,
-    run_order_backtest_from_normalized,
-    run_single_strategy_backtest_from_normalized,
-)
+from trending_winning.backtest.engine import run_order_backtest_from_normalized, run_single_strategy_backtest_from_normalized
+from trending_winning.backtest.models import BacktestConfig, BacktestResult
 from trending_winning.backtest.periods import compute_period_return_statistics, compute_period_returns
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,

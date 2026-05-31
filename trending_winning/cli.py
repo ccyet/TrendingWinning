@@ -19,7 +19,8 @@ from trending_winning.backtest.experiment import (
     run_single_strategy_experiment,
     save_portfolio_benchmark,
 )
-from trending_winning.backtest.engine import BacktestConfig, run_backtest
+from trending_winning.backtest.engine import run_backtest
+from trending_winning.backtest.models import BacktestConfig
 from trending_winning.data.repository import MarketDataRepository
 from trending_winning.data.tdx import diagnose_tdx_source
 from trending_winning.data.tdx_parallels import (
