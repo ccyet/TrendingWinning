@@ -10,7 +10,7 @@ from trending_winning.backtest.allocation import (
     next_capital_fraction,
     order_margin_fraction,
 )
-from trending_winning.backtest.engine import (
+from trending_winning.backtest.order_decisions import (
     order_decision_record,
     order_duplicate_reject_reason,
     order_preflight_reject_reason,
