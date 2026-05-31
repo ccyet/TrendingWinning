@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from trending_winning.backtest.experiment_cases import json_dump, json_ready, sweep_case_config_records, write_jsonl
+from trending_winning.backtest.drawdown import drawdown_episodes
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport,
     PortfolioExperimentConfig,
@@ -140,10 +141,18 @@ def _write_common_experiment_outputs(
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
     result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
     result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
+    _experiment_drawdown_episodes(result.backtest.equity_curve).to_csv(output_dir / "drawdown_episodes.csv", index=False)
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
+
+
+def _experiment_drawdown_episodes(equity_curve: pd.DataFrame) -> pd.DataFrame:
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return drawdown_episodes(pd.DataFrame(), pd.Series(dtype=float))
+    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
+    return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=20)
 
 
 def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | SingleStrategySweepResult) -> None:

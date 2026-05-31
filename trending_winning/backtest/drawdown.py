@@ -18,6 +18,22 @@ DRAWDOWN_STAT_KEYS = (
     "time_under_water_ratio",
 )
 
+DRAWDOWN_EPISODE_COLUMNS = pd.Index(
+    [
+        "episode_rank",
+        "episode_no",
+        "start_at",
+        "trough_at",
+        "recovery_at",
+        "peak_net_value",
+        "trough_net_value",
+        "depth",
+        "underwater_bars",
+        "recovery_bars",
+        "recovered",
+    ]
+)
+
 
 def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict[str, object]:
     """从已排序净值序列计算完整回撤统计，供单策略和组合回测复用。"""
@@ -73,6 +89,55 @@ def drawdown_episode_labels(data: pd.DataFrame, net_value: pd.Series, drawdown: 
     return result
 
 
+def drawdown_episodes(data: pd.DataFrame, net_value: pd.Series, *, limit: int | None = None) -> pd.DataFrame:
+    """拆分每段水下区间，按回撤深度输出可复盘的起点、触底和修复点。"""
+    aligned_data, clean = _aligned_drawdown_inputs(data, net_value)
+    if clean.empty:
+        return pd.DataFrame(columns=DRAWDOWN_EPISODE_COLUMNS)
+
+    episodes: list[dict[str, object]] = []
+    peak_pos = 0
+    peak_value = float(clean.iloc[0])
+    current: dict[str, object] | None = None
+    episode_no = 0
+
+    for pos, raw_value in enumerate(clean.iloc[1:].tolist(), start=1):
+        value = float(raw_value)
+        if value >= peak_value:
+            if current is not None:
+                _finalize_drawdown_episode(current, aligned_data, clean, recovery_pos=pos)
+                episodes.append(current)
+                current = None
+            peak_pos = pos
+            peak_value = value
+            continue
+
+        if current is None:
+            episode_no += 1
+            current = _new_drawdown_episode(episode_no, peak_pos, peak_value, pos, value)
+        else:
+            current["underwater_bars"] = int(current["underwater_bars"]) + 1
+            if value < float(current["trough_net_value"]):
+                current["trough_pos"] = pos
+                current["trough_net_value"] = value
+
+    if current is not None:
+        _finalize_drawdown_episode(current, aligned_data, clean, recovery_pos=None)
+        episodes.append(current)
+
+    if not episodes:
+        return pd.DataFrame(columns=DRAWDOWN_EPISODE_COLUMNS)
+
+    rows = [_public_drawdown_episode_row(episode, aligned_data) for episode in episodes]
+    result = pd.DataFrame(rows)
+    result = result.sort_values(["depth", "start_at", "episode_no"], kind="mergesort").reset_index(drop=True)
+    if limit is not None:
+        result = result.head(max(int(limit), 0)).reset_index(drop=True)
+    result.insert(0, "episode_rank", range(1, len(result) + 1))
+    result["recovered"] = result["recovered"].astype(object)
+    return result.reindex(columns=DRAWDOWN_EPISODE_COLUMNS)
+
+
 def empty_drawdown_statistics() -> dict[str, object]:
     """返回固定字段，避免无成交或空净值时输出结构漂移。"""
     return {
@@ -86,6 +151,71 @@ def empty_drawdown_statistics() -> dict[str, object]:
         "avg_drawdown": 0.0,
         "ulcer_index": 0.0,
         "time_under_water_ratio": 0.0,
+    }
+
+
+def _aligned_drawdown_inputs(data: pd.DataFrame, net_value: pd.Series) -> tuple[pd.DataFrame, pd.Series]:
+    numeric = pd.to_numeric(net_value, errors="coerce")
+    valid = numeric.notna()
+    clean = numeric.loc[valid].reset_index(drop=True).astype(float)
+    if clean.empty:
+        return pd.DataFrame(index=clean.index), clean
+    if not data.empty and len(data) == len(numeric):
+        aligned_data = data.loc[valid.to_numpy()].reset_index(drop=True)
+    else:
+        aligned_data = data.iloc[: len(clean)].reset_index(drop=True) if not data.empty else pd.DataFrame(index=clean.index)
+    return aligned_data, clean
+
+
+def _new_drawdown_episode(
+    episode_no: int,
+    peak_pos: int,
+    peak_value: float,
+    trough_pos: int,
+    trough_value: float,
+) -> dict[str, object]:
+    return {
+        "episode_no": int(episode_no),
+        "peak_pos": int(peak_pos),
+        "peak_net_value": float(peak_value),
+        "trough_pos": int(trough_pos),
+        "trough_net_value": float(trough_value),
+        "underwater_bars": 1,
+        "recovery_pos": None,
+    }
+
+
+def _finalize_drawdown_episode(
+    episode: dict[str, object],
+    data: pd.DataFrame,
+    net_value: pd.Series,
+    *,
+    recovery_pos: int | None,
+) -> None:
+    peak_value = float(episode["peak_net_value"])
+    trough_value = float(episode["trough_net_value"])
+    peak_pos = int(episode["peak_pos"])
+    end_pos = int(recovery_pos) if recovery_pos is not None else len(net_value) - 1
+    episode["depth"] = _round_float(trough_value / peak_value - 1.0) if peak_value > 0 else 0.0
+    episode["recovery_pos"] = recovery_pos
+    episode["recovery_at"] = equity_point_label(data, recovery_pos) if recovery_pos is not None else ""
+    episode["recovery_bars"] = int(max(end_pos - peak_pos, 0))
+
+
+def _public_drawdown_episode_row(episode: dict[str, object], data: pd.DataFrame) -> dict[str, object]:
+    peak_pos = int(episode["peak_pos"])
+    trough_pos = int(episode["trough_pos"])
+    return {
+        "episode_no": int(episode["episode_no"]),
+        "start_at": equity_point_label(data, peak_pos),
+        "trough_at": equity_point_label(data, trough_pos),
+        "recovery_at": str(episode["recovery_at"]),
+        "peak_net_value": _round_float(float(episode["peak_net_value"])),
+        "trough_net_value": _round_float(float(episode["trough_net_value"])),
+        "depth": _round_float(float(episode["depth"])),
+        "underwater_bars": int(episode["underwater_bars"]),
+        "recovery_bars": int(episode["recovery_bars"]),
+        "recovered": episode["recovery_pos"] is not None,
     }
 
 

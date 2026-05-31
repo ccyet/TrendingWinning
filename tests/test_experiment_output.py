@@ -4,11 +4,14 @@ import json
 import sys
 
 import pandas as pd
+import pytest
 
+from trending_winning.backtest.models import BacktestResult
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport,
     PortfolioExperimentConfig,
     SingleStrategyExperimentConfig,
+    SingleStrategyExperimentResult,
     SingleStrategySweepResult,
 )
 
@@ -91,3 +94,49 @@ def test_save_portfolio_benchmark_writes_strict_json(tmp_path) -> None:
     output_dir = save_portfolio_benchmark(config, report)
 
     assert json.loads((output_dir / "benchmark.json").read_text())["bars_per_second"] == 20.0
+
+
+def test_save_single_strategy_experiment_writes_drawdown_episodes(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-drawdown",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-drawdown"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    equity = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-05-25", periods=5),
+            "net_value": [1.0, 1.2, 1.0, 0.9, 1.21],
+            "drawdown_net_value": [1.0, 1.2, 1.0, 0.9, 1.21],
+        }
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(
+            trades=pd.DataFrame(),
+            equity_curve=equity,
+            stats={"trade_count": 0.0},
+        ),
+        input_bar_count=5,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    saved = pd.read_csv(output_dir / "drawdown_episodes.csv")
+    assert saved.loc[0, "depth"] == pytest.approx(0.9 / 1.2 - 1.0)
+    assert saved.loc[0, "start_at"] == "2026-05-26 00:00:00"
+    assert saved.loc[0, "trough_at"] == "2026-05-28 00:00:00"

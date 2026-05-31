@@ -13,6 +13,7 @@ from streamlit_app import (
     _data_coverage_chart_frame,
     _equity_chart_frame,
     _equity_drawdown_chart_frame,
+    _equity_drawdown_episodes_frame,
     _equity_y_domain,
     _format_display_value,
     _order_decision_funnel_frame,
@@ -385,11 +386,29 @@ def test_equity_drawdown_chart_frame_uses_price_path_drawdown_value() -> None:
     assert chart["回撤"].tolist() == pytest.approx([0.0, -0.2, 0.0])
 
 
+def test_equity_drawdown_episodes_frame_uses_price_path_drawdown_value() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28"]),
+            "net_value": [1.0, 1.0, 1.2, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2, 1.1],
+        }
+    )
+
+    frame = _equity_drawdown_episodes_frame(equity)
+
+    assert frame.loc[0, "depth"] == pytest.approx(-0.2)
+    assert frame.loc[0, "start_at"] == "2026-05-25 00:00:00"
+    assert frame.loc[0, "trough_at"] == "2026-05-26 00:00:00"
+
+
 def test_streamlit_backtest_result_renders_equity_drawdown_chart() -> None:
     source = getsource(streamlit_app._render_backtest_result)
 
     assert "回撤曲线" in source
     assert "_render_equity_drawdown_chart" in source
+    assert "回撤区间明细" in source
+    assert "_equity_drawdown_episodes_frame" in source
 
 
 def test_data_coverage_chart_frame_uses_stock_names_and_numeric_coverage() -> None:

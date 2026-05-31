@@ -11,6 +11,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from trending_winning.backtest.drawdown import drawdown_episodes
 from trending_winning.backtest.engine import BacktestConfig, run_backtest
 from trending_winning.backtest.experiment import (
     run_portfolio_experiment,
@@ -168,6 +169,17 @@ DISPLAY_COLUMN_LABELS = {
     "timeframe": "周期",
     "date": "日期",
     "period": "周期",
+    "episode_rank": "回撤排名",
+    "episode_no": "回撤序号",
+    "start_at": "开始时间",
+    "trough_at": "触底时间",
+    "recovery_at": "修复时间",
+    "peak_net_value": "高点净值",
+    "trough_net_value": "低点净值",
+    "depth": "回撤幅度",
+    "underwater_bars": "水下K数",
+    "recovery_bars": "修复K数",
+    "recovered": "已修复",
     "data_inventory_signature": "数据快照指纹",
     "data_inventory_row_count": "缓存检查项数",
     "data_inventory_cached_count": "缓存可用数",
@@ -1143,6 +1155,7 @@ def _is_percent_column(column: str) -> bool:
         "worst_return",
         "underwater_ratio",
         "coverage_ratio",
+        "depth",
         "avg_cash_ratio",
         "min_cash_ratio",
         "max_cash_ratio",
@@ -1183,6 +1196,10 @@ def _is_integer_column(column: str) -> bool:
         return True
     return name in {
         "trade_no",
+        "episode_rank",
+        "episode_no",
+        "underwater_bars",
+        "recovery_bars",
         "order_id",
         "event_id",
         "trade_count",
@@ -1267,6 +1284,14 @@ def _render_equity_drawdown_chart(equity_curve: pd.DataFrame) -> None:
     )
     baseline = alt.Chart(pd.DataFrame({"回撤": [0.0]})).mark_rule(color="#64748b").encode(y="回撤:Q")
     st.altair_chart(area + baseline, use_container_width=True)
+
+
+def _equity_drawdown_episodes_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
+    """生成最大回撤区间明细；回撤口径与回撤曲线保持一致。"""
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return pd.DataFrame()
+    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
+    return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=10)
 
 
 def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
@@ -3362,6 +3387,7 @@ def _render_backtest_result(
         _render_equity_chart(result.equity_curve)
         st.markdown("##### 回撤曲线")
         _render_equity_drawdown_chart(result.equity_curve)
+        _render_display_table("回撤区间明细", _equity_drawdown_episodes_frame(result.equity_curve), stock_names=stock_names)
     if data_coverage is not None and not data_coverage.empty:
         _render_data_coverage_chart(data_coverage, stock_names=stock_names)
         _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
