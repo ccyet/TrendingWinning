@@ -31,6 +31,8 @@ from trending_winning.data.tdx_parallels import (
 from trending_winning.strategies.signal_bar import SUPPORTED_SIDE_MODES
 from trending_winning.strategy import StrategyConfig, scan_bars
 
+RISK_REWARD_HELP = "盈亏比只计算固定目标平仓价：多头=开仓价+(开仓价-止损价)*盈亏比，空头相反；不改变开仓价和结构止损价。"
+
 
 def _parse_float_list(value: str) -> list[float]:
     return [float(item.strip()) for item in value.split(",") if item.strip()]
@@ -72,7 +74,7 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         "--trailing-take-profit-drawdown-pct",
         type=float,
         default=0.0,
-        help="回撤止盈回撤幅度，小数比例；按上一根已完成 K 的峰值/谷值计算，0 表示关闭。",
+        help="最大盈利回撤幅度，小数比例；按上一根已完成 K 的最大盈利价位计算，多头看最高价回撤，空头看最低价反弹，0 表示关闭。",
     )
     parser.add_argument(
         "--trailing-take-profit-ma-period",
@@ -267,7 +269,7 @@ def main() -> None:
     single_parser.add_argument("--adjust", default="qfq")
     single_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
     single_parser.add_argument("--detector", required=True, choices=["trend", "range", "channel", "reversal"])
-    single_parser.add_argument("--risk-reward", type=float, default=2.0)
+    single_parser.add_argument("--risk-reward", type=float, default=2.0, help=RISK_REWARD_HELP)
     single_parser.add_argument("--max-holding-bars", type=int, default=12)
     single_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     single_parser.add_argument("--max-chase-pct", type=float, default=None)
@@ -315,7 +317,7 @@ def main() -> None:
     single_sweep_parser.add_argument("--adjust", default="qfq")
     single_sweep_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
     single_sweep_parser.add_argument("--detector", required=True, choices=["trend", "range", "channel", "reversal"])
-    single_sweep_parser.add_argument("--risk-rewards", required=True)
+    single_sweep_parser.add_argument("--risk-rewards", required=True, help=RISK_REWARD_HELP)
     single_sweep_parser.add_argument("--max-holding-bars-list", required=True)
     single_sweep_parser.add_argument("--trend-min-scores", default="")
     single_sweep_parser.add_argument("--grid", action="append", default=[])
@@ -365,7 +367,7 @@ def main() -> None:
     portfolio_parser.add_argument("--adjust", default="qfq")
     portfolio_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
     portfolio_parser.add_argument("--detectors", default="trend,range,channel")
-    portfolio_parser.add_argument("--risk-reward", type=float, default=2.0)
+    portfolio_parser.add_argument("--risk-reward", type=float, default=2.0, help=RISK_REWARD_HELP)
     portfolio_parser.add_argument("--max-holding-bars", type=int, default=12)
     portfolio_parser.add_argument("--max-actual-risk-pct", type=float, default=None)
     portfolio_parser.add_argument("--max-chase-pct", type=float, default=None)
@@ -427,7 +429,7 @@ def main() -> None:
     sweep_parser.add_argument("--adjust", default="qfq")
     sweep_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
     sweep_parser.add_argument("--detectors", default="trend,range,channel")
-    sweep_parser.add_argument("--risk-rewards", required=True)
+    sweep_parser.add_argument("--risk-rewards", required=True, help=RISK_REWARD_HELP)
     sweep_parser.add_argument("--max-holding-bars-list", required=True)
     sweep_parser.add_argument("--grid", action="append", default=[])
     sweep_parser.add_argument("--max-actual-risk-pct", type=float, default=None)

@@ -81,7 +81,7 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "滑点bps" for item in app.number_input)
     assert any(item.label == "初始资金" for item in app.number_input)
     assert any(item.label == "盈利通道启动浮盈" for item in app.number_input)
-    assert any(item.label == "盈利回撤平仓幅度" for item in app.number_input)
+    assert any(item.label == "最大盈利回撤幅度" for item in app.number_input)
     assert not any(item.label == "止盈" for item in app.number_input)
     assert not any(item.label == "止损" for item in app.number_input)
     direction = next(item for item in app.selectbox if item.label == "组合交易方向")
@@ -272,6 +272,8 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
     assert "启用盈利通道回撤止盈" in source
+    assert "结构止损价说明" in source
+    assert "最大盈利回撤幅度" in source
     assert "当前周期均线周期" in source
     assert "bt_enable_trailing_take_profit" in source
 
@@ -281,9 +283,21 @@ def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
 
     assert "下方三个参数" in help_text
     assert "两个参数" not in help_text
+    drawdown_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"]
+    assert "最大盈利" in drawdown_help
+    assert "回撤" in drawdown_help
     ma_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_ma_period"]
     assert "用户输入" in ma_help
     assert "当前回测周期" in ma_help
+
+
+def test_streamlit_stop_loss_and_risk_reward_help_are_actionable() -> None:
+    assert "信号K" in streamlit_app.BACKTEST_HELP_TEXT["structural_stop_loss"]
+    assert "结构止损" in streamlit_app.BACKTEST_HELP_TEXT["structural_stop_loss"]
+    assert "开仓价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
+    assert "目标平仓价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
+    assert "止损价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
+    assert "结构止损" in streamlit_app.BACKTEST_HELP_TEXT["max_actual_risk_pct"]
 
 
 def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:
@@ -655,6 +669,9 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
+    assert "结构止损价说明" in html
+    assert "最大盈利回撤幅度" in html
+    assert "目标平仓价" in html
     assert "没有成交但出现过信号或拒单" in html
 
 
@@ -688,7 +705,10 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "通道突破：顺势延续" in html
     assert "主要反转：第二次信号才切换" in html
     assert "旧突破显示固定止盈止损" in html
-    assert "单策略和组合策略使用信号 K 止损价" in html
+    assert "单策略和组合策略使用信号 K 结构止损价" in html
+    assert "结构止损价说明" in html
+    assert "最大盈利回撤幅度" in html
+    assert "目标平仓价" in html
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
     assert "开多、开空、止损标注" in html

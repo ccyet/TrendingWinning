@@ -39,11 +39,12 @@ BACKTEST_HELP_TEXT = {
     "start_date": "回测样本开始日期，系统只读取这个日期之后的本地 K 线。",
     "end_date": "回测样本结束日期，结束日之后的 K 线不会进入样本。",
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
-    "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标价由信号K止损距离和盈亏比计算。",
-    "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K止损价。",
+    "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标平仓价由结构止损距离和盈亏比计算。",
+    "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K结构止损价。",
+    "structural_stop_loss": "单策略和组合策略没有固定百分比止损输入；每笔订单使用信号K或形态模块输出的结构止损价，最大实际风险用于过滤止损距离过大的订单。",
     "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理。",
     "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
-    "trailing_take_profit_drawdown_pct": "回撤平仓触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
+    "trailing_take_profit_drawdown_pct": "最大盈利回撤幅度。启动后按上一根已完成 K 的最大盈利价位计算回撤线：多头从持仓最高价回撤，空头从持仓最低价反弹；避免同一根 K 同时启动和退出。",
     "trailing_take_profit_ma_period": "当前周期均线周期。由用户输入 K 数，用当前回测周期上一根已完成 K 的均线作为移动平仓线；0 表示关闭。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
@@ -55,7 +56,7 @@ BACKTEST_HELP_TEXT = {
     "higher_timeframe": "用更大周期判断主方向，只过滤逆大周期方向的订单，不改形态识别结果。",
     "higher_timeframe_max_age": "大周期信号允许滞后的最长分钟数，0 表示不限制信号年龄。",
     "single_detector": "只测试一种形态识别模块，便于单独评估趋势、区间、通道或反转。",
-    "risk_reward": "目标盈利与初始风险的倍数，用来计算挂单后的目标价。",
+    "risk_reward": "盈亏比只用于计算固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比；空头相反。它不改变信号K开仓价和结构止损价。",
     "trend_lookback": "趋势评分使用的回看 K 线数量，越大越重视较长结构。",
     "trend_min_score": "趋势形态入选的最低评分，越高越严格。",
     "trend_h2_min_pullback_legs": "H 是 High 1/High 2，指回调后第 1/2 次突破前一根 K 线高点；L 是 Low 1/Low 2，指反弹后第 1/2 次跌破前一根 K 线低点。这里限制 H2/L2 至少经历几段反向摆动，不是数单根 K 线。",
@@ -63,7 +64,7 @@ BACKTEST_HELP_TEXT = {
     "channel_lookback": "计算趋势通道或摆动点通道时使用的回看 K 线数量。",
     "channel_method": "回归通道适合连续斜率，摆动点通道更贴近人工画高低点连线。",
     "channel_sigma": "回归通道宽度倍数，越大通道越宽、突破越少。",
-    "max_actual_risk_pct": "入场价到止损价的最大允许距离，0 表示不限制。",
+    "max_actual_risk_pct": "开仓价到结构止损价的最大允许距离，0 表示不限制；超过该比例会拒单，是现代策略可调的止损风险上限。",
     "max_chase_pct": "信号 K 突破价到实际成交价的最大追价距离，0 表示不限制。",
     "side_mode": "控制策略允许生成的订单方向。多/空表示多头和空头都做；仅多会过滤空头信号；仅空会过滤多头信号。",
     "reversal_lookback": "识别旧高/旧低、二次测试和结构确认时使用的回看 K 线数量。",
@@ -1975,7 +1976,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
     caption = (
         "固定止盈止损、持有周期、手续费和滑点用于旧突破撮合。"
         if is_legacy
-        else "单策略和组合策略用信号K止损价、盈亏比目标价和回撤止盈控制退出。"
+        else "单策略和组合策略用信号K结构止损价、盈亏比目标平仓价和盈利通道回撤止盈控制退出。"
     )
     with _backtest_module_container("2. 基础风控与成本", caption):
         take_profit = 0.06
@@ -2003,7 +2004,13 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             with c3:
                 max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
         else:
-            max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
+            holding_col, stop_col = st.columns([1, 2])
+            with holding_col:
+                max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
+            with stop_col:
+                st.caption(
+                    "结构止损价说明：现代策略使用信号K/形态模块输出的止损价；可在单策略或组合参数里的最大实际风险限制止损距离。"
+                )
         enable_trailing_take_profit = st.checkbox(
             "启用盈利通道回撤止盈",
             value=False,
@@ -2025,7 +2032,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             )
         with trailing2:
             trailing_take_profit_drawdown_pct = st.number_input(
-                "盈利回撤平仓幅度",
+                "最大盈利回撤幅度",
                 min_value=0.0,
                 max_value=0.99,
                 value=0.015,
