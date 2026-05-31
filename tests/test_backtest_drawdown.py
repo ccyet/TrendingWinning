@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from trending_winning.backtest.drawdown import drawdown_episodes, equity_drawdown_statistics, max_drawdown_duration
+from trending_winning.backtest.drawdown import (
+    drawdown_curve,
+    drawdown_episodes,
+    equity_drawdown_statistics,
+    max_drawdown_duration,
+)
 
 
 def test_equity_drawdown_statistics_reports_episode_and_underwater_state() -> None:
@@ -109,3 +114,26 @@ def test_drawdown_episodes_keeps_unrecovered_current_drawdown() -> None:
     assert episodes.loc[0, "trough_at"] == "3"
     assert episodes.loc[0, "recovery_at"] == ""
     assert episodes.loc[0, "recovered"] is False
+
+
+def test_drawdown_curve_expands_price_path_and_labels_adverse_and_settlement_points() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27"]),
+            "trade_no": [0, 1, 2],
+            "net_value": [1.0, 1.0, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2],
+        }
+    )
+
+    curve = drawdown_curve(equity)
+
+    assert curve["point_type"].tolist() == ["settlement", "adverse_price", "settlement", "settlement"]
+    assert curve["path_net_value"].tolist() == pytest.approx([1.0, 0.8, 1.0, 1.2])
+    assert curve["drawdown"].tolist() == pytest.approx([0.0, -0.2, 0.0, 0.0])
+    assert curve["date"].tolist() == [
+        pd.Timestamp("2026-05-25"),
+        pd.Timestamp("2026-05-26"),
+        pd.Timestamp("2026-05-26"),
+        pd.Timestamp("2026-05-27"),
+    ]

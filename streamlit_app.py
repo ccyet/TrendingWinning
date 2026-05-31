@@ -11,7 +11,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from trending_winning.backtest.drawdown import drawdown_episodes, price_path_drawdown_inputs
+from trending_winning.backtest.drawdown import drawdown_curve, drawdown_episodes, price_path_drawdown_inputs
 from trending_winning.backtest.engine import BacktestConfig, run_backtest
 from trending_winning.backtest.experiment import (
     run_portfolio_experiment,
@@ -1334,7 +1334,7 @@ def _render_equity_drawdown_chart(equity_curve: pd.DataFrame) -> None:
                 scale=alt.Scale(domain=[lower, 0.0]),
                 axis=alt.Axis(format=".0%"),
             ),
-            tooltip=[x_label, alt.Tooltip("回撤:Q", format=".2%")],
+            tooltip=[x_label, "估值点", alt.Tooltip("回撤:Q", format=".2%")],
         )
     )
     baseline = alt.Chart(pd.DataFrame({"回撤": [0.0]})).mark_rule(color="#64748b").encode(y="回撤:Q")
@@ -1422,19 +1422,21 @@ def _equity_drawdown_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return pd.DataFrame()
     x_column = "date" if "date" in equity_curve.columns else "trade_no"
-    drawdown_data, drawdown_value = price_path_drawdown_inputs(equity_curve, equity_curve["net_value"])
-    chart_data = drawdown_data[[x_column]].copy()
-    chart_data["_drawdown_value"] = pd.to_numeric(drawdown_value, errors="coerce").reset_index(drop=True)
-    chart_data = chart_data.dropna(subset=["_drawdown_value"])
+    curve = drawdown_curve(equity_curve)
+    if curve.empty:
+        return pd.DataFrame()
+    chart_data = curve[[x_column, "drawdown", "point_type"]].copy()
+    chart_data["drawdown"] = pd.to_numeric(chart_data["drawdown"], errors="coerce")
+    chart_data = chart_data.dropna(subset=["drawdown"])
     if chart_data.empty:
         return pd.DataFrame()
-    running_high = chart_data["_drawdown_value"].cummax()
-    chart_data["回撤"] = chart_data["_drawdown_value"] / running_high - 1.0
     if x_column == "date":
         chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
         chart_data = chart_data.dropna(subset=[x_column])
     x_label = "时间" if x_column == "date" else "交易序号"
-    return chart_data.rename(columns={x_column: x_label})[[x_label, "回撤"]].reset_index(drop=True)
+    return chart_data.rename(
+        columns={x_column: x_label, "drawdown": "回撤", "point_type": "估值点"}
+    )[[x_label, "估值点", "回撤"]].reset_index(drop=True)
 
 
 def _strategy_kline_symbol_options(bars: pd.DataFrame, trades: pd.DataFrame) -> list[str]:

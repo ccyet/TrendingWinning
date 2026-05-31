@@ -185,6 +185,52 @@ def test_save_single_strategy_experiment_writes_drawdown_episodes(tmp_path) -> N
     assert saved.loc[0, "trough_at"] == "2026-05-28 00:00:00"
 
 
+def test_save_single_strategy_experiment_writes_drawdown_curve(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-drawdown-curve",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-drawdown-curve"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27"]),
+            "net_value": [1.0, 1.0, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2],
+        }
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(
+            trades=pd.DataFrame(),
+            equity_curve=equity,
+            stats={"trade_count": 0.0},
+        ),
+        input_bar_count=3,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    saved = pd.read_csv(output_dir / "drawdown_curve.csv")
+    assert saved["point_type"].tolist() == ["settlement", "adverse_price", "settlement", "settlement"]
+    assert saved["path_net_value"].tolist() == pytest.approx([1.0, 0.8, 1.0, 1.2])
+    assert saved["drawdown"].tolist() == pytest.approx([0.0, -0.2, 0.0, 0.0])
+
+
 def test_save_single_strategy_experiment_writes_trade_path_distribution(tmp_path) -> None:
     from trending_winning.backtest.experiment_output import save_single_strategy_experiment
 

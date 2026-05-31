@@ -34,31 +34,85 @@ DRAWDOWN_EPISODE_COLUMNS = pd.Index(
     ]
 )
 
+DRAWDOWN_CURVE_COLUMNS = pd.Index(
+    [
+        "date",
+        "trade_no",
+        "net_value",
+        "drawdown_net_value",
+        "path_net_value",
+        "drawdown",
+        "point_type",
+    ]
+)
+
 
 def price_path_drawdown_inputs(data: pd.DataFrame, net_value: pd.Series) -> tuple[pd.DataFrame, pd.Series]:
     """生成回撤专用路径：每根 K 先放不利估值，再放结算净值。"""
-    numeric_net = pd.to_numeric(net_value, errors="coerce").reset_index(drop=True)
-    if data.empty or "drawdown_net_value" not in data.columns:
+    path = price_path_drawdown_frame(data, net_value)
+    if path.empty:
+        numeric_net = pd.to_numeric(net_value, errors="coerce").reset_index(drop=True)
         return data, numeric_net
+    path_value = pd.to_numeric(path["_drawdown_path_value"], errors="coerce").reset_index(drop=True)
+    aligned = path.drop(columns=["_drawdown_path_value", "_drawdown_point_type"], errors="ignore").reset_index(drop=True)
+    return aligned, path_value
+
+
+def price_path_drawdown_frame(data: pd.DataFrame, net_value: pd.Series) -> pd.DataFrame:
+    """展开回撤计算路径，并标记不利价格点和结算点。"""
+    numeric_net = pd.to_numeric(net_value, errors="coerce").reset_index(drop=True)
+    if data.empty:
+        return pd.DataFrame(columns=[*data.columns, "_drawdown_path_value", "_drawdown_point_type"])
 
     aligned_data = data.reset_index(drop=True)
-    drawdown_value = pd.to_numeric(aligned_data["drawdown_net_value"], errors="coerce").reset_index(drop=True)
+    drawdown_value = _drawdown_value_series(aligned_data, numeric_net)
     rows: list[dict[str, object]] = []
-    values: list[float] = []
     for pos in range(min(len(aligned_data), len(numeric_net))):
         row = aligned_data.iloc[pos].to_dict()
         net = numeric_net.iloc[pos]
         adverse = drawdown_value.iloc[pos] if pos < len(drawdown_value) else net
+        if pd.notna(net) and not _drawdown_path_needs_settlement_point(net, adverse):
+            rows.append(_drawdown_path_row(row, float(net), "settlement"))
+            continue
         if pd.notna(adverse):
-            rows.append(row)
-            values.append(float(adverse))
-        if pd.notna(net) and _drawdown_path_needs_settlement_point(net, adverse):
-            rows.append(row)
-            values.append(float(net))
+            rows.append(_drawdown_path_row(row, float(adverse), "adverse_price"))
+        if pd.notna(net):
+            rows.append(_drawdown_path_row(row, float(net), "settlement"))
 
-    if not values:
-        return aligned_data, numeric_net
-    return pd.DataFrame(rows, columns=aligned_data.columns), pd.Series(values, dtype=float)
+    if not rows:
+        return pd.DataFrame(columns=[*aligned_data.columns, "_drawdown_path_value", "_drawdown_point_type"])
+    return pd.DataFrame(rows)
+
+
+def drawdown_curve(data: pd.DataFrame) -> pd.DataFrame:
+    """输出可复核的逐点回撤曲线，区分盘中不利估值和结算净值。"""
+    if data.empty or "net_value" not in data.columns:
+        return pd.DataFrame(columns=DRAWDOWN_CURVE_COLUMNS)
+
+    path = price_path_drawdown_frame(data, data["net_value"])
+    if path.empty:
+        return pd.DataFrame(columns=DRAWDOWN_CURVE_COLUMNS)
+
+    path_value = pd.to_numeric(path["_drawdown_path_value"], errors="coerce")
+    valid = path_value.notna()
+    path = path.loc[valid].reset_index(drop=True)
+    path_value = path_value.loc[valid].reset_index(drop=True)
+    if path.empty:
+        return pd.DataFrame(columns=DRAWDOWN_CURVE_COLUMNS)
+
+    running_peak = path_value.cummax()
+    result = pd.DataFrame(
+        {
+            "date": _optional_datetime_column(path, "date"),
+            "trade_no": _optional_numeric_column(path, "trade_no"),
+            "net_value": _optional_numeric_column(path, "net_value"),
+            "drawdown_net_value": _optional_numeric_column(path, "drawdown_net_value", fallback=path["net_value"]),
+            "path_net_value": path_value.astype(float),
+            "drawdown": path_value / running_peak - 1.0,
+            "point_type": path["_drawdown_point_type"].astype(str),
+        }
+    )
+    return result.reindex(columns=DRAWDOWN_CURVE_COLUMNS)
 
 
 def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict[str, object]:
@@ -268,6 +322,34 @@ def max_drawdown_duration(equity: pd.Series) -> int:
             current += 1
             best = max(best, current)
     return best
+
+
+def _drawdown_value_series(data: pd.DataFrame, net_value: pd.Series) -> pd.Series:
+    if "drawdown_net_value" not in data.columns:
+        return net_value
+    drawdown_value = pd.to_numeric(data["drawdown_net_value"], errors="coerce").reset_index(drop=True)
+    return drawdown_value.fillna(net_value)
+
+
+def _drawdown_path_row(row: dict[str, object], value: float, point_type: str) -> dict[str, object]:
+    result = dict(row)
+    result["_drawdown_path_value"] = float(value)
+    result["_drawdown_point_type"] = point_type
+    return result
+
+
+def _optional_datetime_column(frame: pd.DataFrame, column: str) -> pd.Series:
+    if column not in frame.columns:
+        return pd.Series([pd.NaT] * len(frame))
+    return pd.to_datetime(frame[column], errors="coerce").reset_index(drop=True)
+
+
+def _optional_numeric_column(frame: pd.DataFrame, column: str, *, fallback: object | None = None) -> pd.Series:
+    if column in frame.columns:
+        return pd.to_numeric(frame[column], errors="coerce").reset_index(drop=True)
+    if fallback is not None:
+        return pd.to_numeric(fallback, errors="coerce").reset_index(drop=True)
+    return pd.Series([pd.NA] * len(frame))
 
 
 def _drawdown_path_needs_settlement_point(net: object, adverse: object) -> bool:

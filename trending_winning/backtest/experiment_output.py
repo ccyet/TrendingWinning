@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from trending_winning.backtest.experiment_cases import json_dump, json_ready, sweep_case_config_records, write_jsonl
-from trending_winning.backtest.drawdown import drawdown_episodes, price_path_drawdown_inputs
+from trending_winning.backtest.drawdown import drawdown_curve, drawdown_episodes, price_path_drawdown_inputs
 from trending_winning.backtest.experiment_diagnostics import (
     case_diagnostic_statistics,
     experiment_diagnostic_report,
@@ -151,6 +151,7 @@ def _write_common_experiment_outputs(
     result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
     result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
     result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
+    drawdown_curve(result.backtest.equity_curve).to_csv(output_dir / "drawdown_curve.csv", index=False)
     _experiment_drawdown_episodes(result.backtest.equity_curve).to_csv(output_dir / "drawdown_episodes.csv", index=False)
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
