@@ -3,7 +3,10 @@ from __future__ import annotations
 import pandas as pd
 
 from trending_winning.backtest.experiment_diagnostics import (
+    CASE_DIAGNOSTIC_COLUMNS,
     EXPERIMENT_DIAGNOSTIC_COLUMNS,
+    case_diagnostic_statistics,
+    diagnostic_summary_fields,
     experiment_diagnostic_report,
 )
 
@@ -59,3 +62,44 @@ def test_experiment_diagnostic_report_uses_data_coverage_when_stats_missing() ->
     row = report.set_index("check").loc["数据覆盖"]
     assert row["status"] == "失败"
     assert row["value"] == 0.88
+
+
+def test_diagnostic_summary_fields_counts_case_statuses() -> None:
+    summary = diagnostic_summary_fields(
+        {
+            "trade_count": 12.0,
+            "order_count": 60.0,
+            "acceptance_rate": 0.18,
+            "profit_factor": 0.9,
+            "data_weighted_coverage_ratio": 0.91,
+            "data_coverage_below_min_count": 1.0,
+        }
+    )
+
+    assert summary["diagnostic_failed_count"] == 2.0
+    assert summary["diagnostic_attention_count"] == 2.0
+    assert summary["diagnostic_max_severity"] == 2.0
+    assert summary["diagnostic_primary_issue"] == "数据覆盖"
+
+
+def test_case_diagnostic_statistics_preserves_sweep_rank_context() -> None:
+    table = pd.DataFrame(
+        {
+            "sweep_rank": [1],
+            "pareto_rank": [1],
+            "is_pareto_efficient": [True],
+            "case_name": ["case-001"],
+            "case_config_hash": ["a" * 64],
+            "trade_count": [0.0],
+            "order_count": [0.0],
+        }
+    )
+
+    diagnostics = case_diagnostic_statistics(table)
+
+    assert diagnostics.columns.tolist() == CASE_DIAGNOSTIC_COLUMNS.tolist()
+    first = diagnostics.iloc[0]
+    assert first["sweep_rank"] == 1
+    assert first["case_name"] == "case-001"
+    assert first["case_config_hash"] == "a" * 64
+    assert diagnostics.set_index("check").loc["交易样本", "status"] == "失败"

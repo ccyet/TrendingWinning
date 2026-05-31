@@ -244,6 +244,7 @@ class PortfolioSweepResult:
     symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    case_diagnostics: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)
 
@@ -265,5 +266,6 @@ class SingleStrategySweepResult:
     symbol_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_order_decision_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_strategy_filter_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
+    case_diagnostics: pd.DataFrame = field(default_factory=pd.DataFrame)
     limit_filter_audit: pd.DataFrame = field(default_factory=pd.DataFrame)
     data_inventory: pd.DataFrame = field(default_factory=pd.DataFrame)

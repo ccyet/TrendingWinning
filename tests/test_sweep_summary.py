@@ -32,6 +32,13 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
             "decision_count": [2, 3],
         }
     )
+    case_diagnostics = pd.DataFrame(
+        {
+            "case_name": ["best", "best", "second"],
+            "status": ["失败", "关注", "通过"],
+            "check": ["收益质量", "回撤压力", "数据覆盖"],
+        }
+    )
 
     summary = sweep_summary_statistics(
         table=table,
@@ -45,6 +52,7 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
         symbol_stats=pd.DataFrame(),
         setup_order_decision_stats=setup_order_decisions,
         setup_strategy_filter_stats=pd.DataFrame(),
+        case_diagnostics=case_diagnostics,
     )
 
     assert summary["case_count"] == 3
@@ -66,6 +74,9 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
     assert summary["case_setup_order_decision_count"] == 5.0
     assert summary["case_setup_order_rejected_count"] == 3.0
     assert summary["case_setup_order_rejection_rate"] == 0.6
+    assert summary["case_diagnostic_failed_count"] == 1.0
+    assert summary["case_diagnostic_attention_count"] == 1.0
+    assert summary["case_diagnostic_failed_case_count"] == 1.0
 
 
 def test_sweep_summary_statistics_returns_stable_empty_defaults() -> None:
@@ -81,6 +92,7 @@ def test_sweep_summary_statistics_returns_stable_empty_defaults() -> None:
         symbol_stats=pd.DataFrame(),
         setup_order_decision_stats=pd.DataFrame(),
         setup_strategy_filter_stats=pd.DataFrame(),
+        case_diagnostics=pd.DataFrame(),
     )
 
     assert summary["case_count"] == 0
@@ -88,3 +100,4 @@ def test_sweep_summary_statistics_returns_stable_empty_defaults() -> None:
     assert summary["best_case_name"] == ""
     assert summary["order_cache_hit_rate"] == 0.0
     assert summary["case_setup_strategy_filter_rejected_count"] == 0.0
+    assert summary["case_diagnostic_failed_count"] == 0.0

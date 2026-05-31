@@ -49,7 +49,50 @@ def test_experiment_output_imports_without_experiment_runner_and_saves_sweep(tmp
     assert saved_config["sweep_grid"] == {"risk_reward": [2.0]}
     assert saved_cases[0]["case_name"] == "single-sweep-001"
     assert (output_dir / "parameter_summary.csv").exists()
+    assert (output_dir / "case_diagnostics.csv").exists()
     assert (output_dir / "symbol_metadata.csv").exists()
+
+
+def test_save_single_strategy_sweep_writes_case_diagnostics(tmp_path) -> None:
+    from trending_winning.backtest.experiment_cases import case_config_hash
+    from trending_winning.backtest.experiment_output import save_single_strategy_sweep
+
+    config = SingleStrategyExperimentConfig(
+        name="single-sweep-diagnostics",
+        data_root="/data",
+        output_dir=str(tmp_path / "runs"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    case_hash = case_config_hash(config)
+    result = SingleStrategySweepResult(
+        config=config,
+        grid={"risk_reward": [2.0]},
+        table=pd.DataFrame(
+            {
+                "case_name": ["single-sweep-diagnostics-001"],
+                "case_config_hash": [case_hash],
+                "sweep_rank": [1],
+                "pareto_rank": [1],
+                "is_pareto_efficient": [True],
+                "trade_count": [0.0],
+                "order_count": [0.0],
+            }
+        ),
+        data_coverage=pd.DataFrame(),
+        input_bar_count=10,
+        filtered_limit_open_count=1,
+        elapsed_seconds=0.1,
+    )
+
+    output_dir = save_single_strategy_sweep(result)
+
+    saved = pd.read_csv(output_dir / "case_diagnostics.csv")
+    assert {"sweep_rank", "case_name", "check", "status"}.issubset(saved.columns)
+    assert saved.loc[saved["check"].eq("交易样本"), "status"].iloc[0] == "失败"
 
 
 def test_experiment_runner_reexports_output_functions_for_compatibility() -> None:

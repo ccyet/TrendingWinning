@@ -18,7 +18,11 @@ from trending_winning.backtest.experiment_data import (
     load_experiment_data as _load_experiment_data,
     with_data_management_statistics as _with_data_management_statistics,
 )
-from trending_winning.backtest.experiment_diagnostics import experiment_diagnostic_report as _experiment_diagnostic_report
+from trending_winning.backtest.experiment_diagnostics import (
+    case_diagnostic_statistics as _case_diagnostic_statistics,
+    diagnostic_summary_fields as _diagnostic_summary_fields,
+    experiment_diagnostic_report as _experiment_diagnostic_report,
+)
 from trending_winning.backtest.experiment_case_stats import (
     SETUP_ORDER_DECISION_FIELDS as SETUP_ORDER_DECISION_FIELDS,
     SETUP_STRATEGY_FILTER_FIELDS as SETUP_STRATEGY_FILTER_FIELDS,
@@ -378,6 +382,7 @@ def run_portfolio_parameter_sweep(
         row.update(backtest.stats)
         row.update(_monthly_period_statistics(backtest, use_trade_dates=False))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
+        row.update(_diagnostic_summary_fields(row))
         rows.append(row)
         strategy_frames.append(
             _case_strategy_statistics(
@@ -449,6 +454,7 @@ def run_portfolio_parameter_sweep(
         table,
         group_fields=SETUP_STRATEGY_FILTER_FIELDS,
     )
+    case_diagnostics = _case_diagnostic_statistics(table)
     result = PortfolioSweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -465,6 +471,7 @@ def run_portfolio_parameter_sweep(
         symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
         setup_strategy_filter_stats=setup_strategy_filter_stats,
+        case_diagnostics=case_diagnostics,
     )
     if save:
         save_portfolio_sweep(result)
@@ -549,6 +556,7 @@ def run_single_strategy_parameter_sweep(
         row.update(backtest.stats)
         row.update(_monthly_period_statistics(backtest, use_trade_dates=True))
         row.update(summarize_strategy_filter_decisions(filter_decisions))
+        row.update(_diagnostic_summary_fields(row))
         rows.append(row)
         strategy_frames.append(
             _case_strategy_statistics(
@@ -620,6 +628,7 @@ def run_single_strategy_parameter_sweep(
         table,
         group_fields=SETUP_STRATEGY_FILTER_FIELDS,
     )
+    case_diagnostics = _case_diagnostic_statistics(table)
     result = SingleStrategySweepResult(
         config=config,
         grid={key: list(values) for key, values in grid.items()},
@@ -636,6 +645,7 @@ def run_single_strategy_parameter_sweep(
         symbol_stats=symbol_stats,
         setup_order_decision_stats=setup_order_decision_stats,
         setup_strategy_filter_stats=setup_strategy_filter_stats,
+        case_diagnostics=case_diagnostics,
     )
     if save:
         save_single_strategy_sweep(result)

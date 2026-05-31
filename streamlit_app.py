@@ -1029,8 +1029,8 @@ def _performance_summary_frame(stats: Mapping[str, object]) -> pd.DataFrame:
     items = (
         ("收益", "total_return", "首尾净值累计收益。"),
         ("收益", "annualized_return", "按净值时间轴估算的复合年化收益。"),
-        ("风险", "max_drawdown", "净值高点到后续低点的最大回撤。"),
-        ("风险", "current_drawdown", "最新净值相对历史高点的回撤。"),
+        ("风险", "max_drawdown", "按逐 K 组合持仓市值估算的最大回撤；有 drawdown_net_value 时优先使用该口径。"),
+        ("风险", "current_drawdown", "最新组合回撤估算净值相对历史高点的回撤。"),
         ("交易质量", "win_rate", "盈利交易占全部交易的比例。"),
         ("交易质量", "profit_factor", "总盈利除以总亏损，越高越好。"),
         ("交易质量", "avg_r_multiple", "平均每笔交易相对初始风险的 R 倍数。"),

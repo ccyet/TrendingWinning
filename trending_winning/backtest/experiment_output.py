@@ -8,7 +8,10 @@ import pandas as pd
 
 from trending_winning.backtest.experiment_cases import json_dump, json_ready, sweep_case_config_records, write_jsonl
 from trending_winning.backtest.drawdown import drawdown_episodes
-from trending_winning.backtest.experiment_diagnostics import experiment_diagnostic_report
+from trending_winning.backtest.experiment_diagnostics import (
+    case_diagnostic_statistics,
+    experiment_diagnostic_report,
+)
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport,
     PortfolioExperimentConfig,
@@ -185,6 +188,7 @@ def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | Single
     result.table.to_csv(output_dir / "sweep.csv", index=False)
     _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
     _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
+    _case_diagnostics(result).to_csv(output_dir / "case_diagnostics.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
@@ -211,6 +215,7 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
         symbol_stats=result.symbol_stats,
         setup_order_decision_stats=result.setup_order_decision_stats,
         setup_strategy_filter_stats=result.setup_strategy_filter_stats,
+        case_diagnostics=_case_diagnostics(result),
     )
 
 
@@ -220,3 +225,9 @@ def _pareto_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
 
 def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepResult) -> pd.DataFrame:
     return _build_parameter_summary_table(result.table, result.grid)
+
+
+def _case_diagnostics(result: PortfolioSweepResult | SingleStrategySweepResult) -> pd.DataFrame:
+    if not result.case_diagnostics.empty:
+        return result.case_diagnostics
+    return case_diagnostic_statistics(result.table)

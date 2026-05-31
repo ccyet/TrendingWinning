@@ -9,6 +9,16 @@ import pandas as pd
 EXPERIMENT_DIAGNOSTIC_COLUMNS = pd.Index(
     ["section", "check", "status", "severity", "metric", "value", "threshold", "detail"]
 )
+CASE_DIAGNOSTIC_COLUMNS = pd.Index(
+    [
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_name",
+        "case_config_hash",
+        *EXPERIMENT_DIAGNOSTIC_COLUMNS,
+    ]
+)
 
 
 def experiment_diagnostic_report(
@@ -29,6 +39,58 @@ def experiment_diagnostic_report(
         _capital_exposure_row(stats),
     ]
     return pd.DataFrame(rows, columns=EXPERIMENT_DIAGNOSTIC_COLUMNS)
+
+
+def diagnostic_summary_fields(stats: Mapping[str, object]) -> dict[str, object]:
+    """把诊断明细压成 sweep.csv 可筛选字段。"""
+    report = experiment_diagnostic_report(stats)
+    if report.empty:
+        return _empty_diagnostic_summary_fields()
+    status = report["status"].fillna("").astype(str)
+    failed = float(status.eq("失败").sum())
+    attention = float(status.eq("关注").sum())
+    passed = float(status.eq("通过").sum())
+    severity = pd.to_numeric(report["severity"], errors="coerce").fillna(0.0)
+    worst = report.loc[severity.eq(severity.max())].head(1)
+    primary_issue = str(worst.iloc[0]["check"]) if not worst.empty and float(severity.max()) > 0 else ""
+    return {
+        "diagnostic_failed_count": failed,
+        "diagnostic_attention_count": attention,
+        "diagnostic_passed_count": passed,
+        "diagnostic_max_severity": float(severity.max()) if not severity.empty else 0.0,
+        "diagnostic_primary_issue": primary_issue,
+    }
+
+
+def case_diagnostic_statistics(table: pd.DataFrame) -> pd.DataFrame:
+    """按参数遍历 case 输出完整诊断明细，保留排名和配置指纹。"""
+    if table.empty:
+        return pd.DataFrame(columns=CASE_DIAGNOSTIC_COLUMNS)
+    rows: list[dict[str, object]] = []
+    for record in table.to_dict("records"):
+        case_report = experiment_diagnostic_report(record)
+        for diagnostic in case_report.to_dict("records"):
+            rows.append(
+                {
+                    "sweep_rank": record.get("sweep_rank", pd.NA),
+                    "pareto_rank": record.get("pareto_rank", pd.NA),
+                    "is_pareto_efficient": record.get("is_pareto_efficient", pd.NA),
+                    "case_name": str(record.get("case_name", "")),
+                    "case_config_hash": str(record.get("case_config_hash", "")),
+                    **diagnostic,
+                }
+            )
+    return pd.DataFrame(rows, columns=CASE_DIAGNOSTIC_COLUMNS)
+
+
+def _empty_diagnostic_summary_fields() -> dict[str, object]:
+    return {
+        "diagnostic_failed_count": 0.0,
+        "diagnostic_attention_count": 0.0,
+        "diagnostic_passed_count": 0.0,
+        "diagnostic_max_severity": 0.0,
+        "diagnostic_primary_issue": "",
+    }
 
 
 def _data_coverage_row(stats: Mapping[str, object], data_coverage: pd.DataFrame | None) -> dict[str, object]:

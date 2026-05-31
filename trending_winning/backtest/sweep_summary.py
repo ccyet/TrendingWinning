@@ -67,6 +67,7 @@ def sweep_summary_statistics(
     symbol_stats: pd.DataFrame,
     setup_order_decision_stats: pd.DataFrame,
     setup_strategy_filter_stats: pd.DataFrame,
+    case_diagnostics: pd.DataFrame | None = None,
 ) -> dict[str, object]:
     """把参数遍历压成一份总览 JSON，便于 Web/CLI 快速展示。"""
     summary: dict[str, object] = {
@@ -101,6 +102,7 @@ def sweep_summary_statistics(
     summary.update(case_trade_summary_statistics(symbol_stats, prefix="case_symbol"))
     summary.update(case_decision_summary_statistics(setup_order_decision_stats, prefix="case_setup_order"))
     summary.update(case_decision_summary_statistics(setup_strategy_filter_stats, prefix="case_setup_strategy_filter"))
+    summary.update(case_diagnostic_summary_statistics(case_diagnostics))
     for column in ("generated_order_count", "candidate_count", "candidate_rejection_count"):
         if column in table.columns:
             summary[column] = numeric_column_sum(table, column)
@@ -174,6 +176,28 @@ def case_decision_summary_statistics(frame: pd.DataFrame, *, prefix: str) -> dic
         f"{prefix}_rejected_count": rejected,
         f"{prefix}_rejection_rate": float(rejected / total) if total else 0.0,
     }
+
+
+def case_diagnostic_summary_statistics(frame: pd.DataFrame | None) -> dict[str, float]:
+    keys = {
+        "case_diagnostic_row_count": 0.0,
+        "case_diagnostic_failed_count": 0.0,
+        "case_diagnostic_attention_count": 0.0,
+        "case_diagnostic_passed_count": 0.0,
+        "case_diagnostic_failed_case_count": 0.0,
+        "case_diagnostic_attention_case_count": 0.0,
+    }
+    if frame is None or frame.empty or "status" not in frame.columns:
+        return keys
+    status = frame["status"].fillna("").astype(str)
+    keys["case_diagnostic_row_count"] = float(len(frame))
+    keys["case_diagnostic_failed_count"] = float(status.eq("失败").sum())
+    keys["case_diagnostic_attention_count"] = float(status.eq("关注").sum())
+    keys["case_diagnostic_passed_count"] = float(status.eq("通过").sum())
+    if "case_name" in frame.columns:
+        keys["case_diagnostic_failed_case_count"] = float(frame.loc[status.eq("失败"), "case_name"].astype(str).nunique())
+        keys["case_diagnostic_attention_case_count"] = float(frame.loc[status.eq("关注"), "case_name"].astype(str).nunique())
+    return keys
 
 
 def numeric_column_sum(table: pd.DataFrame, column: str) -> float:
