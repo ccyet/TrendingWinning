@@ -27,6 +27,11 @@ from trending_winning.data.repository import (
     update_from_tdx,
     write_local_bars,
 )
+from trending_winning.data.inventory import (
+    INVENTORY_COLUMNS as INVENTORY_COLUMNS_FROM_INVENTORY,
+    available_symbols as available_symbols_from_inventory,
+    inventory_local_data as inventory_local_data_from_inventory,
+)
 from trending_winning.data.schema import CANONICAL_COLUMNS, normalize_bars
 from trending_winning.data.summary import (
     DATA_AUDIT_SUMMARY_KEYS as DATA_AUDIT_SUMMARY_KEYS_FROM_SUMMARY,
@@ -214,6 +219,34 @@ def test_inventory_local_data_reports_cached_and_missing_symbols(tmp_path: Path)
     assert missing_same_timeframe["status"] == "missing_file"
     assert bool(missing_same_timeframe["exists"]) is False
     assert missing_other_timeframe["status"] == "missing_file"
+
+
+def test_inventory_has_independent_module_entrypoint(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00"]),
+            "stock_code": ["000001.SZ"],
+            "open": [10.0],
+            "high": [10.3],
+            "low": [9.9],
+            "close": [10.2],
+            "volume": [1000.0],
+            "amount": [10200.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+
+    inventory = inventory_local_data_from_inventory(
+        data_root=data_root,
+        adjust="qfq",
+        timeframes=("30m",),
+        symbols=("000001.SZ",),
+    )
+
+    assert inventory.columns.tolist() == INVENTORY_COLUMNS_FROM_INVENTORY
+    assert inventory["status"].tolist() == ["cached"]
+    assert available_symbols_from_inventory(data_root, "30m", "qfq") == ["000001.SZ"]
 
 
 def test_inventory_local_data_reads_only_identity_columns_for_cached_files(
