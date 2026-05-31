@@ -18,6 +18,7 @@ from trending_winning.backtest.experiment import (
 )
 from trending_winning.backtest.engine import BacktestResult
 from trending_winning.backtest import experiment as experiment_module
+from trending_winning.backtest import experiment_cases as experiment_case_module
 from trending_winning.backtest import portfolio as portfolio_module
 from trending_winning.data.repository import summarize_data_inventory, write_local_bars
 from trending_winning.strategies.base import ORDER_COLUMNS
@@ -154,7 +155,7 @@ def _csv_text(value: object) -> str:
 
 
 def test_experiment_module_does_not_import_trend_detector_at_module_load() -> None:
-    source_before_config = getsource(experiment_module).split("DATA_SCOPE_SWEEP_FIELDS", maxsplit=1)[0]
+    source_before_config = getsource(experiment_module).split("def _higher_timeframe_context", maxsplit=1)[0]
 
     assert "trending_winning.detectors.trend" not in source_before_config
 
@@ -2073,14 +2074,14 @@ def test_sweep_table_ranking_uses_deterministic_tie_breaks() -> None:
 
 def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path, monkeypatch) -> None:
     hash_calls = 0
-    original_hash = experiment_module._case_config_hash
+    original_hash = experiment_case_module.case_config_hash
 
     def spy_case_config_hash(config):
         nonlocal hash_calls
         hash_calls += 1
         return original_hash(config)
 
-    monkeypatch.setattr(experiment_module, "_case_config_hash", spy_case_config_hash)
+    monkeypatch.setattr(experiment_case_module, "case_config_hash", spy_case_config_hash)
     config = SingleStrategyExperimentConfig(
         name="duplicate-grid",
         data_root=str(tmp_path),
@@ -2091,7 +2092,7 @@ def test_sweep_variants_deduplicate_equivalent_configs(tmp_path: Path, monkeypat
         detector="trend",
     )
 
-    variants = experiment_module._sweep_variants(
+    variants = experiment_case_module.sweep_variants(
         config,
         {
             "fee_rate": [0.0, 0.0],
