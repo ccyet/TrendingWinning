@@ -12,6 +12,7 @@ from trending_winning.backtest.drawdown import (
     equity_drawdown_statistics,
     max_drawdown_duration,
 )
+from trending_winning.backtest.exposure import trade_exposure_statistics
 from trending_winning.backtest.periods import (
     PERIOD_STAT_KEYS as PERIOD_STAT_KEYS,
     compute_period_return_statistics as compute_period_return_statistics,
@@ -303,20 +304,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     mfe_pct = _numeric_column(trades, "mfe_pct")
     mae_r = _numeric_column(trades, "mae_r")
     mfe_r = _numeric_column(trades, "mfe_r")
-    capital_fraction = _optional_numeric_column(trades, "capital_fraction")
-    margin_fraction = _optional_numeric_column(trades, "margin_fraction")
-    capital_exposure = _weighted_exposure_bars(exposure_bars, capital_fraction)
-    margin_exposure = _weighted_exposure_bars(exposure_bars, margin_fraction)
-    raw_returns = (
-        _optional_numeric_column(trades, "raw_return_pct") / 100.0
-        if "raw_return_pct" in trades.columns
-        else returns
-    )
-    capital_turnover = _round_float(capital_fraction.sum()) if not capital_fraction.empty else 0.0
-    return_contribution = _round_float(returns.sum())
-    exposure_bar_count = _round_float(exposure_bars.sum())
-    capital_exposure_bars = _round_float(capital_exposure.sum()) if not capital_exposure.empty else 0.0
-    margin_exposure_bars = _round_float(margin_exposure.sum()) if not margin_exposure.empty else 0.0
+    exposure_stats = trade_exposure_statistics(trades, returns)
     confidence_stats = sample_confidence_statistics(returns)
 
     return {
@@ -336,7 +324,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "avg_win": avg_win,
         "avg_loss": avg_loss,
         "payoff_ratio": _ratio_or_zero(avg_win, abs(avg_loss)),
-        "exposure_bars": exposure_bar_count,
+        "exposure_bars": exposure_stats["exposure_bars"],
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "return_std": return_std,
@@ -365,21 +353,21 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "avg_mfe_pct": _mean_or_zero(mfe_pct),
         "avg_mae_r": _mean_or_zero(mae_r),
         "avg_mfe_r": _mean_or_zero(mfe_r),
-        "return_contribution": return_contribution,
-        "return_per_exposure_bar": _ratio_or_zero(return_contribution, exposure_bar_count),
-        "capital_turnover": capital_turnover,
-        "avg_capital_fraction": _mean_or_zero(capital_fraction),
-        "max_capital_fraction": _max_or_zero(capital_fraction),
-        "margin_turnover": _round_float(margin_fraction.sum()) if not margin_fraction.empty else 0.0,
-        "avg_margin_fraction": _mean_or_zero(margin_fraction),
-        "max_margin_fraction": _max_or_zero(margin_fraction),
-        "capital_exposure_bars": capital_exposure_bars,
-        "margin_exposure_bars": margin_exposure_bars,
-        "avg_capital_exposure_per_trade": _mean_or_zero(capital_exposure),
-        "avg_margin_exposure_per_trade": _mean_or_zero(margin_exposure),
-        "return_per_capital_exposure_bar": _ratio_or_zero(return_contribution, capital_exposure_bars),
-        "return_per_margin_exposure_bar": _ratio_or_zero(return_contribution, margin_exposure_bars),
-        "capital_weighted_raw_return": _weighted_mean_or_zero(raw_returns, capital_fraction),
+        "return_contribution": exposure_stats["return_contribution"],
+        "return_per_exposure_bar": exposure_stats["return_per_exposure_bar"],
+        "capital_turnover": exposure_stats["capital_turnover"],
+        "avg_capital_fraction": exposure_stats["avg_capital_fraction"],
+        "max_capital_fraction": exposure_stats["max_capital_fraction"],
+        "margin_turnover": exposure_stats["margin_turnover"],
+        "avg_margin_fraction": exposure_stats["avg_margin_fraction"],
+        "max_margin_fraction": exposure_stats["max_margin_fraction"],
+        "capital_exposure_bars": exposure_stats["capital_exposure_bars"],
+        "margin_exposure_bars": exposure_stats["margin_exposure_bars"],
+        "avg_capital_exposure_per_trade": exposure_stats["avg_capital_exposure_per_trade"],
+        "avg_margin_exposure_per_trade": exposure_stats["avg_margin_exposure_per_trade"],
+        "return_per_capital_exposure_bar": exposure_stats["return_per_capital_exposure_bar"],
+        "return_per_margin_exposure_bar": exposure_stats["return_per_margin_exposure_bar"],
+        "capital_weighted_raw_return": exposure_stats["capital_weighted_raw_return"],
     }
 
 
@@ -777,12 +765,6 @@ def _ratio_column_to_net_value(frame: pd.DataFrame, column: str, net_value: pd.S
     return ratio.fillna(0.0).astype(float)
 
 
-def _optional_numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
-    if column not in frame.columns:
-        return pd.Series(dtype=float)
-    return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float).reset_index(drop=True)
-
-
 def _max_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
@@ -793,29 +775,6 @@ def _min_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.min())
-
-
-def _weighted_mean_or_zero(values: pd.Series, weights: pd.Series) -> float:
-    if values.empty or weights.empty:
-        return 0.0
-    length = min(len(values), len(weights))
-    value_slice = values.iloc[:length]
-    weight_slice = weights.iloc[:length]
-    denominator = float(weight_slice.sum())
-    if denominator <= 0:
-        return 0.0
-    return _round_float(float((value_slice * weight_slice).sum()) / denominator)
-
-
-def _weighted_exposure_bars(holding_bars: pd.Series, fractions: pd.Series) -> pd.Series:
-    """资金或保证金占用乘以持仓 K 数，用于衡量长期占资压力。"""
-    if holding_bars.empty or fractions.empty:
-        return pd.Series(dtype=float)
-    length = min(len(holding_bars), len(fractions))
-    return (
-        holding_bars.iloc[:length].reset_index(drop=True)
-        * fractions.iloc[:length].reset_index(drop=True)
-    )
 
 
 def _accepted_values(frame: pd.DataFrame, accepted: pd.Series, column: str) -> pd.Series:
