@@ -128,6 +128,7 @@ def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict
     else:
         aligned_data = data.iloc[: len(clean)].reset_index(drop=True) if not data.empty else pd.DataFrame(index=clean.index)
     drawdown = clean / clean.cummax() - 1.0
+    bar_drawdown = _bar_worst_drawdown_series(aligned_data, drawdown)
     result = empty_drawdown_statistics()
     result.update(
         {
@@ -135,8 +136,8 @@ def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict
             "max_drawdown_duration": float(_max_drawdown_bar_duration(aligned_data, clean)),
             "current_drawdown": _round_float(float(drawdown.iloc[-1])),
             "current_underwater_bars": float(_trailing_underwater_bar_length(aligned_data, drawdown)),
-            "avg_drawdown": _mean_or_zero(drawdown),
-            "ulcer_index": _round_float(math.sqrt(float(drawdown.pow(2).mean()))) if not drawdown.empty else 0.0,
+            "avg_drawdown": _mean_or_zero(bar_drawdown),
+            "ulcer_index": _round_float(math.sqrt(float(bar_drawdown.pow(2).mean()))) if not bar_drawdown.empty else 0.0,
             "time_under_water_ratio": _bar_underwater_ratio(aligned_data, drawdown),
         }
     )
@@ -372,6 +373,21 @@ def _bar_underwater_ratio(data: pd.DataFrame, drawdown: pd.Series) -> float:
     if not bar_states:
         return 0.0
     return _round_float(sum(bar_states.values()) / len(bar_states))
+
+
+def _bar_worst_drawdown_series(data: pd.DataFrame, drawdown: pd.Series) -> pd.Series:
+    """每根 K 只保留最深回撤，避免路径拆点后重复加权平均水下压力。"""
+    values = pd.to_numeric(drawdown, errors="coerce")
+    if values.empty:
+        return pd.Series(dtype=float)
+    bar_worst: dict[object, float] = {}
+    for pos, value in enumerate(values.tolist()):
+        if pd.isna(value):
+            continue
+        key = _bar_identity(data, pos)
+        numeric = float(value)
+        bar_worst[key] = min(float(bar_worst.get(key, numeric)), numeric)
+    return pd.Series(bar_worst.values(), dtype=float)
 
 
 def _bar_span_length(data: pd.DataFrame, start_pos: int, end_pos: int) -> int:

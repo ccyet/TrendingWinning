@@ -396,7 +396,7 @@ if terminal_score >= min_score:
           <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、大周期方向不一致和末端假突破风险；末端过滤的拒绝原因为 <code>terminal_false_breakout_risk</code>。</td></tr>
           <tr><td><code>setup_strategy_filter_stats.csv</code></td><td>按信号形态汇总策略层过滤原因，区分信号 K 无流动性、大周期方向不一致、中部过滤和末端假突破过滤。</td></tr>
           <tr><td><code>equity_curve.csv</code></td><td>单策略和组合策略有成交时均输出逐 K 盯市净值；<code>net_value</code> 是正常净值，<code>drawdown_net_value</code> 是回撤估算净值，多头用 low、空头用 high，并按同一时刻所有开放持仓合成组合回撤；退出 K 会先按仍持仓状态估算不利价格，再按结算净值确认修复。</td></tr>
-          <tr><td><code>drawdown_curve.csv</code></td><td>回撤曲线明细。<code>path_net_value</code> 是实际用于回撤计算的净值路径，<code>point_type</code> 区分 <code>adverse_price</code>（K 线不利价格估值）和 <code>settlement</code>（收盘或平仓后结算净值）；水下 K 数和修复 K 数按唯一 K 线时间点去重。</td></tr>
+          <tr><td><code>drawdown_curve.csv</code></td><td>回撤曲线明细。<code>path_net_value</code> 是实际用于回撤计算的净值路径，<code>point_type</code> 区分 <code>adverse_price</code>（K 线不利价格估值）和 <code>settlement</code>（收盘或平仓后结算净值）；水下 K 数和修复 K 数按唯一 K 线时间点去重，平均回撤和 Ulcer 回撤压力指数按每根 K 的最差回撤计算。</td></tr>
           <tr><td><code>drawdown_episodes.csv</code></td><td>按回撤幅度从深到浅列出水下区间，含开始、触底、修复、回撤幅度、水下 K 数和是否修复；用于复盘每轮净值回撤。</td></tr>
           <tr><td><code>strategy_stats.csv</code></td><td>按 <code>strategy_name</code> 汇总策略成交绩效；已启用但没有成交的策略也保留零值行，便于单独评估策略是否无信号、全被拒或真实参与交易。</td></tr>
           <tr><td><code>detector_stats.csv</code></td><td>按 <code>detector_name</code> 汇总趋势、区间、通道、反转等识别模块的成交绩效；已启用但没有成交的模块也保留零值行，便于单独评估每个识别模块。</td></tr>

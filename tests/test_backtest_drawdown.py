@@ -152,9 +152,12 @@ def test_drawdown_episodes_count_unique_bars_when_price_path_has_two_points_per_
 
     stats = equity_drawdown_statistics(drawdown_data, drawdown_value)
     episodes = drawdown_episodes(drawdown_data, drawdown_value)
+    bar_worst_drawdown = pd.Series([0.0, 1.0 / 1.2 - 1.0, 0.9 / 1.2 - 1.0, 0.0])
 
     assert stats["max_drawdown"] == pytest.approx(0.9 / 1.2 - 1.0)
     assert stats["max_drawdown_duration"] == 2.0
     assert stats["time_under_water_ratio"] == pytest.approx(0.5)
+    assert stats["avg_drawdown"] == pytest.approx(bar_worst_drawdown.mean())
+    assert stats["ulcer_index"] == pytest.approx((bar_worst_drawdown.pow(2).mean()) ** 0.5)
     assert episodes.loc[0, "underwater_bars"] == 2
     assert episodes.loc[0, "recovery_bars"] == 3
