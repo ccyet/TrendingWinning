@@ -17,6 +17,10 @@ from trending_winning.backtest.periods import (
     compute_period_return_statistics as compute_period_return_statistics,
     compute_period_returns as compute_period_returns,
 )
+from trending_winning.backtest.returns import (
+    downside_deviation as return_downside_deviation,
+    return_series_statistics,
+)
 
 
 STAT_KEYS = [
@@ -279,6 +283,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
 
     equity = _equity_with_initial_point(returns)
     drawdown = equity / equity.cummax() - 1.0
+    return_stats = return_series_statistics(returns)
     wins = returns.loc[returns > 0]
     losses = returns.loc[returns < 0]
     gross_profit = _round_float(wins.sum())
@@ -287,8 +292,8 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     avg_loss = _mean_or_zero(losses)
     total_return = _round_float(equity.iloc[-1] - 1.0)
     max_drawdown = _round_float(drawdown.min())
-    return_std = _round_float(returns.std(ddof=0))
-    downside_deviation = _downside_deviation(returns)
+    return_std = return_stats["return_std"]
+    downside_deviation = return_stats["downside_deviation"]
     exposure_bars = pd.to_numeric(trades.get("holding_bars", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     r_multiple = _numeric_column(trades, "r_multiple")
     positive_r = r_multiple.loc[r_multiple > 0]
@@ -307,11 +312,6 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         if "raw_return_pct" in trades.columns
         else returns
     )
-    return_p05 = _quantile_or_zero(returns, 0.05)
-    return_p25 = _quantile_or_zero(returns, 0.25)
-    return_p50 = _quantile_or_zero(returns, 0.50)
-    return_p75 = _quantile_or_zero(returns, 0.75)
-    return_p95 = _quantile_or_zero(returns, 0.95)
     capital_turnover = _round_float(capital_fraction.sum()) if not capital_fraction.empty else 0.0
     return_contribution = _round_float(returns.sum())
     exposure_bar_count = _round_float(exposure_bars.sum())
@@ -325,14 +325,14 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "win_rate_ci_lower": confidence_stats["win_rate_ci_lower"],
         "win_rate_ci_upper": confidence_stats["win_rate_ci_upper"],
         "total_return": total_return,
-        "avg_return": _round_float(returns.mean()),
+        "avg_return": return_stats["avg_return"],
         "avg_return_standard_error": confidence_stats["avg_return_standard_error"],
         "avg_return_ci_lower": confidence_stats["avg_return_ci_lower"],
         "avg_return_ci_upper": confidence_stats["avg_return_ci_upper"],
         "positive_expectancy_probability": confidence_stats["positive_expectancy_probability"],
         "max_drawdown": max_drawdown,
         "profit_factor": _ratio_or_inf(gross_profit, gross_loss),
-        "expectancy": _round_float(returns.mean()),
+        "expectancy": return_stats["avg_return"],
         "avg_win": avg_win,
         "avg_loss": avg_loss,
         "payoff_ratio": _ratio_or_zero(avg_win, abs(avg_loss)),
@@ -340,19 +340,19 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "return_std": return_std,
-        "sharpe_per_trade": _ratio_or_zero(_round_float(returns.mean()), return_std),
-        "sortino_per_trade": _ratio_or_zero(_round_float(returns.mean()), downside_deviation),
-        "max_consecutive_wins": float(_max_streak(returns, positive=True)),
-        "max_consecutive_losses": float(_max_streak(returns, positive=False)),
+        "sharpe_per_trade": _ratio_or_zero(return_stats["avg_return"], return_std),
+        "sortino_per_trade": _ratio_or_zero(return_stats["avg_return"], downside_deviation),
+        "max_consecutive_wins": return_stats["max_consecutive_wins"],
+        "max_consecutive_losses": return_stats["max_consecutive_losses"],
         "avg_holding_bars": _round_float(exposure_bars.mean()),
-        "best_trade": _round_float(returns.max()),
-        "worst_trade": _round_float(returns.min()),
-        "return_p05": return_p05,
-        "return_p25": return_p25,
-        "return_p50": return_p50,
-        "return_p75": return_p75,
-        "return_p95": return_p95,
-        "cvar_95": _mean_or_zero(returns.loc[returns <= return_p05]),
+        "best_trade": return_stats["best_trade"],
+        "worst_trade": return_stats["worst_trade"],
+        "return_p05": return_stats["return_p05"],
+        "return_p25": return_stats["return_p25"],
+        "return_p50": return_stats["return_p50"],
+        "return_p75": return_stats["return_p75"],
+        "return_p95": return_stats["return_p95"],
+        "cvar_95": return_stats["cvar_95"],
         "max_drawdown_duration": float(max_drawdown_duration(equity)),
         "recovery_factor": _ratio_or_zero(total_return, abs(max_drawdown)),
         "avg_r_multiple": _mean_or_zero(r_multiple),
@@ -423,7 +423,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     returns = net_value.pct_change().dropna()
     drawdown_stats = equity_drawdown_statistics(data, net_value)
     std = _std_or_zero(returns)
-    downside_deviation = _downside_deviation(returns)
+    downside_deviation = return_downside_deviation(returns)
     total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
     max_drawdown = float(drawdown_stats["max_drawdown"])
     annual_periods = float(periods_per_year or _infer_periods_per_year(data))
@@ -734,24 +734,10 @@ def _median_or_zero(values: pd.Series) -> float:
     return _round_float(values.median())
 
 
-def _quantile_or_zero(values: pd.Series, quantile: float) -> float:
-    if values.empty:
-        return 0.0
-    return _round_float(values.quantile(quantile))
-
-
 def _std_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
     return _round_float(values.std(ddof=0))
-
-
-def _downside_deviation(values: pd.Series) -> float:
-    """按全样本低于 0 的收益偏差计算 Sortino 分母，避免低估下行波动。"""
-    if values.empty:
-        return 0.0
-    downside = values.clip(upper=0.0)
-    return _round_float(math.sqrt(float(downside.pow(2).mean())))
 
 
 def _ratio_or_inf(numerator: float, denominator: float) -> float:
@@ -913,19 +899,6 @@ def _system_quality_number(r_multiple: pd.Series, r_std: float) -> float:
     if r_multiple.empty or r_std <= 0:
         return 0.0
     return _round_float(math.sqrt(len(r_multiple)) * float(r_multiple.mean()) / r_std)
-
-
-def _max_streak(returns: pd.Series, *, positive: bool) -> int:
-    best = 0
-    current = 0
-    for value in returns:
-        is_match = value > 0 if positive else value < 0
-        if is_match:
-            current += 1
-            best = max(best, current)
-        else:
-            current = 0
-    return best
 
 
 def _round_float(value: float) -> float:
