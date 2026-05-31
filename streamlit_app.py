@@ -41,10 +41,10 @@ BACKTEST_HELP_TEXT = {
     "scope_mode": "选择回测类型：旧突破用于兼容早期逻辑；单策略只测一个形态；组合策略处理多个形态的资金分配。",
     "take_profit": "旧突破回测使用的固定止盈比例，例如 0.060 表示 6%。单策略和组合策略的目标平仓价由结构止损距离和盈亏比计算。",
     "stop_loss": "旧突破回测使用的固定止损比例，例如 0.030 表示 3%。单策略和组合策略使用各形态输出的信号K结构止损价。",
-    "structural_stop_loss": "单策略和组合策略没有固定百分比止损输入；每笔订单使用信号K或形态模块输出的结构止损价，最大实际风险用于过滤止损距离过大的订单。",
-    "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理。",
-    "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
-    "trailing_take_profit_drawdown_pct": "最大盈利回撤幅度。启动后按上一根已完成 K 的最大盈利价位计算回撤线：多头从持仓最高价回撤，空头从持仓最低价反弹；避免同一根 K 同时启动和退出。",
+    "structural_stop_loss": "现代策略的止损参数不是固定百分比；每笔订单使用信号K或形态模块输出的结构止损价，再用“结构止损最大风险”限制止损距离。",
+    "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理，不影响结构止损。",
+    "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭动态止盈。",
+    "trailing_take_profit_drawdown_pct": "最大盈利回撤幅度。启动后按上一根已完成 K 的最大盈利价位计算平仓线：例，多头入场 100、最高浮盈到 108，参数 0.020 时回撤线约 105.84，跌破即平仓；空头按最低价后的反弹计算。",
     "trailing_take_profit_ma_period": "当前周期均线周期。由用户输入 K 数，用当前回测周期上一根已完成 K 的均线作为移动平仓线；0 表示关闭。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
@@ -56,7 +56,7 @@ BACKTEST_HELP_TEXT = {
     "higher_timeframe": "用更大周期判断主方向，只过滤逆大周期方向的订单，不改形态识别结果。",
     "higher_timeframe_max_age": "大周期信号允许滞后的最长分钟数，0 表示不限制信号年龄。",
     "single_detector": "只测试一种形态识别模块，便于单独评估趋势、区间、通道或反转。",
-    "risk_reward": "盈亏比只用于计算固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比；空头相反。它不改变信号K开仓价和结构止损价。",
+    "risk_reward": "盈亏比指向平仓信号，不决定开仓信号。开仓信号先给出开仓价和结构止损价；盈亏比只把这段风险距离换算成固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头相反。",
     "trend_lookback": "趋势评分使用的回看 K 线数量，越大越重视较长结构。",
     "trend_min_score": "趋势形态入选的最低评分，越高越严格。",
     "trend_h2_min_pullback_legs": "H 是 High 1/High 2，指回调后第 1/2 次突破前一根 K 线高点；L 是 Low 1/Low 2，指反弹后第 1/2 次跌破前一根 K 线低点。这里限制 H2/L2 至少经历几段反向摆动，不是数单根 K 线。",
@@ -64,7 +64,7 @@ BACKTEST_HELP_TEXT = {
     "channel_lookback": "计算趋势通道或摆动点通道时使用的回看 K 线数量。",
     "channel_method": "回归通道适合连续斜率，摆动点通道更贴近人工画高低点连线。",
     "channel_sigma": "回归通道宽度倍数，越大通道越宽、突破越少。",
-    "max_actual_risk_pct": "开仓价到结构止损价的最大允许距离，0 表示不限制；超过该比例会拒单，是现代策略可调的止损风险上限。",
+    "max_actual_risk_pct": "现代策略可调的止损参数。它限制开仓价到结构止损价的最大距离，0 表示不限制；超过该比例会拒单。",
     "max_chase_pct": "信号 K 突破价到实际成交价的最大追价距离，0 表示不限制。",
     "side_mode": "控制策略允许生成的订单方向。多/空表示多头和空头都做；仅多会过滤空头信号；仅空会过滤多头信号。",
     "reversal_lookback": "识别旧高/旧低、二次测试和结构确认时使用的回看 K 线数量。",
@@ -218,19 +218,19 @@ DISPLAY_COLUMN_LABELS = {
     "r_multiple": "R倍数",
     "avg_r_multiple": "平均R倍数",
     "system_quality_number": "SQN系统质量",
-    "actual_risk_pct": "实际风险",
+    "actual_risk_pct": "实际止损风险",
     "actual_chase_pct": "追价距离",
     "actual_reward_to_risk": "实际盈亏比",
     "executed_order_count": "触发成交候选数",
     "accepted_executed_order_count": "最终成交数",
-    "avg_accepted_actual_risk_pct": "成交平均实际风险",
-    "max_accepted_actual_risk_pct": "成交最大实际风险",
+    "avg_accepted_actual_risk_pct": "成交平均止损风险",
+    "max_accepted_actual_risk_pct": "成交最大止损风险",
     "avg_accepted_actual_chase_pct": "成交平均追价距离",
     "max_accepted_actual_chase_pct": "成交最大追价距离",
     "avg_accepted_actual_reward_to_risk": "成交平均实际盈亏比",
     "min_accepted_actual_reward_to_risk": "成交最低实际盈亏比",
-    "avg_executed_actual_risk_pct": "候选平均实际风险",
-    "max_executed_actual_risk_pct": "候选最大实际风险",
+    "avg_executed_actual_risk_pct": "候选平均止损风险",
+    "max_executed_actual_risk_pct": "候选最大止损风险",
     "avg_executed_actual_chase_pct": "候选平均追价距离",
     "max_executed_actual_chase_pct": "候选最大追价距离",
     "avg_executed_actual_reward_to_risk": "候选平均实际盈亏比",
@@ -265,6 +265,9 @@ DISPLAY_VALUE_MAP = {
         "missing_columns": "缓存缺字段",
         "no_valid_rows": "缓存无有效K线",
         "ok": "正常",
+        "coverage_below_min": "覆盖率低于门槛",
+        "quality_error": "质量异常",
+        "no_window_data": "窗口无数据",
         "daily_missing": "日K缺失",
         "daily_read_error": "日K读取失败",
         "daily_missing_columns": "日K缺字段",
@@ -307,7 +310,7 @@ DISPLAY_VALUE_MAP = {
         "no_bars": "无K线数据",
         "no_liquidity": "无有效成交区间",
         "already_open": "已有持仓未平仓",
-        "risk_too_large": "实际风险过大",
+        "risk_too_large": "止损风险过大",
         "chase_too_large": "追价过远",
         "same_symbol_overlap": "同票已有持仓",
         "max_open_positions": "达到最大持仓数",
@@ -737,6 +740,66 @@ def _render_display_table(
         _style_display_frame(_prepare_display_frame(data, stock_names=stock_names)),
         use_container_width=True,
         hide_index=True,
+    )
+
+
+def _render_data_coverage_chart(
+    data_coverage: pd.DataFrame,
+    *,
+    stock_names: Mapping[str, str] | None = None,
+) -> None:
+    chart_data = _data_coverage_chart_frame(data_coverage, stock_names=stock_names)
+    if chart_data.empty:
+        return
+    st.markdown("##### 数据覆盖率概览")
+    chart = (
+        alt.Chart(chart_data)
+        .mark_bar(cornerRadiusEnd=3)
+        .encode(
+            x=alt.X(
+                "K线覆盖率:Q",
+                title="K线覆盖率",
+                scale=alt.Scale(domain=[0.0, 1.0]),
+                axis=alt.Axis(format=".0%"),
+            ),
+            y=alt.Y("样本:N", title="", sort="-x"),
+            color=alt.Color("状态:N", title="状态"),
+            tooltip=[
+                "股票名称:N",
+                "周期:N",
+                alt.Tooltip("K线覆盖率:Q", format=".2%"),
+                "状态:N",
+                alt.Tooltip("缺失K数:Q", format=".0f"),
+            ],
+        )
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _data_coverage_chart_frame(
+    data_coverage: pd.DataFrame,
+    *,
+    stock_names: Mapping[str, str] | None = None,
+) -> pd.DataFrame:
+    """把数据审计结果转成覆盖率图表字段；数值保留原始比例，展示时再格式化。"""
+    columns = ["样本", "股票名称", "周期", "K线覆盖率", "状态", "缺失K数"]
+    if data_coverage.empty or "coverage_ratio" not in data_coverage.columns:
+        return pd.DataFrame(columns=columns)
+    frame = data_coverage.copy()
+    frame["股票名称"] = frame.get("stock_code", pd.Series([""] * len(frame))).map(
+        lambda value: _stock_name_label(value, stock_names)
+    )
+    frame["周期"] = frame.get("timeframe", pd.Series([""] * len(frame))).fillna("").astype(str)
+    frame["K线覆盖率"] = pd.to_numeric(frame["coverage_ratio"], errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+    frame["状态"] = frame.get("status", pd.Series([""] * len(frame))).fillna("").astype(str).map(
+        lambda value: DISPLAY_VALUE_MAP.get("status", {}).get(value, value)
+    )
+    frame["缺失K数"] = pd.to_numeric(frame.get("missing_rows", pd.Series([0.0] * len(frame))), errors="coerce").fillna(0.0)
+    frame["样本"] = frame["股票名称"] + " · " + frame["周期"]
+    return (
+        frame.loc[:, columns]
+        .sort_values(["K线覆盖率", "样本"], ascending=[True, True], kind="mergesort")
+        .reset_index(drop=True)
     )
 
 
@@ -2056,7 +2119,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
     caption = (
         "固定止盈止损、持有周期、手续费和滑点用于旧突破撮合。"
         if is_legacy
-        else "单策略和组合策略用信号K结构止损价、盈亏比目标平仓价和盈利通道回撤止盈控制退出。"
+        else "单策略和组合策略用信号K结构止损价、结构止损最大风险、盈亏比目标平仓价和盈利通道回撤止盈控制退出。"
     )
     with _backtest_module_container("2. 基础风控与成本", caption):
         take_profit = 0.06
@@ -2089,7 +2152,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
                 max_holding = st.number_input("最大持有K数", min_value=1, value=12, help=BACKTEST_HELP_TEXT["max_holding"])
             with stop_col:
                 st.caption(
-                    "结构止损价说明：现代策略使用信号K/形态模块输出的止损价；可在单策略或组合参数里的最大实际风险限制止损距离。"
+                    "结构止损价说明：现代策略使用信号K/形态模块输出止损价；可在单策略或组合参数里的结构止损最大风险限制止损距离。"
                 )
         enable_trailing_take_profit = st.checkbox(
             "启用盈利通道回撤止盈",
@@ -2364,7 +2427,7 @@ def _single_strategy_module(scope: BacktestScopeInputs) -> SingleStrategyInputs:
         risk_c1, risk_c2 = st.columns(2)
         with risk_c1:
             max_actual_risk_pct = st.number_input(
-                "最大实际风险",
+                "结构止损最大风险",
                 min_value=0.0,
                 value=0.0,
                 step=0.005,
@@ -2576,7 +2639,7 @@ def _portfolio_allocation_module(scope: BacktestScopeInputs) -> PortfolioAllocat
         pf_r1, pf_r2 = st.columns(2)
         with pf_r1:
             max_actual_risk_pct = st.number_input(
-                "组合最大实际风险",
+                "组合结构止损最大风险",
                 min_value=0.0,
                 value=0.0,
                 step=0.005,
@@ -2924,6 +2987,7 @@ def _render_backtest_result(
     if filtered_count > 0:
         st.caption(f"已过滤涨停开盘交易日：{filtered_count} 条")
     if data_coverage is not None and not data_coverage.empty:
+        _render_data_coverage_chart(data_coverage, stock_names=stock_names)
         _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
     chart_bars = bundle.bars if bundle is not None else bars
     if chart_bars is not None and not chart_bars.empty:

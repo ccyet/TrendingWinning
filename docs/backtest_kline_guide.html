@@ -323,7 +323,7 @@
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
         <div class="card"><b>设置风控</b><span>查看结构止损价说明，设置最大持有 K 数、启用盈利通道回撤止盈、交易方向、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
-        <div class="card"><b>读取产物</b><span>先看核心绩效概览、净值曲线、回撤曲线和策略K线运行区间里的开多、开空、止损标注，再看未成交原因、开平仓路径绩效、信号形态绩效和月度稳定性。</span></div>
+        <div class="card"><b>读取产物</b><span>先看核心绩效概览、数据覆盖率概览、净值曲线、回撤曲线和策略K线运行区间里的开多、开空、止损标注，再看未成交原因、开平仓路径绩效、信号形态绩效和月度稳定性。</span></div>
       </div>
       <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
     </section>
@@ -338,7 +338,7 @@
           <tr><td>2. 基础风控与成本</td><td>旧突破显示固定止盈止损；单策略和组合显示结构止损价说明、最大持有 K 数、盈利通道回撤止盈开关、手续费、滑点和同 K 冲突规则。关闭回撤止盈时，启动浮盈、最大盈利回撤幅度和当前周期均线周期都按 0 处理；启用时启动浮盈必须大于 0，并至少选择最大盈利回撤幅度或用户输入的当前周期均线其中一种退出线。</td><td>全部模式</td></tr>
           <tr><td>3. 数据质量检查</td><td>检查 K 线是否缺失、重复、价格异常，以及覆盖率是否足够。</td><td>全部模式</td></tr>
           <tr><td>4. 大周期方向过滤</td><td>用 60m 或 30m 判断主方向，只保留顺势入场。</td><td>现代单策略和组合策略重点使用</td></tr>
-          <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、实际风险和追价过滤。</td><td>单策略回测</td></tr>
+          <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、止损风险和追价过滤。</td><td>单策略回测</td></tr>
           <tr><td>5. 组合仓位与资金</td><td>组合形态、交易方向、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
           <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，横轴和价格轴都可缩放；长样本不受 5000 行默认限制，SVG 矢量渲染放大后仍保持清晰，并标注开多、开空、止损横线、止损点和盈利通道回撤止盈点。</td><td>运行后显示</td></tr>
@@ -346,7 +346,7 @@
       </table>
       <div class="grid">
         <div class="card"><b>样本字段</b><span><code>周期</code>、<code>标的代码</code>、<code>开始日期</code>、<code>结束日期</code>。标的代码支持逗号或换行分隔。</span></div>
-        <div class="card"><b>基础风控</b><span>旧突破回测使用百分比 <code>止盈</code> 和 <code>止损</code>；单策略和组合策略使用信号 K 结构止损价与 <code>risk_reward</code> 生成目标平仓价。</span></div>
+        <div class="card"><b>基础风控</b><span>旧突破回测使用百分比 <code>止盈</code> 和 <code>止损</code>；单策略和组合策略使用信号 K 结构止损价、结构止损最大风险与 <code>risk_reward</code> 生成目标平仓价。</span></div>
         <div class="card"><b>成本模型</b><span><code>手续费率</code>、<code>滑点bps</code>、<code>初始资金</code> 写入配置，并进入所有撮合路径。</span></div>
         <div class="card"><b>交易方向</b><span><code>多/空</code> 同时保留多头和空头信号；<code>仅多</code> 过滤空头；<code>仅空</code> 过滤多头。过滤记录进入策略过滤表，不进入撮合拒单表。</span></div>
         <div class="card"><b>数据质量检查</b><span><code>严格数据质量检查</code> 和 <code>最低K线覆盖率</code> 控制本地 parquet 是否足够可信。</span></div>
@@ -358,8 +358,9 @@
         <tbody>
           <tr><td>同K止盈止损冲突</td><td>同一根 K 同时触发止盈和止损时，保守模式按止损优先。</td><td><code>trades.csv</code></td></tr>
           <tr><td>结构止损价说明</td><td>现代策略的止损价来自信号 K 或形态模块，不再使用固定百分比止损；K 线图用止损横线展示每笔订单的结构止损价。</td><td><code>trades.csv</code>、策略 K 线运行区间</td></tr>
-          <tr><td>最大实际风险</td><td>真实成交价相对结构止损价的风险过大时拒单，是可调的止损距离上限。</td><td><code>order_decisions.csv</code></td></tr>
-          <tr><td>盈亏比</td><td>只计算固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头方向相反；不改变开仓价和结构止损价。</td><td><code>target_price</code></td></tr>
+          <tr><td>结构止损最大风险</td><td>现代策略可调的止损参数。真实成交价相对结构止损价的风险过大时拒单，是可调的止损距离上限。</td><td><code>order_decisions.csv</code></td></tr>
+          <tr><td>盈亏比</td><td>指向平仓信号，不决定开仓信号。开仓信号先给出开仓价和结构止损价；盈亏比只把这段风险距离换算成固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头方向相反。</td><td><code>target_price</code></td></tr>
+          <tr><td>最大盈利回撤幅度</td><td>盈利通道启动后，按上一根已完成 K 的最大盈利价位计算平仓线。例如多头入场 100、最高浮盈到 108，参数 0.020 时回撤线约 105.84，跌破即平仓；空头按最低价后的反弹计算。</td><td><code>trailing_take_profit</code></td></tr>
           <tr><td>最大追价距离</td><td>跳空或高开导致成交价离信号价太远时拒单。</td><td><code>order_decisions.csv</code></td></tr>
           <tr><td>大周期信号有效分钟</td><td>低周期信号找不到足够新的大周期方向时拒绝。</td><td><code>strategy_filter_decisions.csv</code></td></tr>
           <tr><td>最低K线覆盖率</td><td>分钟 K 缺口太多时失败或记录低覆盖。</td><td><code>data_coverage.csv</code></td></tr>
@@ -380,7 +381,7 @@
           <tr><td>K 线覆盖率检查</td><td>确认本地分钟 K 是否足够完整。</td><td>缺口太多时，先补数据再回测。</td></tr>
           <tr><td>结构确认</td><td>摆动高点或低点必须等右侧确认 K 线完成后才进入结构状态。</td><td><code>last_swing_high</code>、<code>BOS</code>、<code>CHoCH</code> 不提前使用未确认摆动点。</td></tr>
           <tr><td>突破挂单</td><td>不追市价，等价格突破信号 K 高点或低点再成交。</td><td>没触发就是 <code>no_fill</code>，不是策略失败。</td></tr>
-          <tr><td>实际风险</td><td>真实成交价到止损价的距离。</td><td>跳空成交后风险过大，会被 <code>actual_risk_too_high</code> 拒绝。</td></tr>
+          <tr><td>实际止损风险</td><td>真实成交价到止损价的距离。</td><td>跳空成交后风险过大，会被 <code>actual_risk_too_high</code> 拒绝。</td></tr>
           <tr><td>追价距离</td><td>真实成交价偏离信号价的幅度。</td><td>偏离过大说明买得太远，会被 <code>chase_too_far</code> 拒绝。</td></tr>
           <tr><td>同 K 冲突</td><td>同一根 K 同时碰到止盈和止损。</td><td>保守模式按止损优先，避免过度乐观。</td></tr>
         </tbody>

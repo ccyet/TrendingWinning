@@ -31,7 +31,10 @@ from trending_winning.data.tdx_parallels import (
 from trending_winning.strategies.signal_bar import SUPPORTED_SIDE_MODES
 from trending_winning.strategy import StrategyConfig, scan_bars
 
-RISK_REWARD_HELP = "盈亏比只计算固定目标平仓价：多头=开仓价+(开仓价-止损价)*盈亏比，空头相反；不改变开仓价和结构止损价。"
+RISK_REWARD_HELP = (
+    "盈亏比指向平仓信号，不决定开仓信号；开仓信号先给出开仓价和结构止损价，"
+    "盈亏比只把风险距离换算成固定目标平仓价：多头=开仓价+(开仓价-止损价)*盈亏比，空头相反。"
+)
 
 
 def _parse_float_list(value: str) -> list[float]:
@@ -74,7 +77,7 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         "--trailing-take-profit-drawdown-pct",
         type=float,
         default=0.0,
-        help="最大盈利回撤幅度，小数比例；按上一根已完成 K 的最大盈利价位计算，多头看最高价回撤，空头看最低价反弹，0 表示关闭。",
+        help="最大盈利回撤幅度，小数比例；按上一根已完成 K 的最大盈利价位计算平仓线，例如多头最高浮盈后回撤到线即平仓，0 表示关闭。",
     )
     parser.add_argument(
         "--trailing-take-profit-ma-period",

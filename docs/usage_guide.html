@@ -220,7 +220,7 @@
         <div class="card"><b>过滤规则</b><span>按主板、科创、创业、北交所涨停开盘规则过滤污染交易日。</span></div>
         <div class="card"><b>独立形态识别</b><span>趋势、区间、通道、反转模块只输出标准事件，策略层统一消费。</span></div>
         <div class="card"><b>挂单触发</b><span>突破在信号 K 上方/下方挂单，撮合层按下一根 K 是否触发成交。</span></div>
-        <div class="card"><b>回测统计</b><span>核心绩效概览、净值曲线、回撤曲线、策略K线运行区间、横轴/价格轴缩放、SVG 矢量高清 K 线、开多/开空/止损/盈利通道回撤止盈标注、交易方向过滤、逐笔交易、现金占比、订单拒绝和策略过滤。</span></div>
+        <div class="card"><b>回测统计</b><span>核心绩效概览、数据覆盖率概览、净值曲线、回撤曲线、策略K线运行区间、横轴/价格轴缩放、SVG 矢量高清 K 线、开多/开空/止损/盈利通道回撤止盈标注、交易方向过滤、逐笔交易、现金占比、订单拒绝和策略过滤。</span></div>
       </div>
     </section>
 
@@ -353,9 +353,9 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
         <li><code>risk_per_trade</code> 按真实入场风险反推仓位。</li>
         <li><code>allow_same_symbol_overlap</code> 控制同一股票能否多策略重叠持仓。</li>
         <li><code>side_mode</code> 控制所有启用形态的交易方向：多/空、仅多或仅空。</li>
-        <li>单策略和组合策略用信号 K 结构止损价与 <code>risk_reward</code> 计算目标平仓价；固定百分比止盈止损只属于旧突破回测。页面会显示“结构止损价说明”，可调止损风险参数是“最大实际风险”，用于限制开仓价到结构止损价的距离。</li>
-        <li>盈亏比只影响固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头方向相反；它不改变信号 K 开仓价和结构止损价。</li>
-        <li>盈利通道回撤止盈由页面开关显式启用；关闭时启动浮盈、最大盈利回撤幅度和当前周期均线周期都强制按 0 处理。启用时启动浮盈必须大于 0，并至少选择最大盈利回撤幅度或用户输入的当前周期均线其中一种退出线。启用后按实际成交价和上一根已完成 K 的最大盈利价位或均线确认，当前 K 只刷新下一根可用的回撤线，避免同一根 K 同时启动和退出。</li>
+        <li>单策略和组合策略用信号 K 结构止损价与 <code>risk_reward</code> 计算目标平仓价；固定百分比止盈止损只属于旧突破回测。页面会显示“结构止损价说明”，可调止损参数是“结构止损最大风险”，用于限制开仓价到结构止损价的距离。</li>
+        <li>盈亏比指向平仓信号，不决定开仓信号。开仓信号先给出开仓价和结构止损价；盈亏比只把这段风险距离换算成固定目标平仓价：多头目标平仓价 = 开仓价 + (开仓价 - 止损价) × 盈亏比，空头方向相反。</li>
+        <li>盈利通道回撤止盈由页面开关显式启用；关闭时启动浮盈、最大盈利回撤幅度和当前周期均线周期都强制按 0 处理。启用时启动浮盈必须大于 0，并至少选择最大盈利回撤幅度或用户输入的当前周期均线其中一种退出线。最大盈利回撤幅度按上一根已完成 K 的最大盈利价位计算：例如多头入场 100、最高浮盈到 108，参数 0.020 时回撤线约 105.84，跌破即平仓；当前 K 只刷新下一根可用的回撤线，避免同一根 K 同时启动和退出。</li>
         <li>单策略按满仓进出，统计 <code>market_bar_count</code> 和 <code>exposure_bar_ratio</code>，用于判断策略在样本时间轴内实际占用资金多久。</li>
         <li>组合净值按逐 K 盯市，统计现金占比、净暴露、真实总暴露、持仓数和资金贡献。</li>
       </ul>
@@ -371,7 +371,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>stats.json</code></td><td>逐笔统计、净值统计、订单摘要、过滤摘要、缓存库存摘要、数据审计摘要、退出原因摘要和周期稳定性摘要，例如 <code>win_rate_ci_lower</code>、<code>win_rate_ci_upper</code>、<code>avg_return_standard_error</code>、<code>avg_return_ci_lower</code>、<code>avg_return_ci_upper</code>、<code>positive_expectancy_probability</code>、<code>take_profit_exit_count</code>、<code>trailing_take_profit_exit_rate</code>、<code>stop_loss_exit_rate</code>、<code>max_holding_exit_rate</code>、<code>avg_accepted_actual_risk_pct</code>、<code>avg_accepted_actual_chase_pct</code>、<code>avg_accepted_actual_reward_to_risk</code>、<code>avg_executed_actual_risk_pct</code>、<code>avg_executed_actual_chase_pct</code>、<code>avg_executed_actual_reward_to_risk</code>、<code>avg_cash_ratio</code>、<code>min_cash_ratio</code>、<code>avg_margin_exposure</code>、<code>max_margin_exposure</code>、<code>avg_net_exposure</code>、<code>max_net_exposure</code>、<code>max_drawdown_start_at</code>、<code>max_drawdown_trough_at</code>、<code>max_drawdown_recovery_at</code>、<code>current_drawdown</code>、<code>current_underwater_bars</code>、<code>data_inventory_signature</code>、<code>data_inventory_unavailable_count</code>、<code>data_inventory_missing_columns_count</code>、<code>data_inventory_no_valid_rows_count</code>、<code>data_audit_missing_file_count</code>、<code>data_audit_missing_columns_count</code>、<code>data_audit_no_window_data_count</code>、<code>data_audit_read_error_count</code>、<code>limit_filter_daily_missing_count</code>、<code>limit_filter_daily_read_error_count</code>、<code>limit_filter_daily_missing_columns_count</code>、<code>limit_filter_daily_quality_error_count</code>、<code>data_coverage_below_min_count</code>、<code>data_coverage_p05</code>、<code>data_coverage_p50</code>、<code>data_max_missing_gap_minutes</code>、<code>data_max_missing_gap_start_at</code>、<code>data_max_missing_gap_end_at</code>、<code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_worst_return_period</code>、<code>monthly_best_return_period</code>、<code>monthly_return_std</code>、<code>monthly_worst_drawdown_period</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code>、<code>monthly_current_underwater_periods</code>；其中 <code>avg_accepted_*</code> 只统计最终成交订单，<code>avg_executed_*</code> 统计触发成交价的候选订单，便于区分真实成交质量和容量/资金拒绝前的候选质量。<code>data_inventory_signature</code> 是不含本机绝对路径和文件修改时间的数据快照指纹，便于 Mac/Win 对照同一批缓存。回撤定位字段用于确认最大回撤从哪根净值高点开始、在哪根触底、是否修复，以及当前是否仍在水下。</td></tr>
           <tr><td><code>trades.csv</code></td><td>成交明细，含 <code>order_id / event_id / event_type</code>。</td></tr>
           <tr><td><code>order_decisions.csv</code></td><td>撮合层接受或拒绝原因。</td></tr>
-          <tr><td><code>setup_order_decision_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总撮合层接受、拒绝和实际风险指标；最终成交订单和触发成交候选订单在 <code>stats.json</code> 中分开汇总。</td></tr>
+          <tr><td><code>setup_order_decision_stats.csv</code></td><td>按 <code>detector_name / event_type / side</code> 汇总撮合层接受、拒绝和止损风险指标；最终成交订单和触发成交候选订单在 <code>stats.json</code> 中分开汇总。</td></tr>
           <tr><td><code>strategy_filter_decisions.csv</code></td><td>策略层过滤原因，例如中部不交易、大周期方向不一致。</td></tr>
           <tr><td><code>setup_strategy_filter_stats.csv</code></td><td>按信号形态汇总策略层过滤原因，区分信号 K 无流动性、大周期方向不一致和中部过滤。</td></tr>
           <tr><td><code>equity_curve.csv</code></td><td>单策略交易净值带成交时间轴；组合为逐 K 盯市净值。</td></tr>
@@ -392,7 +392,7 @@ streamlit run streamlit_app.py --server.port 8520</code></pre>
           <tr><td><code>case_detector_stats.csv</code></td><td>参数遍历每个 case 的识别模块级绩效，包含 <code>sweep_rank / pareto_rank / case_config_hash / detector_name</code>；已启用但无成交的趋势、区间、通道或反转模块也保留零值行。</td></tr>
           <tr><td><code>case_setup_stats.csv</code></td><td>参数遍历每个 case 的信号形态级绩效，包含 <code>sweep_rank / pareto_rank / case_config_hash / detector_name / event_type / side</code>；没有成交但出现过信号或拒单的 setup 也保留零值行。</td></tr>
           <tr><td><code>case_symbol_stats.csv</code></td><td>参数遍历每个 case 的股票级绩效，包含 <code>sweep_rank / pareto_rank / case_config_hash / stock_name / stock_code</code>；未成交样本股票也保留零值行，方便判断参数组在哪些股票上没有触发交易。</td></tr>
-          <tr><td><code>case_setup_order_decision_stats.csv</code></td><td>参数遍历每个 case 的信号形态级撮合接受、拒绝和实际风险指标。</td></tr>
+          <tr><td><code>case_setup_order_decision_stats.csv</code></td><td>参数遍历每个 case 的信号形态级撮合接受、拒绝和止损风险指标。</td></tr>
           <tr><td><code>case_setup_strategy_filter_stats.csv</code></td><td>参数遍历每个 case 的信号形态级策略过滤原因，保留过滤器和大周期方向维度。</td></tr>
           <tr><td><code>sweep.csv</code></td><td>参数遍历结果，首列 <code>sweep_rank</code> 按收益、回撤、月度稳定性、交易数和 case 名稳定排序；固定启用形态的 sweep 只保留启用形态、大周期 trend 上下文和通用撮合参数，未启用形态的参数不会生成额外 case，也不会改变 <code>case_config_hash</code>；<code>case_config_hash</code> 记录去除本机 <code>name / data_root / output_dir</code> 后的配置指纹，<code>data_inventory_signature</code> 记录本次 K 线缓存快照指纹；<code>data_inventory_unavailable_count</code>、<code>data_inventory_missing_columns_count</code> 和 <code>data_inventory_no_valid_rows_count</code> 用于判断缓存存在但不可用于回测的数量；<code>pareto_rank=1</code> 是收益、回撤、Ulcer、月度最差收益、月度收益波动和交易样本数的第一层非支配候选集，底层用批量支配矩阵分层；行内包含 <code>monthly_win_rate</code>、<code>monthly_worst_return</code>、<code>monthly_worst_return_period</code>、<code>monthly_best_return_period</code>、<code>monthly_return_std</code>、<code>monthly_worst_drawdown_period</code>、<code>monthly_max_consecutive_losses</code>、<code>monthly_max_recovery_periods</code>、<code>monthly_current_underwater_periods</code> 等周期稳定性字段。</td></tr>
           <tr><td><code>case_configs.jsonl</code></td><td>参数遍历每个 case 的完整配置，顺序与 <code>sweep.csv</code> 一致，可按 <code>case_config_hash</code> 回放。</td></tr>

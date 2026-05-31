@@ -10,6 +10,7 @@ from streamlit.testing.v1 import AppTest
 import streamlit_app
 from streamlit_app import (
     _build_strategy_kline_altair_chart,
+    _data_coverage_chart_frame,
     _equity_chart_frame,
     _equity_drawdown_chart_frame,
     _equity_y_domain,
@@ -96,7 +97,7 @@ def test_streamlit_app_exposes_portfolio_backtest_controls() -> None:
     assert any(item.label == "大周期方向过滤" for item in app.selectbox)
     assert any(item.label == "大周期信号有效分钟" for item in app.number_input)
     assert any(item.label == "组合反转旧极端容忍度" for item in app.number_input)
-    assert any(item.label == "组合最大实际风险" for item in app.number_input)
+    assert any(item.label == "组合结构止损最大风险" for item in app.number_input)
     assert any(item.label == "组合最大追价距离" for item in app.number_input)
     assert any(item.label == "组合趋势回看" for item in app.number_input)
     assert any(item.label == "组合趋势最低评分" for item in app.number_input)
@@ -144,7 +145,7 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
     assert direction.options == ["多/空", "仅多", "仅空"]
     assert any(item.label == "大周期方向过滤" for item in app.selectbox)
     assert any(item.label == "大周期信号有效分钟" for item in app.number_input)
-    assert any(item.label == "最大实际风险" for item in app.number_input)
+    assert any(item.label == "结构止损最大风险" for item in app.number_input)
     assert any(item.label == "最大追价距离" for item in app.number_input)
     assert any(item.label == "趋势强收盘" for item in app.number_input)
     assert any(item.label == "趋势最小实体" for item in app.number_input)
@@ -277,6 +278,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
 
     assert "启用盈利通道回撤止盈" in source
     assert "结构止损价说明" in source
+    assert "结构止损最大风险" in source
     assert "最大盈利回撤幅度" in source
     assert "当前周期均线周期" in source
     assert "bt_enable_trailing_take_profit" in source
@@ -355,6 +357,35 @@ def test_streamlit_backtest_result_renders_equity_drawdown_chart() -> None:
     assert "_render_equity_drawdown_chart" in source
 
 
+def test_data_coverage_chart_frame_uses_stock_names_and_numeric_coverage() -> None:
+    data_coverage = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "600519.SH"],
+            "timeframe": ["30m", "60m"],
+            "status": ["ok", "coverage_below_min"],
+            "coverage_ratio": [1.0, 0.875],
+            "missing_rows": [0, 3],
+        }
+    )
+
+    chart = _data_coverage_chart_frame(data_coverage, stock_names={"000001.SZ": "平安银行", "600519.SH": "贵州茅台"})
+
+    assert chart.columns.tolist() == ["样本", "股票名称", "周期", "K线覆盖率", "状态", "缺失K数"]
+    assert chart["股票名称"].tolist() == ["贵州茅台", "平安银行"]
+    assert chart["周期"].tolist() == ["60m", "30m"]
+    assert chart["K线覆盖率"].tolist() == [0.875, 1.0]
+    assert chart["状态"].tolist() == ["覆盖率低于门槛", "正常"]
+    assert chart["缺失K数"].tolist() == [3.0, 0.0]
+
+
+def test_streamlit_backtest_result_renders_data_coverage_overview_chart() -> None:
+    result_source = getsource(streamlit_app._render_backtest_result)
+    chart_source = getsource(streamlit_app._render_data_coverage_chart)
+
+    assert "_render_data_coverage_chart" in result_source
+    assert "数据覆盖率概览" in chart_source
+
+
 def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
     help_text = streamlit_app.BACKTEST_HELP_TEXT["enable_trailing_take_profit"]
 
@@ -363,6 +394,9 @@ def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
     drawdown_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_drawdown_pct"]
     assert "最大盈利" in drawdown_help
     assert "回撤" in drawdown_help
+    assert "幅度" in drawdown_help
+    assert "最高浮盈" in drawdown_help
+    assert "平仓" in drawdown_help
     ma_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_ma_period"]
     assert "用户输入" in ma_help
     assert "当前回测周期" in ma_help
@@ -371,6 +405,9 @@ def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
 def test_streamlit_stop_loss_and_risk_reward_help_are_actionable() -> None:
     assert "信号K" in streamlit_app.BACKTEST_HELP_TEXT["structural_stop_loss"]
     assert "结构止损" in streamlit_app.BACKTEST_HELP_TEXT["structural_stop_loss"]
+    assert "止损参数" in streamlit_app.BACKTEST_HELP_TEXT["max_actual_risk_pct"]
+    assert "开仓信号" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
+    assert "平仓信号" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
     assert "开仓价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
     assert "目标平仓价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
     assert "止损价" in streamlit_app.BACKTEST_HELP_TEXT["risk_reward"]
@@ -446,7 +483,7 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["场内时间比例"].tolist() == ["25.00%", "25.00%"]
     assert display["平均保证金暴露"].tolist() == ["45.00%", "0.00%"]
     assert display["最大保证金暴露"].tolist() == ["150.00%", "0.00%"]
-    assert display["成交平均实际风险"].tolist() == ["3.50%", "0.00%"]
+    assert display["成交平均止损风险"].tolist() == ["3.50%", "0.00%"]
     assert display["成交平均追价距离"].tolist() == ["1.50%", "0.00%"]
     assert display["成交平均实际盈亏比"].tolist() == ["1.75", "0.00"]
     assert display["止盈退出次数"].tolist() == ["2", "0"]
@@ -739,18 +776,24 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
+    assert "数据覆盖率概览" in html
     assert "signal_lifecycle_stats.csv" in html
     assert "回撤曲线" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
+    assert "数据覆盖率概览" in html
     assert "策略K线运行区间" in html
     assert "avg_accepted_actual_risk_pct" in html
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
     assert "结构止损价说明" in html
+    assert "结构止损最大风险" in html
     assert "最大盈利回撤幅度" in html
+    assert "最高浮盈" in html
     assert "目标平仓价" in html
+    assert "开仓信号" in html
+    assert "平仓信号" in html
     assert "没有成交但出现过信号或拒单" in html
 
 
@@ -786,8 +829,12 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "旧突破显示固定止盈止损" in html
     assert "单策略和组合策略使用信号 K 结构止损价" in html
     assert "结构止损价说明" in html
+    assert "结构止损最大风险" in html
     assert "最大盈利回撤幅度" in html
+    assert "最高浮盈" in html
     assert "目标平仓价" in html
+    assert "开仓信号" in html
+    assert "平仓信号" in html
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
     assert "核心绩效概览" in html
