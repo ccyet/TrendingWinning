@@ -143,6 +143,12 @@ DISPLAY_COLUMN_LABELS = {
     "avg_max_holding_exit_rate": "平均持有到期退出比例",
     "status": "状态",
     "reason": "原因",
+    "section": "诊断模块",
+    "check": "检查项",
+    "severity": "严重度",
+    "metric": "指标字段",
+    "threshold": "阈值",
+    "detail": "说明",
     "filter_name": "过滤模块",
     "parameter": "参数",
     "value": "取值",
@@ -911,6 +917,39 @@ def _render_order_decision_charts(order_decisions: pd.DataFrame) -> None:
                 )
             )
             st.altair_chart(reason_chart, use_container_width=True)
+
+
+def _render_diagnostic_status_chart(report: pd.DataFrame) -> None:
+    chart_data = _diagnostic_status_chart_frame(report)
+    if chart_data.empty:
+        return
+    chart = (
+        alt.Chart(chart_data)
+        .mark_bar(cornerRadiusEnd=3)
+        .encode(
+            x=alt.X("检查项数:Q", title="检查项数"),
+            y=alt.Y("状态:N", title="", sort=alt.SortField(field="排序", order="ascending")),
+            color=alt.Color(
+                "状态:N",
+                title="状态",
+                scale=alt.Scale(domain=["失败", "关注", "通过"], range=["#dc2626", "#d97706", "#059669"]),
+            ),
+            tooltip=["状态:N", alt.Tooltip("检查项数:Q", format=".0f")],
+        )
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _diagnostic_status_chart_frame(report: pd.DataFrame) -> pd.DataFrame:
+    """汇总实验诊断状态，先展示失败和关注项。"""
+    columns = ["状态", "检查项数", "排序"]
+    if report.empty or "status" not in report.columns:
+        return pd.DataFrame(columns=columns)
+    order = {"失败": 0, "关注": 1, "通过": 2}
+    status = report["status"].fillna("").astype(str).replace("", "通过")
+    grouped = status.value_counts(sort=False).rename_axis("状态").reset_index(name="检查项数")
+    grouped["排序"] = grouped["状态"].map(lambda value: order.get(str(value), 99))
+    return grouped.sort_values(["排序", "状态"], kind="mergesort").loc[:, columns].reset_index(drop=True)
 
 
 def _order_decision_funnel_frame(order_decisions: pd.DataFrame) -> pd.DataFrame:
@@ -3451,6 +3490,10 @@ def _render_backtest_result(
 
 def _render_experiment_breakdowns(experiment, *, stock_names: Mapping[str, str] | None = None) -> None:
     """展示实验拆分统计；单策略和组合回测复用同一组产物。"""
+    if not experiment.diagnostic_report.empty:
+        st.markdown("##### 实验诊断摘要")
+        _render_diagnostic_status_chart(experiment.diagnostic_report)
+        _render_display_table("实验诊断摘要", experiment.diagnostic_report, stock_names=stock_names)
     if not experiment.trade_path_distribution_stats.empty:
         st.markdown("##### 交易路径分布")
         _render_trade_path_distribution_chart(experiment.trade_path_distribution_stats)

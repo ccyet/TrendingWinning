@@ -187,3 +187,41 @@ def test_save_single_strategy_experiment_writes_trade_path_distribution(tmp_path
     saved = pd.read_csv(output_dir / "trade_path_distribution.csv")
     assert {"dimension", "bucket", "trade_count", "win_rate", "avg_return"}.issubset(saved.columns)
     assert saved.loc[saved["bucket"].eq("9-16K"), "trade_count"].iloc[0] == 1.0
+
+
+def test_save_single_strategy_experiment_writes_experiment_diagnostics(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-diagnostics",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-diagnostics"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(
+            trades=pd.DataFrame(),
+            equity_curve=pd.DataFrame(),
+            stats={"trade_count": 0.0, "order_count": 0.0},
+        ),
+        input_bar_count=5,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    saved = pd.read_csv(output_dir / "experiment_diagnostics.csv")
+    assert {"section", "check", "status", "detail"}.issubset(saved.columns)
+    assert saved.loc[saved["check"].eq("交易样本"), "status"].iloc[0] == "失败"

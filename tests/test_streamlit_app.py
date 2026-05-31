@@ -16,6 +16,7 @@ from streamlit_app import (
     _equity_drawdown_episodes_frame,
     _equity_y_domain,
     _format_display_value,
+    _diagnostic_status_chart_frame,
     _order_decision_funnel_frame,
     _order_reject_reason_chart_frame,
     _performance_summary_frame,
@@ -301,11 +302,27 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
 def test_streamlit_experiment_breakdowns_include_signal_lifecycle_and_path_distribution_stats() -> None:
     source = getsource(streamlit_app._render_experiment_breakdowns)
 
+    assert "实验诊断摘要" in source
+    assert "diagnostic_report" in source
     assert "开平仓路径绩效" in source
     assert "signal_lifecycle_stats" in source
     assert "交易路径分布" in source
     assert "trade_path_distribution_stats" in source
     assert "_render_trade_path_distribution_chart" in source
+
+
+def test_diagnostic_status_chart_frame_orders_statuses() -> None:
+    report = pd.DataFrame(
+        {
+            "status": ["关注", "通过", "失败", "关注"],
+            "check": ["订单接受率", "数据覆盖", "收益质量", "回撤压力"],
+        }
+    )
+
+    chart = _diagnostic_status_chart_frame(report)
+
+    assert chart["状态"].tolist() == ["失败", "关注", "通过"]
+    assert chart["检查项数"].tolist() == [1, 2, 1]
 
 
 def test_trade_path_distribution_chart_frame_uses_professional_labels() -> None:

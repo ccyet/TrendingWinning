@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pandas as pd
 
 from trending_winning.backtest.experiment_cases import json_dump, json_ready, sweep_case_config_records, write_jsonl
 from trending_winning.backtest.drawdown import drawdown_episodes
+from trending_winning.backtest.experiment_diagnostics import experiment_diagnostic_report
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport,
     PortfolioExperimentConfig,
@@ -34,6 +36,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     (output_dir / "config.json").write_text(json_dump(json_ready(asdict(result.config))))
     stats = _experiment_stats_payload(result)
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
+    _experiment_diagnostic_report(result, stats).to_csv(output_dir / "experiment_diagnostics.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -58,6 +61,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     (output_dir / "config.json").write_text(json_dump(json_ready(asdict(result.config))))
     stats = _experiment_stats_payload(result)
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
+    _experiment_diagnostic_report(result, stats).to_csv(output_dir / "experiment_diagnostics.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -162,6 +166,15 @@ def _experiment_trade_path_distribution(result: SingleStrategyExperimentResult |
     if not result.trade_path_distribution_stats.empty:
         return result.trade_path_distribution_stats
     return trade_path_distribution_statistics(result.backtest.trades)
+
+
+def _experiment_diagnostic_report(
+    result: SingleStrategyExperimentResult | PortfolioExperimentResult,
+    stats: Mapping[str, object],
+) -> pd.DataFrame:
+    if not result.diagnostic_report.empty:
+        return result.diagnostic_report
+    return experiment_diagnostic_report(stats, data_coverage=result.data_coverage)
 
 
 def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | SingleStrategySweepResult) -> None:

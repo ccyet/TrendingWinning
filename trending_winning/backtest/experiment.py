@@ -18,6 +18,7 @@ from trending_winning.backtest.experiment_data import (
     load_experiment_data as _load_experiment_data,
     with_data_management_statistics as _with_data_management_statistics,
 )
+from trending_winning.backtest.experiment_diagnostics import experiment_diagnostic_report as _experiment_diagnostic_report
 from trending_winning.backtest.experiment_case_stats import (
     SETUP_ORDER_DECISION_FIELDS as SETUP_ORDER_DECISION_FIELDS,
     SETUP_STRATEGY_FILTER_FIELDS as SETUP_STRATEGY_FILTER_FIELDS,
@@ -188,6 +189,7 @@ def run_single_strategy_experiment(
         ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         trade_path_distribution_stats=_trade_path_distribution_statistics(backtest.trades),
+        diagnostic_report=_experiment_diagnostic_report(backtest.stats, data_coverage=data.data_audit),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
             backtest.strategy_filter_decisions,
@@ -263,6 +265,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
         trade_path_distribution_stats=_trade_path_distribution_statistics(backtest.trades),
+        diagnostic_report=_experiment_diagnostic_report(backtest.stats, data_coverage=data.data_audit),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
             backtest.strategy_filter_decisions,
