@@ -5,6 +5,11 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
+from trending_winning.backtest.allocation import (
+    PortfolioAllocationConfig,
+    next_capital_fraction,
+    order_margin_fraction,
+)
 from trending_winning.backtest.engine import (
     BacktestConfig,
     BacktestResult,
@@ -18,7 +23,6 @@ from trending_winning.backtest.engine import (
 from trending_winning.backtest.execution import (
     OrderExecutionResult,
     coerce_order_execution_result,
-    normalize_order_side,
     simulate_order_trade_with_rejection,
     validate_backtest_config,
 )
@@ -313,6 +317,7 @@ def _simulate_allocated_candidates(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     candidates = _sort_candidates_for_portfolio(candidate_set.candidates, pcfg)
     decisions = [_rejection_decision(rejection, pcfg) for rejection in candidate_set.rejections]
+    allocation_config = _allocation_config(pcfg)
     open_positions: list[dict[str, object]] = []
     trades: list[dict[str, object]] = []
     for candidate in candidates:
@@ -329,11 +334,17 @@ def _simulate_allocated_candidates(
             continue
         sector = str(candidate["sector"])
         risk_fraction = float(candidate["risk_fraction"])
-        capital_fraction = _next_capital_fraction(open_positions, order, sector, risk_fraction, pcfg)
+        capital_fraction = next_capital_fraction(
+            open_positions,
+            order,
+            sector=sector,
+            risk_fraction=risk_fraction,
+            config=allocation_config,
+        )
         if capital_fraction <= 0:
             decisions.append(_order_decision(candidate, "rejected", "no_capital"))
             continue
-        margin_fraction = _order_margin_fraction(order, capital_fraction, pcfg)
+        margin_fraction = order_margin_fraction(order, capital_fraction, allocation_config)
         raw_return_pct = float(trade["return_pct"])
         trade["raw_return_pct"] = raw_return_pct
         trade["capital_fraction"] = capital_fraction
@@ -731,60 +742,22 @@ def _has_symbol_overlap(open_positions: list[dict[str, object]], symbol: str, pc
     return any(item["stock_code"] == symbol for item in open_positions)
 
 
-def _next_capital_fraction(
-    open_positions: list[dict[str, object]],
-    order: pd.Series,
-    sector: str,
-    risk_fraction: float,
-    pcfg: PortfolioConfig,
-) -> float:
-    max_capital = 1.0 - pcfg.reserve_cash
-    margin_rate = _order_margin_rate(order, pcfg)
-    used_margin = sum(float(item["margin_fraction"]) for item in open_positions)
-    available_margin = max_capital - used_margin
-    base = _base_capital_fraction(risk_fraction, max_capital, margin_rate, pcfg)
-    strategy_room = _remaining_named_limit(open_positions, "strategy_name", str(order["strategy_name"]), pcfg.strategy_capital_limit)
-    sector_room = _remaining_named_limit(open_positions, "sector", sector, pcfg.sector_capital_limit)
-    room_by_margin = min(available_margin, strategy_room, sector_room) / margin_rate
-    return float(round(max(0.0, min(base, room_by_margin)), 12))
-
-
-def _base_capital_fraction(
-    risk_fraction: float,
-    max_capital: float,
-    margin_rate: float,
-    pcfg: PortfolioConfig,
-) -> float:
-    max_trade_notional = pcfg.max_capital_per_trade / margin_rate
-    if pcfg.risk_per_trade is not None and risk_fraction > 0:
-        return min(pcfg.risk_per_trade / risk_fraction, max_trade_notional)
-    if pcfg.capital_per_trade is not None:
-        return min(pcfg.capital_per_trade / margin_rate, max_trade_notional)
-    return min(max_capital / pcfg.max_open_positions / margin_rate, max_trade_notional)
-
-
-def _order_margin_fraction(order: pd.Series, capital_fraction: float, pcfg: PortfolioConfig) -> float:
-    return float(capital_fraction * _order_margin_rate(order, pcfg))
-
-
-def _order_margin_rate(order: pd.Series, pcfg: PortfolioConfig) -> float:
-    return pcfg.short_margin_rate if normalize_order_side(order.get("side", "long")) == "short" else 1.0
+def _allocation_config(pcfg: PortfolioConfig) -> PortfolioAllocationConfig:
+    """只提取仓位分配需要的配置，组合主流程不直接关心计算细节。"""
+    return PortfolioAllocationConfig(
+        max_open_positions=pcfg.max_open_positions,
+        capital_per_trade=pcfg.capital_per_trade,
+        risk_per_trade=pcfg.risk_per_trade,
+        max_capital_per_trade=pcfg.max_capital_per_trade,
+        short_margin_rate=pcfg.short_margin_rate,
+        reserve_cash=pcfg.reserve_cash,
+        strategy_capital_limit=pcfg.strategy_capital_limit,
+        sector_capital_limit=pcfg.sector_capital_limit,
+    )
 
 
 def _execution_or_none(value: object) -> OrderExecutionResult | None:
     return value if isinstance(value, OrderExecutionResult) else None
-
-
-def _remaining_named_limit(
-    open_positions: list[dict[str, object]],
-    field: str,
-    value: str,
-    limits: Mapping[str, float],
-) -> float:
-    if value not in limits:
-        return 1.0
-    used = sum(float(item["margin_fraction"]) for item in open_positions if str(item.get(field, "")) == value)
-    return float(limits[value] - used)
 
 
 def _trade_risk_fraction(trade: Mapping[str, object]) -> float:
