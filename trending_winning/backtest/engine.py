@@ -27,6 +27,7 @@ from trending_winning.backtest.order_backtest import (
     sort_trades_for_statistics as _sort_trades_for_statistics,
     trade_risk_fraction as _trade_risk_fraction,
 )
+from trending_winning.backtest.portfolio_equity import build_single_position_equity_curve_from_normalized
 from trending_winning.backtest.order_decisions import (
     order_decision_record as order_decision_record,
     order_duplicate_reject_reason as order_duplicate_reject_reason,
@@ -111,7 +112,7 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
 
     trades_df = _sort_trades_for_statistics(trades_df.drop(columns=["_exit_index"]))
     trades_df = trades_df[TRADE_COLUMNS]
-    equity = build_equity_curve(trades_df, cfg.initial_equity)
+    equity = build_single_position_equity_curve_from_normalized(normalize_bars(scanned_bars), trades_df, cfg.initial_equity)
     return BacktestResult(
         trades=trades_df,
         equity_curve=equity,

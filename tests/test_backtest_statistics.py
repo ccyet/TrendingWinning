@@ -524,6 +524,21 @@ def test_compute_period_returns_reports_period_drawdown_and_observation_count() 
     assert by_period.loc["2026-06", "max_drawdown"] == 0.0
 
 
+def test_compute_period_returns_uses_price_path_drawdown_value() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27"]),
+            "net_value": [1.0, 1.0, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2],
+        }
+    )
+
+    monthly = compute_period_returns(equity, freq="M").set_index("period")
+
+    assert monthly.loc["2026-05", "return"] == pytest.approx(0.2)
+    assert monthly.loc["2026-05", "max_drawdown"] == pytest.approx(-0.2)
+
+
 def test_compute_period_return_statistics_reports_stability_summary() -> None:
     period_returns = pd.DataFrame(
         {

@@ -223,6 +223,7 @@ DISPLAY_COLUMN_LABELS = {
     "best_trade": "最好单笔",
     "worst_trade": "最差单笔",
     "net_value": "净值",
+    "drawdown_net_value": "回撤估算净值",
     "start_net_value": "期初净值",
     "end_net_value": "期末净值",
     "observation_count": "观察点数",
@@ -1059,7 +1060,7 @@ def _format_display_value(column: str, value: object, *, stock_names: Mapping[st
         return f"{numeric:.0f}"
     if column in {"planned_entry_price", "actual_entry_price", "entry_price", "stop_price", "target_price", "exit_price"}:
         return f"{numeric:.4f}"
-    if column in {"net_value", "start_net_value", "end_net_value"}:
+    if column in {"net_value", "drawdown_net_value", "start_net_value", "end_net_value"}:
         return f"{numeric:.4f}"
     if math.isinf(numeric):
         return "∞" if numeric > 0 else "-∞"
@@ -1294,13 +1295,14 @@ def _equity_drawdown_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return pd.DataFrame()
     x_column = "date" if "date" in equity_curve.columns else "trade_no"
-    chart_data = equity_curve[[x_column, "net_value"]].copy()
-    chart_data["net_value"] = pd.to_numeric(chart_data["net_value"], errors="coerce")
-    chart_data = chart_data.dropna(subset=["net_value"])
+    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
+    chart_data = equity_curve[[x_column, drawdown_column]].copy()
+    chart_data[drawdown_column] = pd.to_numeric(chart_data[drawdown_column], errors="coerce")
+    chart_data = chart_data.dropna(subset=[drawdown_column])
     if chart_data.empty:
         return pd.DataFrame()
-    running_high = chart_data["net_value"].cummax()
-    chart_data["回撤"] = chart_data["net_value"] / running_high - 1.0
+    running_high = chart_data[drawdown_column].cummax()
+    chart_data["回撤"] = chart_data[drawdown_column] / running_high - 1.0
     if x_column == "date":
         chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
         chart_data = chart_data.dropna(subset=[x_column])

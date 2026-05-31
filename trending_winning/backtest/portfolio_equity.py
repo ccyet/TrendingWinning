@@ -11,7 +11,16 @@ def build_portfolio_equity_curve_from_normalized(
     initial_equity: float = 1.0,
 ) -> pd.DataFrame:
     """按已标准化 K 线逐 K 重估组合现金、持仓市值和暴露。"""
-    equity_columns = ["date", "net_value", "cash", "position_value", "gross_exposure", "margin_exposure", "open_positions"]
+    equity_columns = [
+        "date",
+        "net_value",
+        "drawdown_net_value",
+        "cash",
+        "position_value",
+        "gross_exposure",
+        "margin_exposure",
+        "open_positions",
+    ]
     if normalized.empty:
         return pd.DataFrame(columns=equity_columns)
 
@@ -21,6 +30,7 @@ def build_portfolio_equity_curve_from_normalized(
             {
                 "date": timeline,
                 "net_value": initial_equity,
+                "drawdown_net_value": initial_equity,
                 "cash": initial_equity,
                 "position_value": 0.0,
                 "gross_exposure": 0.0,
@@ -34,6 +44,8 @@ def build_portfolio_equity_curve_from_normalized(
         .sort_index()
         .ffill()
     )
+    low_matrix = normalized.pivot_table(index="date", columns="stock_code", values="low", aggfunc="last").sort_index()
+    high_matrix = normalized.pivot_table(index="date", columns="stock_code", values="high", aggfunc="last").sort_index()
     entries_by_date = _portfolio_entries_by_date(trades)
     cash = float(initial_equity)
     positions: list[dict[str, object]] = []
@@ -43,6 +55,18 @@ def build_portfolio_equity_curve_from_normalized(
         cash, positions = _settle_exited_positions(cash, positions, timestamp)
         position_value_before_entries = _marked_position_value(positions, close_matrix, timestamp)
         equity_before_entries = cash + position_value_before_entries
+        if not records and entries_by_date.get(timestamp):
+            records.append(
+                _equity_record(
+                    current_time,
+                    cash,
+                    position_value_before_entries,
+                    _drawdown_position_value(positions, low_matrix, high_matrix, close_matrix, timestamp),
+                    _gross_exposure(positions, close_matrix, timestamp, equity_before_entries),
+                    _margin_exposure(positions, close_matrix, timestamp, equity_before_entries),
+                    len(positions),
+                )
+            )
         for trade in entries_by_date.get(timestamp, []):
             allocation = equity_before_entries * float(trade["capital_fraction"])
             if allocation <= 0:
@@ -55,18 +79,86 @@ def build_portfolio_equity_curve_from_normalized(
                 positions.append(position)
         position_value = _marked_position_value(positions, close_matrix, timestamp)
         net_value = cash + position_value
+        # 回撤统计使用持仓方向上的不利价格：多头看 low，空头看 high。
+        drawdown_position_value = _drawdown_position_value(positions, low_matrix, high_matrix, close_matrix, timestamp)
         records.append(
-            {
-                "date": current_time,
-                "net_value": float(net_value),
-                "cash": float(cash),
-                "position_value": float(position_value),
-                "gross_exposure": _gross_exposure(positions, close_matrix, timestamp, net_value),
-                "margin_exposure": _margin_exposure(positions, close_matrix, timestamp, net_value),
-                "open_positions": int(len(positions)),
-            }
+            _equity_record(
+                current_time,
+                cash,
+                position_value,
+                drawdown_position_value,
+                _gross_exposure(positions, close_matrix, timestamp, net_value),
+                _margin_exposure(positions, close_matrix, timestamp, net_value),
+                len(positions),
+            )
         )
     return pd.DataFrame(records)
+
+
+def build_single_position_equity_curve_from_normalized(
+    normalized: pd.DataFrame,
+    trades: pd.DataFrame,
+    initial_equity: float = 1.0,
+) -> pd.DataFrame:
+    """单策略满仓净值按行情逐 K 重估，避免只在开平仓点统计回撤。"""
+    if trades.empty:
+        return pd.DataFrame({"trade_no": [0], "net_value": [float(initial_equity)]})
+    return build_portfolio_equity_curve_from_normalized(
+        normalized,
+        _single_position_trades_for_equity(trades),
+        initial_equity,
+    ).assign(trade_no=lambda frame: range(len(frame)))[
+        [
+            "trade_no",
+            "date",
+            "net_value",
+            "drawdown_net_value",
+            "cash",
+            "position_value",
+            "gross_exposure",
+            "margin_exposure",
+            "open_positions",
+        ]
+    ]
+
+
+def _equity_record(
+    current_time: object,
+    cash: float,
+    position_value: float,
+    drawdown_position_value: float,
+    gross_exposure: float,
+    margin_exposure: float,
+    open_positions: int,
+) -> dict[str, object]:
+    return {
+        "date": current_time,
+        "net_value": float(cash + position_value),
+        "drawdown_net_value": float(cash + drawdown_position_value),
+        "cash": float(cash),
+        "position_value": float(position_value),
+        "gross_exposure": float(gross_exposure),
+        "margin_exposure": float(margin_exposure),
+        "open_positions": int(open_positions),
+    }
+
+
+def _single_position_trades_for_equity(trades: pd.DataFrame) -> pd.DataFrame:
+    """把单策略成交表转成组合净值重估需要的满仓成交表。"""
+    result = pd.DataFrame(
+        {
+            "entry_date": pd.to_datetime(trades["entry_date"], errors="coerce"),
+            "exit_date": pd.to_datetime(trades["exit_date"], errors="coerce"),
+            "stock_code": trades["stock_code"].astype(str),
+            "side": trades.get("side", pd.Series(["long"] * len(trades))).fillna("long").astype(str),
+            "entry_price": pd.to_numeric(trades["entry_price"], errors="coerce").fillna(0.0),
+            "raw_return_pct": pd.to_numeric(trades["return_pct"], errors="coerce").fillna(0.0),
+            "capital_fraction": 1.0,
+            "margin_fraction": 1.0,
+            "portfolio_priority": 0,
+        }
+    )
+    return result.dropna(subset=["entry_date", "exit_date"]).reset_index(drop=True)
 
 
 def _portfolio_entries_by_date(trades: pd.DataFrame) -> dict[pd.Timestamp, list[dict[str, object]]]:
@@ -161,12 +253,44 @@ def _marked_position_value_one(
     current_time: pd.Timestamp,
 ) -> float:
     symbol = str(position["stock_code"])
-    if current_time not in close_matrix.index or symbol not in close_matrix.columns:
+    mark_price = _matrix_price(close_matrix, symbol, current_time)
+    if mark_price is None:
         return _unmarked_position_value(position)
-    mark_price = close_matrix.loc[current_time, symbol]
-    if pd.isna(mark_price):
+    return _position_value_at_price(position, mark_price)
+
+
+def _drawdown_position_value(
+    positions: list[dict[str, object]],
+    low_matrix: pd.DataFrame,
+    high_matrix: pd.DataFrame,
+    close_matrix: pd.DataFrame,
+    current_time: pd.Timestamp,
+) -> float:
+    return float(
+        sum(_drawdown_position_value_one(position, low_matrix, high_matrix, close_matrix, current_time) for position in positions)
+    )
+
+
+def _drawdown_position_value_one(
+    position: dict[str, object],
+    low_matrix: pd.DataFrame,
+    high_matrix: pd.DataFrame,
+    close_matrix: pd.DataFrame,
+    current_time: pd.Timestamp,
+) -> float:
+    symbol = str(position["stock_code"])
+    side = str(position["side"])
+    adverse_matrix = high_matrix if side == "short" else low_matrix
+    adverse_price = _matrix_price(adverse_matrix, symbol, current_time)
+    if adverse_price is None:
+        adverse_price = _matrix_price(close_matrix, symbol, current_time)
+    if adverse_price is None:
         return _unmarked_position_value(position)
-    mark_ratio = float(mark_price) / float(position["entry_price"])
+    return _position_value_at_price(position, adverse_price)
+
+
+def _position_value_at_price(position: dict[str, object], price: float) -> float:
+    mark_ratio = float(price) / float(position["entry_price"])
     allocation = float(position["allocation"])
     if str(position["side"]) == "short":
         return -allocation * mark_ratio
@@ -209,3 +333,12 @@ def _entry_margin_rate(capital_fraction: float, margin_fraction: float) -> float
     if capital_fraction <= 0 or margin_fraction <= 0:
         return 1.0
     return float(margin_fraction / capital_fraction)
+
+
+def _matrix_price(price_matrix: pd.DataFrame, symbol: str, current_time: pd.Timestamp) -> float | None:
+    if current_time not in price_matrix.index or symbol not in price_matrix.columns:
+        return None
+    value = price_matrix.loc[current_time, symbol]
+    if pd.isna(value):
+        return None
+    return float(value)

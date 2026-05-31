@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from trending_winning.backtest.models import BacktestConfig
 from trending_winning.backtest.order_backtest import run_order_backtest, run_order_backtest_from_normalized
@@ -84,3 +85,78 @@ def test_engine_reexports_order_backtest_entrypoints_for_compatibility() -> None
 
     assert engine.run_order_backtest is run_order_backtest
     assert engine.run_order_backtest_from_normalized is run_order_backtest_from_normalized
+
+
+def test_single_order_backtest_drawdown_uses_holding_period_price_path() -> None:
+    bars = pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp("2026-05-25 09:30:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.0,
+                "high": 10.0,
+                "low": 10.0,
+                "close": 10.0,
+                "volume": 1000.0,
+                "amount": 10000.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 10:00:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.0,
+                "high": 10.1,
+                "low": 10.0,
+                "close": 10.1,
+                "volume": 1000.0,
+                "amount": 10100.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 10:30:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.1,
+                "high": 10.5,
+                "low": 8.08,
+                "close": 10.1,
+                "volume": 1000.0,
+                "amount": 10100.0,
+            },
+            {
+                "date": pd.Timestamp("2026-05-25 11:00:00"),
+                "stock_code": "000001.SZ",
+                "open": 10.1,
+                "high": 10.5,
+                "low": 10.0,
+                "close": 10.1,
+                "volume": 1000.0,
+                "amount": 10100.0,
+            },
+        ]
+    )
+    orders = pd.DataFrame(
+        [
+            {
+                "order_id": "path-drawdown",
+                "event_id": "path-drawdown",
+                "event_type": "trend_signal_bar",
+                "strategy_name": "trend_signal_bar",
+                "detector_name": "trend",
+                "stock_code": "000001.SZ",
+                "timeframe": "30m",
+                "signal_date": pd.Timestamp("2026-05-25 09:30:00"),
+                "signal_bar_index": 0,
+                "side": "long",
+                "entry_price": 10.1,
+                "stop_price": 7.0,
+                "target_price": 12.0,
+                "max_holding_bars": 2,
+                "metadata": {},
+            }
+        ]
+    )
+
+    result = run_order_backtest(bars, orders, BacktestConfig(max_holding_bars=2))
+
+    assert result.trades["return_pct"].iloc[0] == pytest.approx(0.0)
+    assert result.equity_curve["drawdown_net_value"].min() == pytest.approx(0.8)
+    assert result.stats["max_drawdown"] == pytest.approx(-0.2)
+    assert result.stats["max_drawdown_trough_at"] == "2026-05-25 10:30:00"

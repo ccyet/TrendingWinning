@@ -272,7 +272,8 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     net_value = data["net_value"].reset_index(drop=True)
     if net_value.empty:
         return _empty_equity_statistics()
-    drawdown_stats = equity_drawdown_statistics(data, net_value)
+    drawdown_value = _drawdown_value_for_statistics(data, net_value)
+    drawdown_stats = equity_drawdown_statistics(data, drawdown_value)
     max_drawdown = float(drawdown_stats["max_drawdown"])
     equity_return_stats = equity_return_statistics(data, net_value, max_drawdown=max_drawdown, periods_per_year=periods_per_year)
     equity_exposure_stats = equity_exposure_statistics(data, net_value)
@@ -388,6 +389,16 @@ def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     if column not in frame.columns:
         return pd.Series([0.0] * len(frame), dtype=float)
     return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float).reset_index(drop=True)
+
+
+def _drawdown_value_for_statistics(data: pd.DataFrame, net_value: pd.Series) -> pd.Series:
+    """有价格路径回撤净值时优先使用它；收益和波动仍使用收盘净值。"""
+    if "drawdown_net_value" not in data.columns:
+        return net_value
+    drawdown_value = pd.to_numeric(data["drawdown_net_value"], errors="coerce").reset_index(drop=True)
+    if drawdown_value.dropna().empty:
+        return net_value
+    return drawdown_value.fillna(net_value)
 
 
 def _max_or_zero(values: pd.Series) -> float:

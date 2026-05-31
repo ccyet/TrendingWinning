@@ -337,7 +337,7 @@ def test_portfolio_statistics_use_time_marked_equity_drawdown() -> None:
         PortfolioConfig(max_open_positions=1),
     )
 
-    equity_drawdown = result.equity_curve["net_value"] / result.equity_curve["net_value"].cummax() - 1.0
+    equity_drawdown = result.equity_curve["drawdown_net_value"] / result.equity_curve["drawdown_net_value"].cummax() - 1.0
     assert result.stats["total_return"] == pytest.approx(result.equity_curve.iloc[-1]["net_value"] - 1.0)
     assert result.stats["max_drawdown"] == pytest.approx(equity_drawdown.min())
     assert result.stats["max_drawdown"] < 0.0

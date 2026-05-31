@@ -17,6 +17,7 @@ from trending_winning.backtest.order_decisions import (
     validate_order_frame_columns,
 )
 from trending_winning.backtest.position_gate import apply_single_position_gate
+from trending_winning.backtest.portfolio_equity import build_single_position_equity_curve_from_normalized
 from trending_winning.backtest.stats import (
     build_equity_curve,
     compute_equity_statistics,
@@ -240,7 +241,7 @@ def _run_order_backtest_from_normalized(
 
     trades_df = sort_trades_for_statistics(trades_df.drop(columns=["_exit_index"]))
     trades_df = trades_df[TRADE_COLUMNS]
-    equity = build_equity_curve(trades_df, cfg.initial_equity)
+    equity = build_single_position_equity_curve_from_normalized(normalized, trades_df, cfg.initial_equity)
     return BacktestResult(
         trades=trades_df,
         equity_curve=equity,

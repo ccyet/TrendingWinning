@@ -371,6 +371,20 @@ def test_equity_drawdown_chart_frame_uses_running_high_watermark() -> None:
     assert chart["回撤"].tolist() == pytest.approx([0.0, 0.0, -1.0 / 12.0, 0.0])
 
 
+def test_equity_drawdown_chart_frame_uses_price_path_drawdown_value() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27"]),
+            "net_value": [1.0, 1.0, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2],
+        }
+    )
+
+    chart = _equity_drawdown_chart_frame(equity)
+
+    assert chart["回撤"].tolist() == pytest.approx([0.0, -0.2, 0.0])
+
+
 def test_streamlit_backtest_result_renders_equity_drawdown_chart() -> None:
     source = getsource(streamlit_app._render_backtest_result)
 

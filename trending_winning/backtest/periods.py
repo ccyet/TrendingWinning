@@ -37,11 +37,18 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
     if equity_curve.empty or not {"date", "net_value"}.issubset(equity_curve.columns):
         return pd.DataFrame(columns=PERIOD_RETURN_COLUMNS)
 
-    columns = ["date", "net_value", *(["trade_no"] if "trade_no" in equity_curve.columns else [])]
+    columns = [
+        "date",
+        "net_value",
+        *(["drawdown_net_value"] if "drawdown_net_value" in equity_curve.columns else []),
+        *(["trade_no"] if "trade_no" in equity_curve.columns else []),
+    ]
     data = equity_curve[columns].copy()
     data["_row_order"] = range(len(data))
     data["date"] = pd.to_datetime(data["date"], errors="coerce")
     data["net_value"] = pd.to_numeric(data["net_value"], errors="coerce")
+    if "drawdown_net_value" in data.columns:
+        data["drawdown_net_value"] = pd.to_numeric(data["drawdown_net_value"], errors="coerce")
     data = data.dropna(subset=["date", "net_value"])
     sort_columns = ["date", "_row_order"]
     if "trade_no" in data.columns:
@@ -59,7 +66,7 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
         start_net_value = first_net_value if previous_net_value is None else float(previous_net_value)
         end_net_value = float(group.iloc[-1]["net_value"])
         period_equity = pd.concat(
-            [pd.Series([start_net_value]), group["net_value"].reset_index(drop=True)],
+            [pd.Series([start_net_value]), _period_drawdown_values(group)],
             ignore_index=True,
         )
         period_drawdown = period_equity / period_equity.cummax() - 1.0
@@ -77,6 +84,15 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
         )
         previous_net_value = end_net_value
     return pd.DataFrame(rows, columns=PERIOD_RETURN_COLUMNS)
+
+
+def _period_drawdown_values(group: pd.DataFrame) -> pd.Series:
+    """周期收益用正常净值，周期最大回撤优先用价格路径回撤净值。"""
+    if "drawdown_net_value" not in group.columns:
+        return group["net_value"].reset_index(drop=True)
+    drawdown_value = pd.to_numeric(group["drawdown_net_value"], errors="coerce").reset_index(drop=True)
+    net_value = pd.to_numeric(group["net_value"], errors="coerce").reset_index(drop=True)
+    return drawdown_value.fillna(net_value)
 
 
 def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: str = "period") -> dict[str, object]:
