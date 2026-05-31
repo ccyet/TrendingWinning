@@ -276,6 +276,13 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     assert "bt_enable_trailing_take_profit" in source
 
 
+def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
+    help_text = streamlit_app.BACKTEST_HELP_TEXT["enable_trailing_take_profit"]
+
+    assert "下方三个参数" in help_text
+    assert "两个参数" not in help_text
+
+
 def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:
     resolver = getattr(streamlit_app, "_resolve_trailing_take_profit_controls", None)
 
