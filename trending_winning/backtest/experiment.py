@@ -26,10 +26,18 @@ from trending_winning.backtest.portfolio import (
     run_portfolio_candidate_backtest_from_normalized,
     run_portfolio_backtest_from_normalized,
 )
+from trending_winning.backtest.reporting import (
+    SETUP_STAT_FIELDS,
+    detector_trade_statistics as _detector_trade_statistics,
+    grouped_trade_statistics as _grouped_trade_statistics,
+    setup_trade_statistics as _setup_trade_statistics,
+    strategy_names_for_statistics as _strategy_names_for_statistics,
+    strategy_trade_statistics as _strategy_trade_statistics,
+    trade_dated_equity_curve,
+)
 from trending_winning.backtest.stats import (
     STAT_KEYS,
     compute_decision_reason_statistics,
-    compute_grouped_trade_statistics,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
@@ -182,7 +190,6 @@ PARAMETER_SUMMARY_METRICS = (
     ("strategy_filter_rejection_rate", "avg_strategy_filter_rejection_rate", "mean"),
 )
 
-SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
 SETUP_ORDER_DECISION_FIELDS = ("detector_name", "event_type", "side")
 SETUP_STRATEGY_FILTER_FIELDS = ("detector_name", "event_type", "side", "filter_name", "context_timeframe")
 SWEEP_CASE_STRATEGY_COLUMNS = (
@@ -488,7 +495,7 @@ def run_single_strategy_experiment(
         timeframe=config.timeframe,
     )
     backtest = _with_data_management_statistics(backtest, data, min_coverage_ratio=config.min_coverage_ratio)
-    monthly_returns = compute_period_returns(_trade_dated_equity_curve(backtest), freq="M")
+    monthly_returns = compute_period_returns(trade_dated_equity_curve(backtest.equity_curve, backtest.trades), freq="M")
     backtest = _with_period_return_statistics(backtest, monthly_returns)
     result = SingleStrategyExperimentResult(
         config=config,
@@ -511,7 +518,7 @@ def run_single_strategy_experiment(
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_detector_trade_statistics(
             backtest.trades,
-            config,
+            _configured_detector_names(config),
             backtest.order_decisions,
             backtest.strategy_filter_decisions,
         ),
@@ -594,7 +601,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
         detector_stats=_detector_trade_statistics(
             backtest.trades,
-            config,
+            _configured_detector_names(config),
             backtest.order_decisions,
             backtest.strategy_filter_decisions,
         ),
@@ -1285,7 +1292,7 @@ def _with_period_return_statistics(result: BacktestResult, period_returns: pd.Da
 
 def _monthly_period_statistics(result: BacktestResult, *, use_trade_dates: bool) -> dict[str, object]:
     """给参数遍历行计算月度稳定性；组合用盯市净值，单策略用成交时间轴。"""
-    equity_curve = _trade_dated_equity_curve(result) if use_trade_dates else result.equity_curve
+    equity_curve = trade_dated_equity_curve(result.equity_curve, result.trades) if use_trade_dates else result.equity_curve
     monthly_returns = compute_period_returns(equity_curve, freq="M")
     return compute_period_return_statistics(monthly_returns, prefix="monthly")
 
@@ -1377,6 +1384,10 @@ def _symbol_grouped_trade_statistics(
         .reset_index(drop=True)
         .reindex(columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
     )
+
+
+def _configured_detector_names(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> tuple[str, ...]:
+    return tuple(config.detectors) if isinstance(config, PortfolioExperimentConfig) else (config.detector,)
 
 
 def _zero_symbol_statistics(symbols: Sequence[str], symbol_name_by_code: Mapping[str, str]) -> pd.DataFrame:
@@ -1701,7 +1712,7 @@ def _case_detector_statistics(
 ) -> pd.DataFrame:
     """按 case 汇总识别模块表现；已启用但没有成交的 detector 也保留零行。"""
     columns = pd.Index(["case_name", "case_config_hash", "detector_name", *STAT_KEYS])
-    stats = _detector_trade_statistics(trades, config, order_decisions, filter_decisions)
+    stats = _detector_trade_statistics(trades, _configured_detector_names(config), order_decisions, filter_decisions)
     if stats.empty:
         return pd.DataFrame(columns=columns)
     stats.insert(0, "case_config_hash", case_config_hash)
@@ -2289,271 +2300,6 @@ def _pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
     if not scores:
         return pd.DataFrame(index=table.index)
     return pd.DataFrame(scores, index=table.index).fillna(float("-inf"))
-
-
-def _grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) -> pd.DataFrame:
-    fields = (by,) if isinstance(by, str) else tuple(by)
-    missing = [field for field in fields if field not in trades.columns]
-    if missing:
-        return pd.DataFrame(columns=pd.Index([*fields, *STAT_KEYS]))
-    return compute_grouped_trade_statistics(trades, by=by)
-
-
-def _strategy_trade_statistics(
-    trades: pd.DataFrame,
-    strategies: Sequence[object],
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按策略汇总成交表现；保留已启用但没有成交的策略。"""
-    columns = pd.Index(["strategy_name", *STAT_KEYS])
-    stats = _grouped_trade_statistics(trades, by="strategy_name").reindex(columns=columns)
-    strategy_names = _strategy_names_for_statistics(strategies, order_decisions, filter_decisions)
-    if not strategy_names:
-        return stats
-    existing_names = set()
-    if not stats.empty and "strategy_name" in stats.columns:
-        existing_names = {name for name in stats["strategy_name"].map(_setup_label) if name}
-    missing_names = [name for name in strategy_names if name not in existing_names]
-    if not missing_names:
-        return _sort_strategy_statistics(stats, strategy_names)
-    zero_rows = pd.DataFrame(
-        [
-            {
-                "strategy_name": strategy_name,
-                **{stat_key: 0.0 for stat_key in STAT_KEYS},
-            }
-            for strategy_name in missing_names
-        ],
-        columns=columns,
-    )
-    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
-    if not frames:
-        return pd.DataFrame(columns=columns)
-    return _sort_strategy_statistics(pd.concat(frames, ignore_index=True), strategy_names)
-
-
-def _strategy_names_for_statistics(
-    strategies: Sequence[object],
-    *decision_frames: pd.DataFrame | None,
-) -> tuple[str, ...]:
-    """生成策略统计行的稳定顺序，优先使用本次实际执行的策略对象。"""
-    names: list[str] = []
-    for strategy in strategies:
-        name = _setup_label(strategy if isinstance(strategy, str) else getattr(strategy, "name", ""))
-        if name and name not in names:
-            names.append(name)
-    for strategy_name in _strategy_names_from_decisions(*decision_frames):
-        if strategy_name not in names:
-            names.append(strategy_name)
-    return tuple(names)
-
-
-def _strategy_names_from_decisions(*decision_frames: pd.DataFrame | None) -> tuple[str, ...]:
-    names: list[str] = []
-    for frame in decision_frames:
-        if frame is None or frame.empty or "strategy_name" not in frame.columns:
-            continue
-        for strategy_name in frame["strategy_name"].map(_setup_label):
-            if strategy_name and strategy_name not in names:
-                names.append(strategy_name)
-    return tuple(names)
-
-
-def _sort_strategy_statistics(stats: pd.DataFrame, strategy_names: Sequence[str]) -> pd.DataFrame:
-    columns = pd.Index(["strategy_name", *STAT_KEYS])
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    order = {name: index for index, name in enumerate(strategy_names)}
-    result = stats.reindex(columns=columns).copy()
-    result["_strategy_label"] = result["strategy_name"].map(_setup_label)
-    result["_strategy_order"] = result["_strategy_label"].map(lambda name: order.get(name, len(order)))
-    return (
-        result.sort_values(["_strategy_order", "_strategy_label"], kind="mergesort")
-        .drop(columns=["_strategy_order", "_strategy_label"])
-        .reset_index(drop=True)
-    )
-
-
-def _detector_trade_statistics(
-    trades: pd.DataFrame,
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按识别模块汇总成交表现；保留已启用但没有成交的 detector。"""
-    columns = pd.Index(["detector_name", *STAT_KEYS])
-    stats = _grouped_trade_statistics(trades, by="detector_name").reindex(columns=columns)
-    detector_names = _detector_names_for_statistics(config, order_decisions, filter_decisions)
-    if not detector_names:
-        return stats
-    existing_names = set()
-    if not stats.empty and "detector_name" in stats.columns:
-        existing_names = {name for name in stats["detector_name"].map(_setup_label) if name}
-    missing_names = [name for name in detector_names if name not in existing_names]
-    if not missing_names:
-        return _sort_detector_statistics(stats, detector_names)
-    zero_rows = pd.DataFrame(
-        [
-            {
-                "detector_name": detector_name,
-                **{stat_key: 0.0 for stat_key in STAT_KEYS},
-            }
-            for detector_name in missing_names
-        ],
-        columns=columns,
-    )
-    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
-    if not frames:
-        return pd.DataFrame(columns=columns)
-    return _sort_detector_statistics(pd.concat(frames, ignore_index=True), detector_names)
-
-
-def _detector_names_for_statistics(
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-    *decision_frames: pd.DataFrame | None,
-) -> tuple[str, ...]:
-    """生成 detector 统计行的稳定顺序，优先使用实验配置。"""
-    configured = config.detectors if isinstance(config, PortfolioExperimentConfig) else (config.detector,)
-    names: list[str] = []
-    for detector_name in configured:
-        name = _setup_label(detector_name)
-        if name and name not in names:
-            names.append(name)
-    for detector_name in _detector_names_from_decisions(*decision_frames):
-        if detector_name not in names:
-            names.append(detector_name)
-    return tuple(names)
-
-
-def _detector_names_from_decisions(*decision_frames: pd.DataFrame | None) -> tuple[str, ...]:
-    names: list[str] = []
-    for frame in decision_frames:
-        if frame is None or frame.empty or "detector_name" not in frame.columns:
-            continue
-        for detector_name in frame["detector_name"].map(_setup_label):
-            if detector_name and detector_name not in names:
-                names.append(detector_name)
-    return tuple(names)
-
-
-def _sort_detector_statistics(stats: pd.DataFrame, detector_names: Sequence[str]) -> pd.DataFrame:
-    columns = pd.Index(["detector_name", *STAT_KEYS])
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    order = {name: index for index, name in enumerate(detector_names)}
-    result = stats.reindex(columns=columns).copy()
-    result["_detector_label"] = result["detector_name"].map(_setup_label)
-    result["_detector_order"] = result["_detector_label"].map(lambda name: order.get(name, len(order)))
-    return (
-        result.sort_values(["_detector_order", "_detector_label"], kind="mergesort")
-        .drop(columns=["_detector_order", "_detector_label"])
-        .reset_index(drop=True)
-    )
-
-
-def _setup_trade_statistics(
-    trades: pd.DataFrame,
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按 setup 汇总成交表现；保留只有信号或拒单、没有成交的 setup。"""
-    stats = _grouped_trade_statistics(trades, by=SETUP_STAT_FIELDS).reindex(
-        columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS])
-    )
-    setup_keys = _setup_keys_from_decisions(order_decisions, filter_decisions)
-    if setup_keys.empty:
-        return stats
-    existing_keys = set(_setup_key_tuples(stats))
-    missing_keys = [
-        tuple(row)
-        for row in setup_keys.loc[:, SETUP_STAT_FIELDS].itertuples(index=False, name=None)
-        if tuple(row) not in existing_keys
-    ]
-    if not missing_keys:
-        return _sort_setup_statistics(stats)
-    zero_rows = pd.DataFrame(
-        [
-            {
-                **dict(zip(SETUP_STAT_FIELDS, key, strict=True)),
-                **{stat_key: 0.0 for stat_key in STAT_KEYS},
-            }
-            for key in missing_keys
-        ],
-        columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS]),
-    )
-    frames = [frame for frame in (stats, zero_rows) if not frame.empty]
-    if not frames:
-        return pd.DataFrame(columns=pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS]))
-    return _sort_setup_statistics(pd.concat(frames, ignore_index=True))
-
-
-def _setup_keys_from_decisions(*decision_frames: pd.DataFrame | None) -> pd.DataFrame:
-    frames: list[pd.DataFrame] = []
-    for frame in decision_frames:
-        if frame is None or frame.empty or not set(SETUP_STAT_FIELDS).issubset(frame.columns):
-            continue
-        setup = frame.loc[:, SETUP_STAT_FIELDS].copy()
-        for setup_field in SETUP_STAT_FIELDS:
-            setup[setup_field] = setup[setup_field].map(_setup_label)
-        present = setup.loc[:, SETUP_STAT_FIELDS].ne("").all(axis=1)
-        if bool(present.any()):
-            frames.append(setup.loc[present, SETUP_STAT_FIELDS])
-    if not frames:
-        return pd.DataFrame(columns=pd.Index(SETUP_STAT_FIELDS))
-    return (
-        pd.concat(frames, ignore_index=True)
-        .drop_duplicates()
-        .sort_values(list(SETUP_STAT_FIELDS), kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _setup_label(value: object) -> str:
-    if pd.isna(value):
-        return ""
-    return str(value).strip()
-
-
-def _setup_key_tuples(stats: pd.DataFrame) -> list[tuple[str, str, str]]:
-    if stats.empty or not set(SETUP_STAT_FIELDS).issubset(stats.columns):
-        return []
-    normalized = stats.loc[:, SETUP_STAT_FIELDS].copy()
-    for setup_field in SETUP_STAT_FIELDS:
-        normalized[setup_field] = normalized[setup_field].map(_setup_label)
-    return [tuple(row) for row in normalized.itertuples(index=False, name=None)]
-
-
-def _sort_setup_statistics(stats: pd.DataFrame) -> pd.DataFrame:
-    columns = pd.Index([*SETUP_STAT_FIELDS, *STAT_KEYS])
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    return (
-        stats.reindex(columns=columns)
-        .sort_values(list(SETUP_STAT_FIELDS), kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _trade_dated_equity_curve(backtest: BacktestResult) -> pd.DataFrame:
-    equity = backtest.equity_curve.copy()
-    if "date" in equity.columns:
-        return equity
-    trades = backtest.trades.copy()
-    if equity.empty or trades.empty or "exit_date" not in trades.columns:
-        return equity
-    if "trade_no" not in equity.columns:
-        return equity
-    dated = equity.merge(
-        trades.assign(trade_no=range(1, len(trades) + 1))[["trade_no", "exit_date"]],
-        on="trade_no",
-        how="left",
-    )
-    if 0 in set(pd.to_numeric(dated["trade_no"], errors="coerce").dropna().astype(int)):
-        first_exit_date = pd.to_datetime(trades["exit_date"], errors="coerce").dropna().min()
-        if pd.notna(first_exit_date):
-            dated.loc[dated["trade_no"].eq(0), "exit_date"] = first_exit_date
-    return dated.rename(columns={"exit_date": "date"})
 
 
 def _json_ready(value):
