@@ -20,6 +20,7 @@ from trending_winning.backtest.execution import (
     validate_backtest_config,
 )
 from trending_winning.backtest.indicators import completed_bar_moving_average
+from trending_winning.backtest.position_gate import apply_single_position_gate
 from trending_winning.backtest.stats import (
     build_equity_curve,
     compute_equity_statistics,
@@ -166,22 +167,19 @@ def run_backtest(scanned_bars: pd.DataFrame, config: BacktestConfig | None = Non
         candidates.append({"trade": trade, "order_sequence": order_sequence})
 
     trades: list[dict[str, object]] = []
-    open_until_date: pd.Timestamp | None = None
     # 旧版突破回测也按单策略满仓处理：任意股票有持仓时，全局不再开第二笔。
-    for candidate in sorted(candidates, key=_single_position_candidate_sort_key):
+    for gate_decision in apply_single_position_gate(candidates):
+        candidate = gate_decision.candidate
         trade = candidate["trade"]
         if not isinstance(trade, Mapping):
             continue
         order_sequence = int(candidate.get("order_sequence", 0))
         trade_record = dict(trade)
-        entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
-        if open_until_date is not None and pd.notna(entry_date) and entry_date <= open_until_date:
-            decisions.append((order_sequence, _legacy_order_decision_record(trade_record, "rejected", "already_open")))
+        if gate_decision.status == "rejected":
+            decisions.append((order_sequence, _legacy_order_decision_record(trade_record, "rejected", gate_decision.reason)))
             continue
         trades.append(trade_record)
         decisions.append((order_sequence, _legacy_order_decision_record(trade_record, "accepted", "")))
-        exit_date = pd.to_datetime(trade.get("exit_date", pd.NaT), errors="coerce")
-        open_until_date = pd.Timestamp(exit_date) if pd.notna(exit_date) else None
 
     decision_records = [record for _, record in sorted(decisions, key=lambda item: item[0])]
     decisions_df = pd.DataFrame(decision_records, columns=ORDER_DECISION_COLUMNS)
@@ -606,17 +604,14 @@ def _run_order_backtest_from_normalized(
             }
         )
 
-    # 单策略回测按全仓进出处理：一笔交易未退出前，不允许任何股票再开新仓。
-    # 门控必须按真实入场时间判断，不能用信号时间或股票代码顺序替代。
-    open_until_date: pd.Timestamp | None = None
-    for candidate in sorted(candidates, key=_single_position_candidate_sort_key):
+    for gate_decision in apply_single_position_gate(candidates):
+        candidate = gate_decision.candidate
         order_sequence = int(candidate["order_sequence"])
         order = candidate["order"]
         trade = candidate["trade"]
         execution = candidate["execution"]
-        entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
-        if open_until_date is not None and pd.notna(entry_date) and entry_date <= open_until_date:
-            decisions.append((order_sequence, order_decision_record(order, "rejected", "already_open", execution=execution)))
+        if gate_decision.status == "rejected":
+            decisions.append((order_sequence, order_decision_record(order, "rejected", gate_decision.reason, execution=execution)))
             continue
         trades.append(trade)
         decisions.append(
@@ -634,8 +629,6 @@ def _run_order_backtest_from_normalized(
                 ),
             )
         )
-        exit_date = pd.to_datetime(trade.get("exit_date", pd.NaT), errors="coerce")
-        open_until_date = pd.Timestamp(exit_date) if pd.notna(exit_date) else None
 
     decision_records = [record for _, record in sorted(decisions, key=lambda item: item[0])]
     decisions_df = pd.DataFrame(decision_records, columns=ORDER_DECISION_COLUMNS)
@@ -733,23 +726,6 @@ def _sort_orders_for_execution(orders: pd.DataFrame) -> pd.DataFrame:
 def _sorted_order_records(orders: pd.DataFrame) -> list[dict[str, object]]:
     """按撮合顺序输出订单记录，避免热路径反复创建 Series 行对象。"""
     return _sort_orders_for_execution(orders).to_dict("records")
-
-
-def _single_position_candidate_sort_key(candidate: Mapping[str, object]) -> tuple[bool, pd.Timestamp, int, str, str]:
-    """单策略满仓门控按真实入场时间排序；信号时间只负责生成候选订单。"""
-    trade = candidate["trade"]
-    if not isinstance(trade, Mapping):
-        return (True, pd.Timestamp.max, int(candidate.get("order_sequence", 0)), "", "")
-    entry_date = pd.to_datetime(trade.get("entry_date", pd.NaT), errors="coerce")
-    missing_entry = bool(pd.isna(entry_date))
-    entry_key = pd.Timestamp.max if missing_entry else pd.Timestamp(entry_date)
-    return (
-        missing_entry,
-        entry_key,
-        int(candidate.get("order_sequence", 0)),
-        str(trade.get("stock_code", "")),
-        str(trade.get("order_id", "")),
-    )
 
 
 def validate_order_frame_columns(orders: pd.DataFrame, *, extra_required: tuple[str, ...] = ()) -> None:
