@@ -18,6 +18,8 @@ SWEEP_PARETO_OBJECTIVES = (
 )
 
 PARAMETER_SUMMARY_METRICS = (
+    ("risk_adjusted_score", "avg_risk_adjusted_score", "mean"),
+    ("risk_adjusted_score", "median_risk_adjusted_score", "median"),
     ("total_return", "avg_total_return", "mean"),
     ("total_return", "median_total_return", "median"),
     ("max_drawdown", "avg_max_drawdown", "mean"),
@@ -52,9 +54,10 @@ def rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
     """给参数遍历表生成稳定排名，并附加 Pareto 分层。"""
     if "sweep_rank" in table.columns:
         table = table.drop(columns=["sweep_rank"])
-    for column in ("pareto_rank", "is_pareto_efficient"):
+    for column in ("pareto_rank", "is_pareto_efficient", "risk_adjusted_rank", "risk_adjusted_score"):
         if column in table.columns:
             table = table.drop(columns=[column])
+    table = table.assign(risk_adjusted_score=risk_adjusted_scores(table))
     sort_spec = [
         ("total_return", False),
         ("max_drawdown", False),
@@ -76,9 +79,14 @@ def rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
     pareto_rank = pareto_front_ranks(ranked)
     ranked.insert(1, "pareto_rank", pareto_rank)
     ranked.insert(2, "is_pareto_efficient", [rank == 1 for rank in pareto_rank])
-    if "case_config_hash" in ranked.columns:
+    has_case_hash = "case_config_hash" in ranked.columns
+    if has_case_hash:
         values = ranked.pop("case_config_hash")
         ranked.insert(3, "case_config_hash", values)
+    score_values = ranked.pop("risk_adjusted_score")
+    risk_insert_at = 4 if has_case_hash else 3
+    ranked.insert(risk_insert_at, "risk_adjusted_rank", risk_adjusted_ranks(ranked, score_values))
+    ranked.insert(risk_insert_at + 1, "risk_adjusted_score", score_values)
     return ranked
 
 
@@ -210,6 +218,91 @@ def pareto_score_table(table: pd.DataFrame) -> pd.DataFrame:
     if not scores:
         return pd.DataFrame(index=table.index)
     return pd.DataFrame(scores, index=table.index).fillna(float("-inf"))
+
+
+def risk_adjusted_scores(table: pd.DataFrame) -> pd.Series:
+    """把收益、回撤、稳定性、路径效率、样本量和诊断状态压成 0-100 风险质量分。"""
+    if table.empty:
+        return pd.Series(dtype=float, index=table.index)
+
+    component_weights = {
+        "total_return": 0.30,
+        "max_drawdown": 0.22,
+        "monthly_worst_return": 0.15,
+        "monthly_return_std": 0.10,
+        "ulcer_index": 0.08,
+        "return_per_exposure_bar": 0.08,
+        "trade_count": 0.07,
+    }
+    components = pd.Series(0.0, index=table.index, dtype=float)
+    for column, weight in component_weights.items():
+        components += weight * _risk_score_component(table, column)
+
+    penalty = _diagnostic_risk_penalty(table)
+    return (components.mul(100.0) - penalty).clip(lower=0.0, upper=100.0).round(6)
+
+
+def risk_adjusted_ranks(table: pd.DataFrame, score: pd.Series) -> list[int]:
+    """风险评分的独立排名；不替换 sweep_rank，供用户按稳健性筛选。"""
+    if table.empty:
+        return []
+    sortable = pd.DataFrame(
+        {
+            "_score": pd.to_numeric(score, errors="coerce").fillna(0.0),
+            "_case_name": table.get("case_name", pd.Series([""] * len(table), index=table.index)).astype(str),
+            "_position": range(len(table)),
+        },
+        index=table.index,
+    )
+    ordered = sortable.sort_values(["_score", "_case_name"], ascending=[False, True], kind="mergesort")
+    ranks = pd.Series(range(1, len(ordered) + 1), index=ordered.index)
+    return ranks.loc[table.index].astype(int).tolist()
+
+
+def _risk_score_component(table: pd.DataFrame, column: str) -> pd.Series:
+    if column == "trade_count":
+        return _sample_size_score(table)
+    if column not in table.columns:
+        return pd.Series(0.5, index=table.index, dtype=float)
+    values = pd.to_numeric(table[column], errors="coerce")
+    if column in {"monthly_return_std", "ulcer_index"}:
+        values = -values
+    return _percentile_score(values)
+
+
+def _sample_size_score(table: pd.DataFrame) -> pd.Series:
+    if "trade_count" not in table.columns:
+        return pd.Series(0.5, index=table.index, dtype=float)
+    values = pd.to_numeric(table["trade_count"], errors="coerce").fillna(0.0).clip(lower=0.0)
+    max_value = float(values.max()) if not values.empty else 0.0
+    if max_value <= 0:
+        return pd.Series(0.0, index=table.index, dtype=float)
+    return np.log1p(values) / math.log1p(max_value)
+
+
+def _percentile_score(values: pd.Series) -> pd.Series:
+    valid = values.dropna()
+    if valid.empty:
+        return pd.Series(0.5, index=values.index, dtype=float)
+    if len(valid) == 1 or float(valid.max()) == float(valid.min()):
+        score = pd.Series(0.5, index=values.index, dtype=float)
+        score.loc[valid.index] = 1.0
+        return score
+    score = values.rank(method="average", pct=True)
+    return score.fillna(0.5).astype(float)
+
+
+def _diagnostic_risk_penalty(table: pd.DataFrame) -> pd.Series:
+    failed = _optional_numeric_column(table, "diagnostic_failed_count")
+    attention = _optional_numeric_column(table, "diagnostic_attention_count")
+    severity = _optional_numeric_column(table, "diagnostic_max_severity")
+    return (failed.mul(15.0) + attention.mul(6.0) + severity.mul(8.0)).clip(lower=0.0, upper=45.0)
+
+
+def _optional_numeric_column(table: pd.DataFrame, column: str) -> pd.Series:
+    if column not in table.columns:
+        return pd.Series(0.0, index=table.index, dtype=float)
+    return pd.to_numeric(table[column], errors="coerce").fillna(0.0).astype(float)
 
 
 def numeric_group_metric(group: pd.DataFrame, column: str, method: str) -> float:

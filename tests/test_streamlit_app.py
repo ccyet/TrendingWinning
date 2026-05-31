@@ -586,6 +586,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "stock_code": ["000001.SZ", "600519.SH"],
             "case_count": [2, 10],
             "pareto_hit_rate": [0.25, 1.0],
+            "risk_adjusted_rank": [1, 2],
+            "risk_adjusted_score": [82.3456, 61.0],
+            "avg_risk_adjusted_score": [75.1234, 60.0],
             "positive_return_rate": [0.5, 0.9],
             "std_total_return": [0.0312, 0.12],
             "best_total_return": [0.2, 1.0],
@@ -624,6 +627,9 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert custom_display["股票名称"].tolist()[0] == "自定义银行"
     assert display["参数组数"].tolist() == ["2", "10"]
     assert display["Pareto命中率"].tolist() == ["25.00%", "100.00%"]
+    assert display["风险质量排名"].tolist() == ["1", "2"]
+    assert display["风险质量评分"].tolist() == ["82.35", "61.00"]
+    assert display["平均风险质量评分"].tolist() == ["75.12", "60.00"]
     assert display["正收益率"].tolist() == ["50.00%", "90.00%"]
     assert display["总收益标准差"].tolist() == ["3.12%", "12.00%"]
     assert display["最好总收益"].tolist() == ["20.00%", "100.00%"]
@@ -947,6 +953,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "avg_accepted_actual_risk_pct" in html
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
+    assert "risk_adjusted_score" in html
     assert "固定百分比止盈止损只属于旧突破回测" in html
     assert "结构止损价说明" in html
     assert "结构止损最大风险" in html
@@ -969,6 +976,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "盈利通道回撤止盈" in readme
     assert "avg_accepted_actual_risk_pct" in readme
     assert "参数遍历成交质量" in readme
+    assert "risk_adjusted_score" in readme
+    assert "risk_adjusted_score" in html
     assert "确认 K 线完成后" in readme
     assert "下降压力线" in readme
     assert "回测界面 K 线使用说明" in html
@@ -1078,6 +1087,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
         assert field in guide
     assert "sweep_rank" in readme
     assert "sweep_rank" in guide
+    assert "risk_adjusted_score" in readme
+    assert "risk_adjusted_score" in guide
     assert "pareto_rank" in readme
     assert "pareto_rank" in guide
     assert "case_config_hash" in readme

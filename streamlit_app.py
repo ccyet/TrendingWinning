@@ -157,6 +157,10 @@ DISPLAY_COLUMN_LABELS = {
     "pareto_hit_rate": "Pareto命中率",
     "positive_return_case_count": "正收益组数",
     "positive_return_rate": "正收益率",
+    "risk_adjusted_rank": "风险质量排名",
+    "risk_adjusted_score": "风险质量评分",
+    "avg_risk_adjusted_score": "平均风险质量评分",
+    "median_risk_adjusted_score": "中位风险质量评分",
     "avg_total_return": "平均总收益",
     "median_total_return": "中位总收益",
     "std_total_return": "总收益标准差",
@@ -1241,6 +1245,7 @@ def _is_integer_column(column: str) -> bool:
     return name in {
         "trade_no",
         "episode_rank",
+        "risk_adjusted_rank",
         "episode_no",
         "underwater_bars",
         "recovery_bars",

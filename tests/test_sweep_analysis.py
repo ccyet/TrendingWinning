@@ -36,6 +36,40 @@ def test_sweep_analysis_ranks_cases_and_pareto_fronts_without_experiment_config(
     assert pareto["pareto_rank"].eq(1).all()
 
 
+def test_sweep_analysis_adds_risk_adjusted_score_without_replacing_sweep_rank() -> None:
+    table = pd.DataFrame(
+        {
+            "case_name": ["fragile", "steady"],
+            "case_config_hash": ["f" * 64, "s" * 64],
+            "total_return": [0.20, 0.10],
+            "max_drawdown": [-0.20, -0.03],
+            "ulcer_index": [0.12, 0.01],
+            "monthly_worst_return": [-0.15, -0.01],
+            "monthly_return_std": [0.08, 0.01],
+            "return_per_exposure_bar": [0.004, 0.003],
+            "trade_count": [5, 20],
+            "diagnostic_failed_count": [2, 0],
+            "diagnostic_attention_count": [1, 0],
+            "diagnostic_max_severity": [2, 0],
+        }
+    )
+
+    ranked = rank_sweep_table(table)
+    by_name = ranked.set_index("case_name")
+
+    assert ranked["case_name"].tolist()[0] == "fragile"
+    assert by_name.loc["steady", "risk_adjusted_rank"] == 1
+    assert by_name.loc["steady", "risk_adjusted_score"] > by_name.loc["fragile", "risk_adjusted_score"]
+    assert ranked.columns[:6].tolist() == [
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "case_config_hash",
+        "risk_adjusted_rank",
+        "risk_adjusted_score",
+    ]
+
+
 def test_sweep_analysis_uses_single_batch_dominance_matrix_for_fronts() -> None:
     calls = 0
     original = pareto_dominance_matrix
@@ -57,6 +91,19 @@ def test_sweep_analysis_uses_single_batch_dominance_matrix_for_fronts() -> None:
 
     assert pareto_front_ranks(table, dominance_matrix_fn=spy) == [1, 1, 2, 3]
     assert calls == 1
+
+
+def test_sweep_analysis_handles_empty_table_with_risk_score_columns() -> None:
+    ranked = rank_sweep_table(pd.DataFrame())
+
+    assert ranked.columns[:5].tolist() == [
+        "sweep_rank",
+        "pareto_rank",
+        "is_pareto_efficient",
+        "risk_adjusted_rank",
+        "risk_adjusted_score",
+    ]
+    assert ranked.empty
 
 
 def test_sweep_analysis_parameter_summary_groups_values_and_formats_structured_values() -> None:
@@ -84,4 +131,5 @@ def test_sweep_analysis_parameter_summary_groups_values_and_formats_structured_v
     assert risk_reward["positive_return_case_count"] == 1.0
     assert risk_reward["positive_return_rate"] == pytest.approx(0.5)
     assert risk_reward["avg_take_profit_exit_rate"] == pytest.approx(0.4)
+    assert "avg_risk_adjusted_score" in summary.columns
     assert '{"trend":1}' in set(summary.loc[summary["parameter"].eq("strategy_priority"), "value"])
