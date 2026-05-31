@@ -4,12 +4,14 @@ from inspect import getsource
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from streamlit.testing.v1 import AppTest
 
 import streamlit_app
 from streamlit_app import (
     _build_strategy_kline_altair_chart,
     _equity_chart_frame,
+    _equity_drawdown_chart_frame,
     _equity_y_domain,
     _format_display_value,
     _performance_summary_frame,
@@ -330,6 +332,27 @@ def test_streamlit_backtest_result_renders_core_performance_overview() -> None:
 
     assert "核心绩效概览" in source
     assert "_performance_summary_frame" in source
+
+
+def test_equity_drawdown_chart_frame_uses_running_high_watermark() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28"]),
+            "net_value": [1.0, 1.2, 1.1, 1.32],
+        }
+    )
+
+    chart = _equity_drawdown_chart_frame(equity)
+
+    assert chart["时间"].tolist() == equity["date"].tolist()
+    assert chart["回撤"].tolist() == pytest.approx([0.0, 0.0, -1.0 / 12.0, 0.0])
+
+
+def test_streamlit_backtest_result_renders_equity_drawdown_chart() -> None:
+    source = getsource(streamlit_app._render_backtest_result)
+
+    assert "回撤曲线" in source
+    assert "_render_equity_drawdown_chart" in source
 
 
 def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
@@ -717,6 +740,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
     assert "signal_lifecycle_stats.csv" in html
+    assert "回撤曲线" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
     assert "策略K线运行区间" in html
@@ -767,6 +791,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
     assert "核心绩效概览" in html
+    assert "回撤曲线" in html
     assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6

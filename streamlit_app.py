@@ -1018,6 +1018,30 @@ def _render_equity_chart(equity_curve: pd.DataFrame) -> None:
     st.altair_chart(line + baseline, use_container_width=True)
 
 
+def _render_equity_drawdown_chart(equity_curve: pd.DataFrame) -> None:
+    chart_data = _equity_drawdown_chart_frame(equity_curve)
+    if chart_data.empty:
+        return
+    x_label = "时间" if "时间" in chart_data.columns else "交易序号"
+    lower = min(-0.02, float(chart_data["回撤"].min()) * 1.08)
+    area = (
+        alt.Chart(chart_data)
+        .mark_area(color="#dc2626", opacity=0.24)
+        .encode(
+            x=alt.X(f"{x_label}:T" if x_label == "时间" else f"{x_label}:Q", title=x_label),
+            y=alt.Y(
+                "回撤:Q",
+                title="回撤",
+                scale=alt.Scale(domain=[lower, 0.0]),
+                axis=alt.Axis(format=".0%"),
+            ),
+            tooltip=[x_label, alt.Tooltip("回撤:Q", format=".2%")],
+        )
+    )
+    baseline = alt.Chart(pd.DataFrame({"回撤": [0.0]})).mark_rule(color="#64748b").encode(y="回撤:Q")
+    st.altair_chart(area + baseline, use_container_width=True)
+
+
 def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
     """把净值曲线转换成从 1.0 起步的比例曲线，避免初始资金大小影响视觉比例。"""
     if equity_curve.empty or "net_value" not in equity_curve.columns:
@@ -1037,6 +1061,25 @@ def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
         chart_data = chart_data.dropna(subset=[x_column])
     x_label = "时间" if x_column == "date" else "交易序号"
     return chart_data.rename(columns={x_column: x_label})[[x_label, "净值比例"]].reset_index(drop=True)
+
+
+def _equity_drawdown_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
+    """从净值曲线生成水下回撤序列，0 表示历史新高，负值表示回撤。"""
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return pd.DataFrame()
+    x_column = "date" if "date" in equity_curve.columns else "trade_no"
+    chart_data = equity_curve[[x_column, "net_value"]].copy()
+    chart_data["net_value"] = pd.to_numeric(chart_data["net_value"], errors="coerce")
+    chart_data = chart_data.dropna(subset=["net_value"])
+    if chart_data.empty:
+        return pd.DataFrame()
+    running_high = chart_data["net_value"].cummax()
+    chart_data["回撤"] = chart_data["net_value"] / running_high - 1.0
+    if x_column == "date":
+        chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
+        chart_data = chart_data.dropna(subset=[x_column])
+    x_label = "时间" if x_column == "date" else "交易序号"
+    return chart_data.rename(columns={x_column: x_label})[[x_label, "回撤"]].reset_index(drop=True)
 
 
 def _strategy_kline_symbol_options(bars: pd.DataFrame, trades: pd.DataFrame) -> list[str]:
@@ -2889,6 +2932,8 @@ def _render_backtest_result(
     if not result.equity_curve.empty:
         st.markdown("##### 净值曲线")
         _render_equity_chart(result.equity_curve)
+        st.markdown("##### 回撤曲线")
+        _render_equity_drawdown_chart(result.equity_curve)
         _render_display_table("净值明细", result.equity_curve, tail=200, stock_names=stock_names)
 
 
