@@ -423,7 +423,7 @@ if terminal_score >= min_score:
           <tr><td><code>case_configs.jsonl</code></td><td>参数遍历每个 case 的完整配置，顺序与 <code>sweep.csv</code> 一致，可按 <code>case_config_hash</code> 回放。</td></tr>
         </tbody>
       </table>
-      <p>需要复现某个参数组时，用 <code>replay-case</code> 读取 <code>case_configs.jsonl</code>，按 <code>case_config_hash</code> 重跑并保存新的回测产物；若交易逻辑配置与哈希不一致会拒绝回放，本机路径和实验名不参与指纹。</p>
+      <p>需要复现某个参数组时，用 <code>replay-case</code> 读取 <code>case_configs.jsonl</code>，按 <code>case_config_hash</code> 重跑并保存新的回测产物，包括 <code>equity_curve.csv</code>、<code>drawdown_curve.csv</code> 和 <code>drawdown_episodes.csv</code>；若交易逻辑配置与哈希不一致会拒绝回放，本机路径和实验名不参与指纹。</p>
       <pre><code>python -m trending_winning.cli replay-case \
   --case-configs runs/sweep-001/case_configs.jsonl \
   --case-config-hash &lt;case_config_hash&gt; \

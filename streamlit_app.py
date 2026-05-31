@@ -257,6 +257,9 @@ DISPLAY_COLUMN_LABELS = {
     "worst_trade": "最差单笔",
     "net_value": "净值",
     "drawdown_net_value": "回撤估算净值",
+    "path_net_value": "回撤净值",
+    "drawdown": "回撤",
+    "point_type": "估值点",
     "start_net_value": "期初净值",
     "end_net_value": "期末净值",
     "observation_count": "观察点数",
@@ -380,6 +383,7 @@ DISPLAY_VALUE_MAP = {
         "higher_timeframe_alignment": "大周期方向过滤",
     },
     "side_mode": {"both": "多/空", "long_only": "仅多", "short_only": "仅空"},
+    "point_type": {"settlement": "结算净值", "adverse_price": "不利价格估值"},
 }
 
 
@@ -1125,7 +1129,7 @@ def _format_display_value(column: str, value: object, *, stock_names: Mapping[st
         return f"{numeric:.0f}"
     if column in {"planned_entry_price", "actual_entry_price", "entry_price", "stop_price", "target_price", "exit_price"}:
         return f"{numeric:.4f}"
-    if column in {"net_value", "drawdown_net_value", "start_net_value", "end_net_value"}:
+    if column in {"net_value", "drawdown_net_value", "path_net_value", "start_net_value", "end_net_value"}:
         return f"{numeric:.4f}"
     if math.isinf(numeric):
         return "∞" if numeric > 0 else "-∞"
@@ -1184,6 +1188,7 @@ def _is_percent_column(column: str) -> bool:
         return True
     return name in {
         "return",
+        "drawdown",
         "win_rate",
         "win_rate_ci_lower",
         "win_rate_ci_upper",
@@ -1347,6 +1352,24 @@ def _equity_drawdown_episodes_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     drawdown_data, drawdown_value = price_path_drawdown_inputs(equity_curve, equity_curve["net_value"])
     return drawdown_episodes(drawdown_data, drawdown_value, limit=10)
+
+
+def _equity_drawdown_curve_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
+    """生成回撤曲线明细，保留不利价格估值与结算净值两类点。"""
+    curve = drawdown_curve(equity_curve)
+    if curve.empty:
+        return pd.DataFrame()
+    columns = [
+        "date",
+        "trade_no",
+        "point_type",
+        "path_net_value",
+        "drawdown",
+        "net_value",
+        "drawdown_net_value",
+    ]
+    available = [column for column in columns if column in curve.columns]
+    return curve.loc[:, available].reset_index(drop=True)
 
 
 def _render_trade_path_distribution_chart(frame: pd.DataFrame) -> None:
@@ -3491,6 +3514,7 @@ def _render_backtest_result(
         _render_equity_chart(result.equity_curve)
         st.markdown("##### 回撤曲线")
         _render_equity_drawdown_chart(result.equity_curve)
+        _render_display_table("回撤曲线明细", _equity_drawdown_curve_frame(result.equity_curve), tail=200, stock_names=stock_names)
         _render_display_table("回撤区间明细", _equity_drawdown_episodes_frame(result.equity_curve), stock_names=stock_names)
     if data_coverage is not None and not data_coverage.empty:
         _render_data_coverage_chart(data_coverage, stock_names=stock_names)

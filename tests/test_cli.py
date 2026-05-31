@@ -234,6 +234,7 @@ def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, 
     assert "open_positions" in out
     assert (tmp_path / "cli-run" / "config.json").exists()
     assert (tmp_path / "cli-run" / "equity_curve.csv").exists()
+    assert (tmp_path / "cli-run" / "drawdown_curve.csv").exists()
     assert (tmp_path / "cli-run" / "benchmark.json").exists()
     saved_config = json.loads((tmp_path / "cli-run" / "config.json").read_text())
     assert saved_config["short_margin_rate"] == 1.5
@@ -816,6 +817,7 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()
+    assert (output_dir / "drawdown_curve.csv").exists()
     assert (output_dir / "monthly_returns.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert saved_config["detector"] == "trend"

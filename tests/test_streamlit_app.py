@@ -13,6 +13,7 @@ from streamlit_app import (
     _data_coverage_chart_frame,
     _equity_chart_frame,
     _equity_drawdown_chart_frame,
+    _equity_drawdown_curve_frame,
     _equity_drawdown_episodes_frame,
     _equity_y_domain,
     _format_display_value,
@@ -438,6 +439,26 @@ def test_equity_drawdown_chart_frame_uses_price_path_drawdown_value() -> None:
     assert chart["回撤"].tolist() == pytest.approx([0.0, -0.2, 0.0, 0.0])
 
 
+def test_equity_drawdown_curve_frame_shows_adverse_and_settlement_points() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27"]),
+            "net_value": [1.0, 1.0, 1.2],
+            "drawdown_net_value": [1.0, 0.8, 1.2],
+        }
+    )
+
+    frame = _equity_drawdown_curve_frame(equity)
+    display = _prepare_display_frame(frame)
+
+    assert frame["point_type"].tolist() == ["settlement", "adverse_price", "settlement", "settlement"]
+    assert frame["path_net_value"].tolist() == pytest.approx([1.0, 0.8, 1.0, 1.2])
+    assert frame["drawdown"].tolist() == pytest.approx([0.0, -0.2, 0.0, 0.0])
+    assert display["估值点"].tolist() == ["结算净值", "不利价格估值", "结算净值", "结算净值"]
+    assert display["回撤净值"].tolist() == ["1.0000", "0.8000", "1.0000", "1.2000"]
+    assert display["回撤"].tolist() == ["0.00%", "-20.00%", "0.00%", "0.00%"]
+
+
 def test_equity_drawdown_episodes_frame_uses_price_path_drawdown_value() -> None:
     equity = pd.DataFrame(
         {
@@ -459,6 +480,8 @@ def test_streamlit_backtest_result_renders_equity_drawdown_chart() -> None:
 
     assert "回撤曲线" in source
     assert "_render_equity_drawdown_chart" in source
+    assert "回撤曲线明细" in source
+    assert "_equity_drawdown_curve_frame" in source
     assert "回撤区间明细" in source
     assert "_equity_drawdown_episodes_frame" in source
 
