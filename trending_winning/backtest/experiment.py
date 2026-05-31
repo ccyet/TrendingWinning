@@ -18,6 +18,28 @@ from trending_winning.backtest.experiment_data import (
     load_experiment_data as _load_experiment_data,
     with_data_management_statistics as _with_data_management_statistics,
 )
+from trending_winning.backtest.experiment_case_stats import (
+    SETUP_ORDER_DECISION_FIELDS as SETUP_ORDER_DECISION_FIELDS,
+    SETUP_STRATEGY_FILTER_FIELDS as SETUP_STRATEGY_FILTER_FIELDS,
+    case_decision_statistics as _case_decision_statistics,
+    case_detector_statistics as _case_detector_statistics,
+    case_setup_statistics as _case_setup_statistics,
+    case_strategy_statistics as _case_strategy_statistics,
+    case_symbol_statistics as _case_symbol_statistics,
+    concat_case_decision_statistics as _concat_case_decision_statistics,
+    concat_case_detector_statistics as _concat_case_detector_statistics,
+    concat_case_setup_statistics as _concat_case_setup_statistics,
+    concat_case_strategy_statistics as _concat_case_strategy_statistics,
+    concat_case_symbol_statistics as _concat_case_symbol_statistics,
+    configured_detector_names as _configured_detector_names,
+    ranked_case_decision_statistics as _ranked_case_decision_statistics,
+    ranked_case_detector_statistics as _ranked_case_detector_statistics,
+    ranked_case_setup_statistics as _ranked_case_setup_statistics,
+    ranked_case_strategy_statistics as _ranked_case_strategy_statistics,
+    ranked_case_symbol_statistics as _ranked_case_symbol_statistics,
+    symbol_grouped_trade_statistics as _symbol_grouped_trade_statistics,
+    symbol_name_map_for_config as _symbol_name_map_for_config,
+)
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport as PortfolioBenchmarkReport,
     PortfolioExperimentConfig as PortfolioExperimentConfig,
@@ -36,7 +58,6 @@ from trending_winning.backtest.portfolio import (
 )
 from trending_winning.backtest.portfolio_models import PortfolioConfig, PortfolioCandidateSet
 from trending_winning.backtest.reporting import (
-    SETUP_STAT_FIELDS,
     detector_trade_statistics as _detector_trade_statistics,
     grouped_trade_statistics as _grouped_trade_statistics,
     setup_trade_statistics as _setup_trade_statistics,
@@ -45,7 +66,6 @@ from trending_winning.backtest.reporting import (
     trade_dated_equity_curve,
 )
 from trending_winning.backtest.stats import (
-    STAT_KEYS,
     compute_decision_reason_statistics,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
@@ -57,7 +77,6 @@ from trending_winning.backtest.sweep_analysis import (
     rank_sweep_table,
 )
 from trending_winning.data.repository import MarketDataRepository
-from trending_winning.data.schema import unique_symbols
 from trending_winning.data.summary import summarize_data_management
 from trending_winning.backtest.experiment_output import (
     save_portfolio_benchmark as save_portfolio_benchmark,
@@ -65,51 +84,10 @@ from trending_winning.backtest.experiment_output import (
     save_portfolio_sweep as save_portfolio_sweep,
     save_single_strategy_experiment as save_single_strategy_experiment,
     save_single_strategy_sweep as save_single_strategy_sweep,
-    symbol_metadata_for_config as _symbol_metadata_for_config,
 )
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
 from trending_winning.strategies.runtime import execute_strategy, execute_strategies
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
-
-SETUP_ORDER_DECISION_FIELDS = ("detector_name", "event_type", "side")
-SETUP_STRATEGY_FILTER_FIELDS = ("detector_name", "event_type", "side", "filter_name", "context_timeframe")
-SWEEP_CASE_STRATEGY_COLUMNS = (
-    "sweep_rank",
-    "pareto_rank",
-    "is_pareto_efficient",
-    "case_name",
-    "case_config_hash",
-    "strategy_name",
-    *STAT_KEYS,
-)
-SWEEP_CASE_DETECTOR_COLUMNS = (
-    "sweep_rank",
-    "pareto_rank",
-    "is_pareto_efficient",
-    "case_name",
-    "case_config_hash",
-    "detector_name",
-    *STAT_KEYS,
-)
-SWEEP_CASE_SETUP_COLUMNS = (
-    "sweep_rank",
-    "pareto_rank",
-    "is_pareto_efficient",
-    "case_name",
-    "case_config_hash",
-    *SETUP_STAT_FIELDS,
-    *STAT_KEYS,
-)
-SWEEP_CASE_SYMBOL_COLUMNS = (
-    "sweep_rank",
-    "pareto_rank",
-    "is_pareto_efficient",
-    "case_name",
-    "case_config_hash",
-    "stock_name",
-    "stock_code",
-    *STAT_KEYS,
-)
 
 
 def run_single_strategy_experiment(
@@ -875,291 +853,6 @@ def build_portfolio_benchmark_report(result: PortfolioExperimentResult) -> Portf
         bars_per_second=float(bar_count / elapsed),
         trades_per_second=float(trade_count / elapsed),
     )
-
-
-def _symbol_name_map_for_config(
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-) -> dict[str, str]:
-    metadata = _symbol_metadata_for_config(config)
-    return {str(row.stock_code): str(row.stock_name) for row in metadata.itertuples(index=False)}
-
-
-def _symbol_grouped_trade_statistics(
-    trades: pd.DataFrame,
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-    *,
-    symbol_name_by_code: Mapping[str, str] | None = None,
-) -> pd.DataFrame:
-    """标的维度统计优先带股票名称；代码保留为复核键，不再让用户只看 stock_code。"""
-    stats = _grouped_trade_statistics(trades, by="stock_code")
-    if "stock_name" in stats.columns:
-        return stats
-    if "stock_code" not in stats.columns:
-        return stats
-    symbols = unique_symbols(tuple(config.symbols))
-    name_by_symbol = symbol_name_by_code or _symbol_name_map_for_config(config)
-    if stats.empty:
-        return _zero_symbol_statistics(symbols, name_by_symbol)
-    result = stats.copy()
-    names = result["stock_code"].astype(str).map(lambda symbol: name_by_symbol.get(symbol, symbol))
-    result.insert(0, "stock_name", names)
-    existing_symbols = set(result["stock_code"].astype(str))
-    missing = [symbol for symbol in symbols if symbol not in existing_symbols]
-    if missing:
-        result = pd.concat([result, _zero_symbol_statistics(missing, name_by_symbol)], ignore_index=True)
-    symbol_order = {symbol: index for index, symbol in enumerate(symbols)}
-    result["_symbol_order"] = result["stock_code"].astype(str).map(lambda symbol: symbol_order.get(symbol, len(symbol_order)))
-    return (
-        result.sort_values(["_symbol_order", "stock_code"], kind="mergesort")
-        .drop(columns=["_symbol_order"])
-        .reset_index(drop=True)
-        .reindex(columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
-    )
-
-
-def _configured_detector_names(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> tuple[str, ...]:
-    return tuple(config.detectors) if isinstance(config, PortfolioExperimentConfig) else (config.detector,)
-
-
-def _zero_symbol_statistics(symbols: Sequence[str], symbol_name_by_code: Mapping[str, str]) -> pd.DataFrame:
-    rows = [
-        {
-            "stock_name": symbol_name_by_code.get(symbol, symbol),
-            "stock_code": symbol,
-            **{key: 0.0 for key in STAT_KEYS},
-        }
-        for symbol in symbols
-    ]
-    return pd.DataFrame(rows, columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
-
-
-def _case_setup_statistics(
-    trades: pd.DataFrame,
-    *,
-    case_name: str,
-    case_config_hash: str,
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按 case 汇总 setup 表现；没有成交但出现过信号的 setup 也保留零行。"""
-    stats = _setup_trade_statistics(trades, order_decisions, filter_decisions)
-    if stats.empty:
-        return pd.DataFrame(columns=pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS]))
-    stats.insert(0, "case_config_hash", case_config_hash)
-    stats.insert(0, "case_name", case_name)
-    return stats
-
-
-def _case_strategy_statistics(
-    trades: pd.DataFrame,
-    strategies: Sequence[object],
-    *,
-    case_name: str,
-    case_config_hash: str,
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按 case 汇总策略表现；已启用但没有成交的策略也保留零行。"""
-    columns = pd.Index(["case_name", "case_config_hash", "strategy_name", *STAT_KEYS])
-    stats = _strategy_trade_statistics(trades, strategies, order_decisions, filter_decisions)
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    stats.insert(0, "case_config_hash", case_config_hash)
-    stats.insert(0, "case_name", case_name)
-    return stats.reindex(columns=columns)
-
-
-def _case_detector_statistics(
-    trades: pd.DataFrame,
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-    *,
-    case_name: str,
-    case_config_hash: str,
-    order_decisions: pd.DataFrame | None = None,
-    filter_decisions: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """按 case 汇总识别模块表现；已启用但没有成交的 detector 也保留零行。"""
-    columns = pd.Index(["case_name", "case_config_hash", "detector_name", *STAT_KEYS])
-    stats = _detector_trade_statistics(trades, _configured_detector_names(config), order_decisions, filter_decisions)
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    stats.insert(0, "case_config_hash", case_config_hash)
-    stats.insert(0, "case_name", case_name)
-    return stats.reindex(columns=columns)
-
-
-def _case_symbol_statistics(
-    trades: pd.DataFrame,
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-    *,
-    symbol_name_by_code: Mapping[str, str],
-    case_name: str,
-    case_config_hash: str,
-) -> pd.DataFrame:
-    """按 case 汇总标的表现；没有成交的样本股票也保留零值行。"""
-    stats = _symbol_grouped_trade_statistics(
-        trades,
-        config,
-        symbol_name_by_code=symbol_name_by_code,
-    )
-    if stats.empty:
-        return pd.DataFrame(columns=pd.Index(["case_name", "case_config_hash", "stock_name", "stock_code", *STAT_KEYS]))
-    stats.insert(0, "case_config_hash", case_config_hash)
-    stats.insert(0, "case_name", case_name)
-    return stats
-
-
-def _concat_case_strategy_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
-    columns = pd.Index(["case_name", "case_config_hash", "strategy_name", *STAT_KEYS])
-    non_empty = [frame for frame in frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
-
-
-def _concat_case_detector_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
-    columns = pd.Index(["case_name", "case_config_hash", "detector_name", *STAT_KEYS])
-    non_empty = [frame for frame in frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
-
-
-def _case_decision_statistics(
-    decisions: pd.DataFrame,
-    *,
-    case_name: str,
-    case_config_hash: str,
-    group_fields: tuple[str, ...],
-) -> pd.DataFrame:
-    """按 case 汇总 setup 决策分布；用于解释参数组的拒绝结构。"""
-    stats = compute_decision_reason_statistics(decisions, group_fields=group_fields)
-    columns = _case_decision_columns(group_fields)
-    if stats.empty:
-        return pd.DataFrame(columns=columns)
-    stats.insert(0, "case_config_hash", case_config_hash)
-    stats.insert(0, "case_name", case_name)
-    return stats.reindex(columns=columns)
-
-
-def _concat_case_setup_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
-    columns = pd.Index(["case_name", "case_config_hash", *SETUP_STAT_FIELDS, *STAT_KEYS])
-    non_empty = [frame for frame in frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
-
-
-def _concat_case_symbol_statistics(frames: Sequence[pd.DataFrame]) -> pd.DataFrame:
-    columns = pd.Index(["case_name", "case_config_hash", "stock_name", "stock_code", *STAT_KEYS])
-    non_empty = [frame for frame in frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
-
-
-def _concat_case_decision_statistics(frames: Sequence[pd.DataFrame], *, group_fields: tuple[str, ...]) -> pd.DataFrame:
-    columns = _case_decision_columns(group_fields)
-    non_empty = [frame for frame in frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(non_empty, ignore_index=True).reindex(columns=columns)
-
-
-def _ranked_case_strategy_statistics(case_strategy: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
-    if case_strategy.empty:
-        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_STRATEGY_COLUMNS))
-    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
-    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
-    merged = case_strategy.merge(ranks, on="case_config_hash", how="left")
-    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
-        if column not in merged.columns:
-            merged[column] = pd.NA
-    return (
-        merged.reindex(columns=pd.Index(SWEEP_CASE_STRATEGY_COLUMNS))
-        .sort_values(["sweep_rank", "case_name", "strategy_name"], kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _ranked_case_detector_statistics(case_detector: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
-    if case_detector.empty:
-        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_DETECTOR_COLUMNS))
-    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
-    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
-    merged = case_detector.merge(ranks, on="case_config_hash", how="left")
-    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
-        if column not in merged.columns:
-            merged[column] = pd.NA
-    return (
-        merged.reindex(columns=pd.Index(SWEEP_CASE_DETECTOR_COLUMNS))
-        .sort_values(["sweep_rank", "case_name", "detector_name"], kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _ranked_case_setup_statistics(case_setup: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
-    if case_setup.empty:
-        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_SETUP_COLUMNS))
-    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
-    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
-    merged = case_setup.merge(ranks, on="case_config_hash", how="left")
-    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
-        if column not in merged.columns:
-            merged[column] = pd.NA
-    return (
-        merged.reindex(columns=pd.Index(SWEEP_CASE_SETUP_COLUMNS))
-        .sort_values(["sweep_rank", "case_name", *SETUP_STAT_FIELDS], kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _ranked_case_symbol_statistics(case_symbol: pd.DataFrame, table: pd.DataFrame) -> pd.DataFrame:
-    if case_symbol.empty:
-        return pd.DataFrame(columns=pd.Index(SWEEP_CASE_SYMBOL_COLUMNS))
-    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
-    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
-    merged = case_symbol.merge(ranks, on="case_config_hash", how="left")
-    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
-        if column not in merged.columns:
-            merged[column] = pd.NA
-    return (
-        merged.reindex(columns=pd.Index(SWEEP_CASE_SYMBOL_COLUMNS))
-        .sort_values(["sweep_rank", "case_name", "stock_name", "stock_code"], kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _ranked_case_decision_statistics(
-    case_decisions: pd.DataFrame,
-    table: pd.DataFrame,
-    *,
-    group_fields: tuple[str, ...],
-) -> pd.DataFrame:
-    columns = _ranked_case_decision_columns(group_fields)
-    if case_decisions.empty:
-        return pd.DataFrame(columns=columns)
-    rank_columns = ["case_config_hash", "sweep_rank", "pareto_rank", "is_pareto_efficient"]
-    ranks = table.loc[:, [column for column in rank_columns if column in table.columns]].copy()
-    merged = case_decisions.merge(ranks, on="case_config_hash", how="left")
-    for column in ("sweep_rank", "pareto_rank", "is_pareto_efficient"):
-        if column not in merged.columns:
-            merged[column] = pd.NA
-    sort_columns = ["sweep_rank", "case_name", *group_fields, "status", "reason"]
-    return (
-        merged.reindex(columns=columns)
-        .sort_values(sort_columns, kind="mergesort")
-        .reset_index(drop=True)
-    )
-
-
-def _case_decision_columns(group_fields: tuple[str, ...]) -> pd.Index:
-    stats_columns = compute_decision_reason_statistics(pd.DataFrame(), group_fields=group_fields).columns
-    return pd.Index(["case_name", "case_config_hash", *stats_columns])
-
-
-def _ranked_case_decision_columns(group_fields: tuple[str, ...]) -> pd.Index:
-    return pd.Index(["sweep_rank", "pareto_rank", "is_pareto_efficient", *_case_decision_columns(group_fields)])
 
 
 def _rank_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
