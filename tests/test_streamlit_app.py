@@ -306,6 +306,18 @@ def test_streamlit_experiment_breakdowns_include_signal_lifecycle_and_path_distr
     assert "diagnostic_report" in source
     assert "开平仓路径绩效" in source
     assert "signal_lifecycle_stats" in source
+    assert "识别模块绩效" in source
+    assert "detector_stats" in source
+    assert "信号形态绩效" in source
+    assert "setup_stats" in source
+    assert "订单决策统计" in source
+    assert "order_decision_stats" in source
+    assert "策略过滤统计" in source
+    assert "strategy_filter_stats" in source
+    assert "信号形态撮合统计" in source
+    assert "setup_order_decision_stats" in source
+    assert "信号形态过滤统计" in source
+    assert "setup_strategy_filter_stats" in source
     assert "交易路径分布" in source
     assert "trade_path_distribution_stats" in source
     assert "_render_trade_path_distribution_chart" in source
@@ -947,6 +959,9 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "数据覆盖率概览" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html
+    assert "识别模块绩效" in html
+    assert "订单决策统计" in html
+    assert "策略过滤统计" in html
     assert "signal_lifecycle_stats.csv" in html
     assert "回撤曲线" in html
     assert "monthly_win_rate" in html
@@ -981,6 +996,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "盈利通道回撤止盈" in readme
     assert "avg_accepted_actual_risk_pct" in readme
     assert "参数遍历成交质量" in readme
+    assert "识别模块绩效" in readme
+    assert "订单决策统计" in readme
     assert "risk_adjusted_score" in readme
     assert "best_risk_adjusted_score" in readme
     assert "risk_adjusted_score" in html
@@ -989,6 +1006,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "下降压力线" in readme
     assert "回测界面 K 线使用说明" in html
     assert "盈利通道回撤止盈" in html
+    assert "策略过滤统计" in html
     assert "术语对照" in html
     assert "确认 K 线完成后" in html
     assert "下降压力线" in html

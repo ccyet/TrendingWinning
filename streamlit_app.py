@@ -3511,11 +3511,17 @@ def _render_experiment_breakdowns(experiment, *, stock_names: Mapping[str, str] 
         _render_display_table("交易路径分布", experiment.trade_path_distribution_stats, stock_names=stock_names)
     for title, frame in [
         ("策略绩效", experiment.strategy_stats),
+        ("识别模块绩效", experiment.detector_stats),
+        ("信号形态绩效", experiment.setup_stats),
         ("股票绩效", experiment.symbol_stats),
         ("方向绩效", experiment.side_stats),
         ("退出原因绩效", experiment.exit_reason_stats),
         ("开平仓路径绩效", experiment.signal_lifecycle_stats),
-        ("信号形态绩效", experiment.event_type_stats),
+        ("信号类型绩效", experiment.event_type_stats),
+        ("订单决策统计", experiment.order_decision_stats),
+        ("策略过滤统计", experiment.strategy_filter_stats),
+        ("信号形态撮合统计", experiment.setup_order_decision_stats),
+        ("信号形态过滤统计", experiment.setup_strategy_filter_stats),
         ("月度收益", experiment.monthly_returns),
     ]:
         _render_display_table(title, frame, stock_names=stock_names)
