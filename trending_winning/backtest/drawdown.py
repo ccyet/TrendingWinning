@@ -35,6 +35,32 @@ DRAWDOWN_EPISODE_COLUMNS = pd.Index(
 )
 
 
+def price_path_drawdown_inputs(data: pd.DataFrame, net_value: pd.Series) -> tuple[pd.DataFrame, pd.Series]:
+    """生成回撤专用路径：每根 K 先放不利估值，再放结算净值。"""
+    numeric_net = pd.to_numeric(net_value, errors="coerce").reset_index(drop=True)
+    if data.empty or "drawdown_net_value" not in data.columns:
+        return data, numeric_net
+
+    aligned_data = data.reset_index(drop=True)
+    drawdown_value = pd.to_numeric(aligned_data["drawdown_net_value"], errors="coerce").reset_index(drop=True)
+    rows: list[dict[str, object]] = []
+    values: list[float] = []
+    for pos in range(min(len(aligned_data), len(numeric_net))):
+        row = aligned_data.iloc[pos].to_dict()
+        net = numeric_net.iloc[pos]
+        adverse = drawdown_value.iloc[pos] if pos < len(drawdown_value) else net
+        if pd.notna(adverse):
+            rows.append(row)
+            values.append(float(adverse))
+        if pd.notna(net) and _drawdown_path_needs_settlement_point(net, adverse):
+            rows.append(row)
+            values.append(float(net))
+
+    if not values:
+        return aligned_data, numeric_net
+    return pd.DataFrame(rows, columns=aligned_data.columns), pd.Series(values, dtype=float)
+
+
 def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict[str, object]:
     """从已排序净值序列计算完整回撤统计，供单策略和组合回测复用。"""
     numeric = pd.to_numeric(net_value, errors="coerce")
@@ -242,6 +268,12 @@ def max_drawdown_duration(equity: pd.Series) -> int:
             current += 1
             best = max(best, current)
     return best
+
+
+def _drawdown_path_needs_settlement_point(net: object, adverse: object) -> bool:
+    if pd.isna(adverse):
+        return True
+    return not math.isclose(float(net), float(adverse), rel_tol=0.0, abs_tol=1e-12)
 
 
 def equity_point_label(data: pd.DataFrame, position: int) -> str:

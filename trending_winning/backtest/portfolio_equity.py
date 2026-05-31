@@ -52,6 +52,14 @@ def build_portfolio_equity_curve_from_normalized(
     records: list[dict[str, object]] = []
     for current_time in timeline:
         timestamp = pd.Timestamp(current_time)
+        exit_bar_drawdown_net_value = _exit_bar_drawdown_net_value(
+            cash,
+            positions,
+            low_matrix,
+            high_matrix,
+            close_matrix,
+            timestamp,
+        )
         cash, positions = _settle_exited_positions(cash, positions, timestamp)
         position_value_before_entries = _marked_position_value(positions, close_matrix, timestamp)
         equity_before_entries = cash + position_value_before_entries
@@ -81,6 +89,9 @@ def build_portfolio_equity_curve_from_normalized(
         net_value = cash + position_value
         # 回撤统计使用持仓方向上的不利价格：多头看 low，空头看 high。
         drawdown_position_value = _drawdown_position_value(positions, low_matrix, high_matrix, close_matrix, timestamp)
+        drawdown_net_value = cash + drawdown_position_value
+        if exit_bar_drawdown_net_value is not None:
+            drawdown_net_value = min(drawdown_net_value, exit_bar_drawdown_net_value)
         records.append(
             _equity_record(
                 current_time,
@@ -90,6 +101,7 @@ def build_portfolio_equity_curve_from_normalized(
                 _gross_exposure(positions, close_matrix, timestamp, net_value),
                 _margin_exposure(positions, close_matrix, timestamp, net_value),
                 len(positions),
+                drawdown_net_value=drawdown_net_value,
             )
         )
     return pd.DataFrame(records)
@@ -130,11 +142,15 @@ def _equity_record(
     gross_exposure: float,
     margin_exposure: float,
     open_positions: int,
+    *,
+    drawdown_net_value: float | None = None,
 ) -> dict[str, object]:
+    if drawdown_net_value is None:
+        drawdown_net_value = cash + drawdown_position_value
     return {
         "date": current_time,
         "net_value": float(cash + position_value),
-        "drawdown_net_value": float(cash + drawdown_position_value),
+        "drawdown_net_value": float(drawdown_net_value),
         "cash": float(cash),
         "position_value": float(position_value),
         "gross_exposure": float(gross_exposure),
@@ -224,6 +240,26 @@ def _settle_exited_positions(
         else:
             remaining.append(position)
     return cash, remaining
+
+
+def _exit_bar_drawdown_net_value(
+    cash: float,
+    positions: list[dict[str, object]],
+    low_matrix: pd.DataFrame,
+    high_matrix: pd.DataFrame,
+    close_matrix: pd.DataFrame,
+    current_time: pd.Timestamp,
+) -> float | None:
+    """退出 K 先按仍持有状态估算一次不利价格，避免结算后漏掉盘中回撤。"""
+    if not any(_position_exits_at_or_before(position, current_time) for position in positions):
+        return None
+    drawdown_position_value = _drawdown_position_value(positions, low_matrix, high_matrix, close_matrix, current_time)
+    return float(cash + drawdown_position_value)
+
+
+def _position_exits_at_or_before(position: Mapping[str, object], current_time: pd.Timestamp) -> bool:
+    exit_date = pd.Timestamp(position["exit_date"])
+    return pd.notna(exit_date) and exit_date <= current_time
 
 
 def _entry_cash_delta(position: dict[str, object]) -> float:

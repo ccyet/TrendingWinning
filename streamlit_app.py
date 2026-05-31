@@ -11,7 +11,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from trending_winning.backtest.drawdown import drawdown_episodes
+from trending_winning.backtest.drawdown import drawdown_episodes, price_path_drawdown_inputs
 from trending_winning.backtest.engine import BacktestConfig, run_backtest
 from trending_winning.backtest.experiment import (
     run_portfolio_experiment,
@@ -1345,8 +1345,8 @@ def _equity_drawdown_episodes_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
     """生成最大回撤区间明细；回撤口径与回撤曲线保持一致。"""
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return pd.DataFrame()
-    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
-    return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=10)
+    drawdown_data, drawdown_value = price_path_drawdown_inputs(equity_curve, equity_curve["net_value"])
+    return drawdown_episodes(drawdown_data, drawdown_value, limit=10)
 
 
 def _render_trade_path_distribution_chart(frame: pd.DataFrame) -> None:
@@ -1422,14 +1422,14 @@ def _equity_drawdown_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return pd.DataFrame()
     x_column = "date" if "date" in equity_curve.columns else "trade_no"
-    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
-    chart_data = equity_curve[[x_column, drawdown_column]].copy()
-    chart_data[drawdown_column] = pd.to_numeric(chart_data[drawdown_column], errors="coerce")
-    chart_data = chart_data.dropna(subset=[drawdown_column])
+    drawdown_data, drawdown_value = price_path_drawdown_inputs(equity_curve, equity_curve["net_value"])
+    chart_data = drawdown_data[[x_column]].copy()
+    chart_data["_drawdown_value"] = pd.to_numeric(drawdown_value, errors="coerce").reset_index(drop=True)
+    chart_data = chart_data.dropna(subset=["_drawdown_value"])
     if chart_data.empty:
         return pd.DataFrame()
-    running_high = chart_data[drawdown_column].cummax()
-    chart_data["回撤"] = chart_data[drawdown_column] / running_high - 1.0
+    running_high = chart_data["_drawdown_value"].cummax()
+    chart_data["回撤"] = chart_data["_drawdown_value"] / running_high - 1.0
     if x_column == "date":
         chart_data[x_column] = pd.to_datetime(chart_data[x_column], errors="coerce")
         chart_data = chart_data.dropna(subset=[x_column])

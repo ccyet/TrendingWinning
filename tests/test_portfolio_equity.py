@@ -120,7 +120,7 @@ def test_portfolio_drawdown_uses_adverse_intrabar_asset_prices() -> None:
     stats = compute_equity_statistics(equity, periods_per_year=3)
 
     assert equity["net_value"].tolist() == pytest.approx([1.0, 1.0, 1.0, 1.2])
-    assert equity["drawdown_net_value"].tolist() == pytest.approx([1.0, 1.0, 0.8, 1.2])
+    assert equity["drawdown_net_value"].tolist() == pytest.approx([1.0, 1.0, 0.8, 1.18])
     assert stats["total_return"] == pytest.approx(0.2)
     assert stats["max_drawdown"] == pytest.approx(-0.2)
     assert stats["max_drawdown_trough_at"] == "2026-05-25 10:00:00"
@@ -224,6 +224,61 @@ def test_portfolio_drawdown_uses_combined_open_position_price_path() -> None:
     stats = compute_equity_statistics(equity, periods_per_year=3)
 
     assert equity["net_value"].tolist() == pytest.approx([1.0, 1.0, 1.0, 1.2])
-    assert equity["drawdown_net_value"].tolist() == pytest.approx([1.0, 1.0, 0.8, 1.2])
+    assert equity["drawdown_net_value"].tolist() == pytest.approx([1.0, 1.0, 0.8, 1.19])
     assert stats["max_drawdown"] == pytest.approx(-0.2)
     assert stats["max_drawdown_trough_at"] == "2026-05-25 10:00:00"
+
+
+def test_portfolio_drawdown_includes_exit_bar_asset_price_path_before_settlement() -> None:
+    bars = normalize_bars(
+        pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2026-05-25 09:30:00"),
+                    "stock_code": "000001.SZ",
+                    "open": 10.0,
+                    "high": 10.0,
+                    "low": 10.0,
+                    "close": 10.0,
+                    "volume": 1000.0,
+                    "amount": 10000.0,
+                },
+                {
+                    "date": pd.Timestamp("2026-05-25 10:00:00"),
+                    "stock_code": "000001.SZ",
+                    "open": 11.0,
+                    "high": 11.2,
+                    "low": 7.0,
+                    "close": 11.0,
+                    "volume": 1000.0,
+                    "amount": 11000.0,
+                },
+            ]
+        )
+    )
+    trades = pd.DataFrame(
+        [
+            {
+                "entry_date": pd.Timestamp("2026-05-25 09:30:00"),
+                "exit_date": pd.Timestamp("2026-05-25 10:00:00"),
+                "stock_code": "000001.SZ",
+                "side": "long",
+                "entry_price": 10.0,
+                "raw_return_pct": 10.0,
+                "capital_fraction": 1.0,
+                "margin_fraction": 1.0,
+                "portfolio_priority": 1,
+            }
+        ]
+    )
+
+    equity = build_portfolio_equity_curve_from_normalized(bars, trades, initial_equity=1.0)
+    stats = compute_equity_statistics(equity, periods_per_year=2)
+
+    assert equity["net_value"].tolist() == pytest.approx([1.0, 1.0, 1.1])
+    assert equity["drawdown_net_value"].tolist() == pytest.approx([1.0, 1.0, 0.7])
+    assert stats["total_return"] == pytest.approx(0.1)
+    assert stats["max_drawdown"] == pytest.approx(-0.3)
+    assert stats["max_drawdown_trough_at"] == "2026-05-25 10:00:00"
+    assert stats["max_drawdown_recovery_at"] == "2026-05-25 10:00:00"
+    assert stats["current_drawdown"] == 0.0

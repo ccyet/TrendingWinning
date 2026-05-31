@@ -4,6 +4,8 @@ import math
 
 import pandas as pd
 
+from trending_winning.backtest.drawdown import price_path_drawdown_inputs
+
 
 PERIOD_STAT_KEYS = [
     "count",
@@ -88,11 +90,8 @@ def compute_period_returns(equity_curve: pd.DataFrame, *, freq: str = "M") -> pd
 
 def _period_drawdown_values(group: pd.DataFrame) -> pd.Series:
     """周期收益用正常净值，周期最大回撤优先用价格路径回撤净值。"""
-    if "drawdown_net_value" not in group.columns:
-        return group["net_value"].reset_index(drop=True)
-    drawdown_value = pd.to_numeric(group["drawdown_net_value"], errors="coerce").reset_index(drop=True)
-    net_value = pd.to_numeric(group["net_value"], errors="coerce").reset_index(drop=True)
-    return drawdown_value.fillna(net_value)
+    _, drawdown_value = price_path_drawdown_inputs(group.reset_index(drop=True), group["net_value"].reset_index(drop=True))
+    return drawdown_value
 
 
 def compute_period_return_statistics(period_returns: pd.DataFrame, *, prefix: str = "period") -> dict[str, object]:

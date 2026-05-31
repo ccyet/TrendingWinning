@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from trending_winning.backtest.experiment_cases import json_dump, json_ready, sweep_case_config_records, write_jsonl
-from trending_winning.backtest.drawdown import drawdown_episodes
+from trending_winning.backtest.drawdown import drawdown_episodes, price_path_drawdown_inputs
 from trending_winning.backtest.experiment_diagnostics import (
     case_diagnostic_statistics,
     experiment_diagnostic_report,
@@ -161,8 +161,8 @@ def _write_common_experiment_outputs(
 def _experiment_drawdown_episodes(equity_curve: pd.DataFrame) -> pd.DataFrame:
     if equity_curve.empty or "net_value" not in equity_curve.columns:
         return drawdown_episodes(pd.DataFrame(), pd.Series(dtype=float))
-    drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
-    return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=20)
+    drawdown_data, drawdown_value = price_path_drawdown_inputs(equity_curve, equity_curve["net_value"])
+    return drawdown_episodes(drawdown_data, drawdown_value, limit=20)
 
 
 def _experiment_trade_path_distribution(result: SingleStrategyExperimentResult | PortfolioExperimentResult) -> pd.DataFrame:

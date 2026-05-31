@@ -435,7 +435,7 @@ def test_equity_drawdown_chart_frame_uses_price_path_drawdown_value() -> None:
 
     chart = _equity_drawdown_chart_frame(equity)
 
-    assert chart["回撤"].tolist() == pytest.approx([0.0, -0.2, 0.0])
+    assert chart["回撤"].tolist() == pytest.approx([0.0, -0.2, 0.0, 0.0])
 
 
 def test_equity_drawdown_episodes_frame_uses_price_path_drawdown_value() -> None:
