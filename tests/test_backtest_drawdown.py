@@ -8,6 +8,7 @@ from trending_winning.backtest.drawdown import (
     drawdown_episodes,
     equity_drawdown_statistics,
     max_drawdown_duration,
+    price_path_drawdown_inputs,
 )
 
 
@@ -137,3 +138,23 @@ def test_drawdown_curve_expands_price_path_and_labels_adverse_and_settlement_poi
         pd.Timestamp("2026-05-26"),
         pd.Timestamp("2026-05-27"),
     ]
+
+
+def test_drawdown_episodes_count_unique_bars_when_price_path_has_two_points_per_bar() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25", "2026-05-26", "2026-05-27", "2026-05-28"]),
+            "net_value": [1.2, 1.1, 0.95, 1.21],
+            "drawdown_net_value": [1.2, 1.0, 0.9, 1.21],
+        }
+    )
+    drawdown_data, drawdown_value = price_path_drawdown_inputs(equity, equity["net_value"])
+
+    stats = equity_drawdown_statistics(drawdown_data, drawdown_value)
+    episodes = drawdown_episodes(drawdown_data, drawdown_value)
+
+    assert stats["max_drawdown"] == pytest.approx(0.9 / 1.2 - 1.0)
+    assert stats["max_drawdown_duration"] == 2.0
+    assert stats["time_under_water_ratio"] == pytest.approx(0.5)
+    assert episodes.loc[0, "underwater_bars"] == 2
+    assert episodes.loc[0, "recovery_bars"] == 3

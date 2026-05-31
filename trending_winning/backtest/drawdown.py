@@ -132,12 +132,12 @@ def equity_drawdown_statistics(data: pd.DataFrame, net_value: pd.Series) -> dict
     result.update(
         {
             "max_drawdown": _round_float(float(drawdown.min())),
-            "max_drawdown_duration": float(max_drawdown_duration(clean)),
+            "max_drawdown_duration": float(_max_drawdown_bar_duration(aligned_data, clean)),
             "current_drawdown": _round_float(float(drawdown.iloc[-1])),
-            "current_underwater_bars": float(trailing_underwater_length(drawdown)),
+            "current_underwater_bars": float(_trailing_underwater_bar_length(aligned_data, drawdown)),
             "avg_drawdown": _mean_or_zero(drawdown),
             "ulcer_index": _round_float(math.sqrt(float(drawdown.pow(2).mean()))) if not drawdown.empty else 0.0,
-            "time_under_water_ratio": _round_float(float(drawdown.lt(0).mean())) if not drawdown.empty else 0.0,
+            "time_under_water_ratio": _bar_underwater_ratio(aligned_data, drawdown),
         }
     )
     result.update(drawdown_episode_labels(aligned_data, clean, drawdown))
@@ -196,7 +196,6 @@ def drawdown_episodes(data: pd.DataFrame, net_value: pd.Series, *, limit: int | 
             episode_no += 1
             current = _new_drawdown_episode(episode_no, peak_pos, peak_value, pos, value)
         else:
-            current["underwater_bars"] = int(current["underwater_bars"]) + 1
             if value < float(current["trough_net_value"]):
                 current["trough_pos"] = pos
                 current["trough_net_value"] = value
@@ -279,7 +278,9 @@ def _finalize_drawdown_episode(
     episode["depth"] = _round_float(trough_value / peak_value - 1.0) if peak_value > 0 else 0.0
     episode["recovery_pos"] = recovery_pos
     episode["recovery_at"] = equity_point_label(data, recovery_pos) if recovery_pos is not None else ""
-    episode["recovery_bars"] = int(max(end_pos - peak_pos, 0))
+    underwater_end = int(recovery_pos) - 1 if recovery_pos is not None else end_pos
+    episode["underwater_bars"] = _bar_span_length(data, peak_pos + 1, underwater_end)
+    episode["recovery_bars"] = _bar_span_length(data, peak_pos + 1, end_pos)
 
 
 def _public_drawdown_episode_row(episode: dict[str, object], data: pd.DataFrame) -> dict[str, object]:
@@ -322,6 +323,75 @@ def max_drawdown_duration(equity: pd.Series) -> int:
             current += 1
             best = max(best, current)
     return best
+
+
+def _max_drawdown_bar_duration(data: pd.DataFrame, equity: pd.Series) -> int:
+    peak = -math.inf
+    underwater_start: int | None = None
+    best = 0
+    for pos, value in enumerate(pd.to_numeric(equity, errors="coerce").tolist()):
+        if pd.isna(value):
+            continue
+        if float(value) >= peak:
+            if underwater_start is not None:
+                best = max(best, _bar_span_length(data, underwater_start, pos - 1))
+                underwater_start = None
+            peak = float(value)
+            continue
+        if underwater_start is None:
+            underwater_start = pos
+        best = max(best, _bar_span_length(data, underwater_start, pos))
+    return best
+
+
+def _trailing_underwater_bar_length(data: pd.DataFrame, drawdown: pd.Series) -> int:
+    values = pd.to_numeric(drawdown, errors="coerce").tolist()
+    end_pos: int | None = None
+    start_pos: int | None = None
+    for pos in range(len(values) - 1, -1, -1):
+        value = values[pos]
+        if pd.isna(value) or float(value) >= 0:
+            break
+        end_pos = pos if end_pos is None else end_pos
+        start_pos = pos
+    if start_pos is None or end_pos is None:
+        return 0
+    return _bar_span_length(data, start_pos, end_pos)
+
+
+def _bar_underwater_ratio(data: pd.DataFrame, drawdown: pd.Series) -> float:
+    values = pd.to_numeric(drawdown, errors="coerce")
+    if values.empty:
+        return 0.0
+    bar_states: dict[object, bool] = {}
+    for pos, value in enumerate(values.tolist()):
+        if pd.isna(value):
+            continue
+        key = _bar_identity(data, pos)
+        bar_states[key] = bool(bar_states.get(key, False) or float(value) < 0)
+    if not bar_states:
+        return 0.0
+    return _round_float(sum(bar_states.values()) / len(bar_states))
+
+
+def _bar_span_length(data: pd.DataFrame, start_pos: int, end_pos: int) -> int:
+    if end_pos < start_pos:
+        return 0
+    labels = [_bar_identity(data, pos) for pos in range(start_pos, end_pos + 1)]
+    return len(dict.fromkeys(labels))
+
+
+def _bar_identity(data: pd.DataFrame, position: int) -> object:
+    if position < 0 or position >= len(data):
+        return position
+    row = data.iloc[position]
+    if "date" in data.columns:
+        timestamp = pd.to_datetime(row["date"], errors="coerce")
+        if pd.notna(timestamp):
+            return ("date", pd.Timestamp(timestamp))
+    if "trade_no" in data.columns and pd.notna(row["trade_no"]):
+        return ("trade_no", _compact_numeric_label(row["trade_no"]))
+    return ("position", position)
 
 
 def _drawdown_value_series(data: pd.DataFrame, net_value: pd.Series) -> pd.Series:
