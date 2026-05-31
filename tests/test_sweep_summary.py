@@ -13,6 +13,8 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
             "is_pareto_efficient": [True, True, False],
             "case_name": ["best", "second", "third"],
             "case_config_hash": ["a" * 64, "b" * 64, "c" * 64],
+            "risk_adjusted_rank": [2, 1, 3],
+            "risk_adjusted_score": [58.0, 92.5, 11.5],
             "total_return": [0.12, 0.08, -0.01],
             "max_drawdown": [-0.04, -0.03, -0.02],
             "monthly_worst_return": [-0.02, -0.03, -0.04],
@@ -61,6 +63,13 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
     assert summary["pareto_case_count"] == 2
     assert summary["best_case_name"] == "best"
     assert summary["best_total_return"] == 0.12
+    assert summary["best_risk_adjusted_case_name"] == "second"
+    assert summary["best_risk_adjusted_case_config_hash"] == "b" * 64
+    assert summary["best_risk_adjusted_sweep_rank"] == 2
+    assert summary["best_risk_adjusted_score"] == 92.5
+    assert summary["avg_risk_adjusted_score"] == (58.0 + 92.5 + 11.5) / 3
+    assert summary["median_risk_adjusted_score"] == 58.0
+    assert summary["worst_risk_adjusted_score"] == 11.5
     assert summary["data_inventory_signature"] == "sig"
     assert summary["order_cache_hit_count"] == 2.0
     assert summary["order_cache_hit_rate"] == 2 / 3
@@ -98,6 +107,8 @@ def test_sweep_summary_statistics_returns_stable_empty_defaults() -> None:
     assert summary["case_count"] == 0
     assert summary["grid_case_count"] == 0
     assert summary["best_case_name"] == ""
+    assert summary["best_risk_adjusted_case_name"] == ""
+    assert summary["avg_risk_adjusted_score"] == 0.0
     assert summary["order_cache_hit_rate"] == 0.0
     assert summary["case_setup_strategy_filter_rejected_count"] == 0.0
     assert summary["case_diagnostic_failed_count"] == 0.0

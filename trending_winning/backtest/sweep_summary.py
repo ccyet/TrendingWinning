@@ -82,6 +82,7 @@ def sweep_summary_statistics(
         "filtered_limit_open_count": int(filtered_limit_open_count),
         "best_case_name": "",
         "best_case_config_hash": "",
+        **risk_adjusted_summary_statistics(table),
     }
     if not table.empty:
         best = table.iloc[0]
@@ -198,6 +199,41 @@ def case_diagnostic_summary_statistics(frame: pd.DataFrame | None) -> dict[str, 
         keys["case_diagnostic_failed_case_count"] = float(frame.loc[status.eq("失败"), "case_name"].astype(str).nunique())
         keys["case_diagnostic_attention_case_count"] = float(frame.loc[status.eq("关注"), "case_name"].astype(str).nunique())
     return keys
+
+
+def risk_adjusted_summary_statistics(table: pd.DataFrame) -> dict[str, object]:
+    """汇总风险质量评分，便于 summary.json 直接定位稳健参数组。"""
+    result: dict[str, object] = {
+        "best_risk_adjusted_case_name": "",
+        "best_risk_adjusted_case_config_hash": "",
+        "best_risk_adjusted_sweep_rank": 0,
+        "best_risk_adjusted_score": 0.0,
+        "avg_risk_adjusted_score": 0.0,
+        "median_risk_adjusted_score": 0.0,
+        "worst_risk_adjusted_score": 0.0,
+    }
+    if table.empty or "risk_adjusted_score" not in table.columns:
+        return result
+
+    score = pd.to_numeric(table["risk_adjusted_score"], errors="coerce")
+    valid = score.dropna()
+    if valid.empty:
+        return result
+
+    best_index = valid.idxmax()
+    best = table.loc[best_index]
+    result.update(
+        {
+            "best_risk_adjusted_case_name": str(best.get("case_name", "")),
+            "best_risk_adjusted_case_config_hash": str(best.get("case_config_hash", "")),
+            "best_risk_adjusted_sweep_rank": json_scalar(best.get("sweep_rank", 0)),
+            "best_risk_adjusted_score": json_scalar(score.loc[best_index]),
+            "avg_risk_adjusted_score": float(valid.mean()),
+            "median_risk_adjusted_score": float(valid.median()),
+            "worst_risk_adjusted_score": float(valid.min()),
+        }
+    )
+    return result
 
 
 def numeric_column_sum(table: pd.DataFrame, column: str) -> float:
