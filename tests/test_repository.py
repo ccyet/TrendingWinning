@@ -27,6 +27,10 @@ from trending_winning.data.repository import (
     update_from_tdx,
     write_local_bars,
 )
+from trending_winning.data.audit import (
+    AUDIT_COLUMNS as AUDIT_COLUMNS_FROM_AUDIT,
+    audit_local_data as audit_local_data_from_audit,
+)
 from trending_winning.data.inventory import (
     INVENTORY_COLUMNS as INVENTORY_COLUMNS_FROM_INVENTORY,
     available_symbols as available_symbols_from_inventory,
@@ -1638,6 +1642,37 @@ def test_audit_local_data_reports_coverage_and_quality_by_symbol(tmp_path: Path)
     assert by_symbol.loc["000003.SZ", "duplicate_rows"] == 1
     assert by_symbol.loc["000003.SZ", "non_positive_price_rows"] == 1
     assert by_symbol.loc["000003.SZ", "null_ohlc_rows"] == 1
+
+
+def test_audit_has_independent_module_entrypoint(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.3],
+            "high": [10.4, 10.6],
+            "low": [9.9, 10.2],
+            "close": [10.2, 10.5],
+            "volume": [1000.0, 1200.0],
+            "amount": [10200.0, 12600.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+
+    audit = audit_local_data_from_audit(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25 10:00:00",
+        end="2026-05-25 10:30:00",
+    )
+
+    assert audit.columns.tolist() == AUDIT_COLUMNS_FROM_AUDIT
+    assert audit.loc[0, "status"] == "ok"
+    assert audit.loc[0, "rows_in_window"] == 2
+    assert audit.loc[0, "coverage_ratio"] == 1.0
 
 
 def test_audit_local_data_rejects_inconsistent_ohlc_rows(tmp_path: Path) -> None:
