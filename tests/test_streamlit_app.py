@@ -30,6 +30,7 @@ from streamlit_app import (
     _strategy_kline_symbol_options,
     _strategy_stop_segment_frame,
     _strategy_trade_marker_frame,
+    _trade_path_distribution_chart_frame,
 )
 
 
@@ -297,11 +298,33 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     assert "bt_enable_trailing_take_profit" in source
 
 
-def test_streamlit_experiment_breakdowns_include_signal_lifecycle_stats() -> None:
+def test_streamlit_experiment_breakdowns_include_signal_lifecycle_and_path_distribution_stats() -> None:
     source = getsource(streamlit_app._render_experiment_breakdowns)
 
     assert "开平仓路径绩效" in source
     assert "signal_lifecycle_stats" in source
+    assert "交易路径分布" in source
+    assert "trade_path_distribution_stats" in source
+    assert "_render_trade_path_distribution_chart" in source
+
+
+def test_trade_path_distribution_chart_frame_uses_professional_labels() -> None:
+    stats = pd.DataFrame(
+        {
+            "dimension": ["R倍数", "R倍数"],
+            "bucket": ["<=-1R", "1R~2R"],
+            "bucket_order": [0, 3],
+            "trade_count": [1.0, 2.0],
+            "win_rate": [0.0, 1.0],
+            "avg_return": [-0.03, 0.05],
+        }
+    )
+
+    chart = _trade_path_distribution_chart_frame(stats)
+
+    assert chart["分布维度"].tolist() == ["R倍数", "R倍数"]
+    assert chart["区间"].tolist() == ["<=-1R", "1R~2R"]
+    assert chart["交易次数"].tolist() == [1.0, 2.0]
 
 
 def test_streamlit_performance_summary_groups_key_backtest_metrics() -> None:

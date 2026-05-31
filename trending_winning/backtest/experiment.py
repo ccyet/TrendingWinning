@@ -76,6 +76,7 @@ from trending_winning.backtest.reporting import (
     setup_trade_statistics as _setup_trade_statistics,
     strategy_names_for_statistics as _strategy_names_for_statistics,
     strategy_trade_statistics as _strategy_trade_statistics,
+    trade_path_distribution_statistics as _trade_path_distribution_statistics,
     trade_dated_equity_curve,
 )
 from trending_winning.backtest.stats import (
@@ -186,6 +187,7 @@ def run_single_strategy_experiment(
             backtest.strategy_filter_decisions,
         ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
+        trade_path_distribution_stats=_trade_path_distribution_statistics(backtest.trades),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
             backtest.strategy_filter_decisions,
@@ -260,6 +262,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
             backtest.strategy_filter_decisions,
         ),
         event_type_stats=_grouped_trade_statistics(backtest.trades, by="event_type"),
+        trade_path_distribution_stats=_trade_path_distribution_statistics(backtest.trades),
         order_decision_stats=compute_decision_reason_statistics(backtest.order_decisions),
         strategy_filter_stats=compute_decision_reason_statistics(
             backtest.strategy_filter_decisions,

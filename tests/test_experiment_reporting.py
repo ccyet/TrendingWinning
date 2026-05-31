@@ -6,6 +6,7 @@ from trending_winning.backtest.reporting import (
     detector_trade_statistics,
     setup_trade_statistics,
     strategy_trade_statistics,
+    trade_path_distribution_statistics,
     trade_dated_equity_curve,
 )
 
@@ -83,3 +84,43 @@ def test_trade_dated_equity_curve_uses_exit_dates_without_backtest_result_depend
         pd.Timestamp("2026-05-25 11:00"),
         pd.Timestamp("2026-05-26 10:00"),
     ]
+
+
+def test_trade_path_distribution_statistics_bucket_trade_quality() -> None:
+    trades = pd.DataFrame(
+        {
+            "return_pct": [3.0, -1.0, 5.0, -4.0, 8.0],
+            "holding_bars": [1, 2, 5, 10, 20],
+            "r_multiple": [0.8, -0.5, 1.5, -1.2, 2.5],
+            "mae_r": [-0.2, -0.8, -0.4, -1.1, -0.3],
+            "mfe_r": [1.0, 0.2, 2.0, 0.1, 3.0],
+        }
+    )
+
+    stats = trade_path_distribution_statistics(trades)
+
+    assert set(stats["dimension"]) == {"持有K数", "R倍数", "最大不利R", "最大有利R"}
+    by_bucket = stats.set_index(["dimension", "bucket"])
+    assert by_bucket.loc[("R倍数", "1R~2R"), "trade_count"] == 1.0
+    assert by_bucket.loc[("R倍数", "1R~2R"), "avg_return"] == 0.05
+    assert by_bucket.loc[("R倍数", "<=-1R"), "win_rate"] == 0.0
+    assert by_bucket.loc[("持有K数", "9-16K"), "trade_count"] == 1.0
+    assert by_bucket.loc[("最大有利R", ">=2R"), "trade_count"] == 2.0
+
+
+def test_trade_path_distribution_statistics_returns_stable_empty_frame() -> None:
+    stats = trade_path_distribution_statistics(pd.DataFrame())
+
+    assert stats.columns.tolist() == [
+        "dimension",
+        "bucket",
+        "bucket_order",
+        "trade_count",
+        "win_rate",
+        "avg_return",
+        "avg_r_multiple",
+        "avg_mae_r",
+        "avg_mfe_r",
+        "avg_holding_bars",
+    ]
+    assert stats.empty

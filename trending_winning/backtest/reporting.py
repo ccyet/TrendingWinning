@@ -9,6 +9,20 @@ from trending_winning.backtest.stats import STAT_KEYS, compute_grouped_trade_sta
 
 SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
 SIGNAL_LIFECYCLE_FIELDS = ("detector_name", "event_type", "side", "exit_reason")
+TRADE_PATH_DISTRIBUTION_COLUMNS = pd.Index(
+    [
+        "dimension",
+        "bucket",
+        "bucket_order",
+        "trade_count",
+        "win_rate",
+        "avg_return",
+        "avg_r_multiple",
+        "avg_mae_r",
+        "avg_mfe_r",
+        "avg_holding_bars",
+    ]
+)
 
 
 def grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) -> pd.DataFrame:
@@ -110,6 +124,30 @@ def signal_lifecycle_statistics(trades: pd.DataFrame) -> pd.DataFrame:
     return grouped_trade_statistics(trades, by=SIGNAL_LIFECYCLE_FIELDS)
 
 
+def trade_path_distribution_statistics(trades: pd.DataFrame) -> pd.DataFrame:
+    """按持仓周期和风险路径分桶汇总成交质量，帮助定位策略赚亏在哪里发生。"""
+    if trades.empty:
+        return pd.DataFrame(columns=TRADE_PATH_DISTRIBUTION_COLUMNS)
+
+    frame = trades.copy()
+    frame["_return_decimal"] = pd.to_numeric(frame.get("return_pct", pd.Series(dtype=float)), errors="coerce").fillna(0.0) / 100.0
+    frame["_holding_bars"] = pd.to_numeric(frame.get("holding_bars", pd.Series(dtype=float)), errors="coerce")
+    frame["_r_multiple"] = pd.to_numeric(frame.get("r_multiple", pd.Series(dtype=float)), errors="coerce")
+    frame["_mae_r"] = pd.to_numeric(frame.get("mae_r", pd.Series(dtype=float)), errors="coerce")
+    frame["_mfe_r"] = pd.to_numeric(frame.get("mfe_r", pd.Series(dtype=float)), errors="coerce")
+
+    rows: list[dict[str, object]] = []
+    rows.extend(_bucket_distribution_rows(frame, "_holding_bars", "持有K数", _holding_bar_bucket))
+    rows.extend(_bucket_distribution_rows(frame, "_r_multiple", "R倍数", _r_multiple_bucket))
+    rows.extend(_bucket_distribution_rows(frame, "_mae_r", "最大不利R", _mae_r_bucket))
+    rows.extend(_bucket_distribution_rows(frame, "_mfe_r", "最大有利R", _mfe_r_bucket))
+    if not rows:
+        return pd.DataFrame(columns=TRADE_PATH_DISTRIBUTION_COLUMNS)
+    return pd.DataFrame(rows).sort_values(["dimension", "bucket_order"], kind="mergesort").reset_index(drop=True)[
+        TRADE_PATH_DISTRIBUTION_COLUMNS
+    ]
+
+
 def trade_dated_equity_curve(equity_curve: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
     """给单策略成交净值补 exit_date，避免月度统计落到纯 trade_no 轴。"""
     equity = equity_curve.copy()
@@ -130,6 +168,93 @@ def trade_dated_equity_curve(equity_curve: pd.DataFrame, trades: pd.DataFrame) -
         if pd.notna(first_exit_date):
             dated.loc[dated["trade_no"].eq(0), "exit_date"] = first_exit_date
     return dated.rename(columns={"exit_date": "date"})
+
+
+def _bucket_distribution_rows(
+    frame: pd.DataFrame,
+    value_column: str,
+    dimension: str,
+    bucket_fn,
+) -> list[dict[str, object]]:
+    if value_column not in frame.columns:
+        return []
+    bucketed = frame.loc[frame[value_column].notna()].copy()
+    if bucketed.empty:
+        return []
+    bucket_values = bucketed[value_column].map(bucket_fn)
+    bucketed["_bucket"] = [bucket for bucket, _order in bucket_values]
+    bucketed["_bucket_order"] = [order for _bucket, order in bucket_values]
+    rows: list[dict[str, object]] = []
+    for (bucket, bucket_order), group in bucketed.groupby(["_bucket", "_bucket_order"], sort=True):
+        returns = pd.to_numeric(group["_return_decimal"], errors="coerce").fillna(0.0)
+        rows.append(
+            {
+                "dimension": dimension,
+                "bucket": str(bucket),
+                "bucket_order": int(bucket_order),
+                "trade_count": float(len(group)),
+                "win_rate": _mean_or_zero(returns.gt(0).astype(float)),
+                "avg_return": _mean_or_zero(returns),
+                "avg_r_multiple": _mean_or_zero(group["_r_multiple"]),
+                "avg_mae_r": _mean_or_zero(group["_mae_r"]),
+                "avg_mfe_r": _mean_or_zero(group["_mfe_r"]),
+                "avg_holding_bars": _mean_or_zero(group["_holding_bars"]),
+            }
+        )
+    return rows
+
+
+def _holding_bar_bucket(value: float) -> tuple[str, int]:
+    if value <= 1:
+        return "1K", 0
+    if value <= 3:
+        return "2-3K", 1
+    if value <= 8:
+        return "4-8K", 2
+    if value <= 16:
+        return "9-16K", 3
+    return "17K+", 4
+
+
+def _r_multiple_bucket(value: float) -> tuple[str, int]:
+    if value <= -1:
+        return "<=-1R", 0
+    if value < 0:
+        return "-1R~0R", 1
+    if value < 1:
+        return "0R~1R", 2
+    if value < 2:
+        return "1R~2R", 3
+    return ">=2R", 4
+
+
+def _mae_r_bucket(value: float) -> tuple[str, int]:
+    if value <= -1:
+        return "<=-1R", 0
+    if value <= -0.5:
+        return "-1R~-0.5R", 1
+    if value < 0:
+        return "-0.5R~0R", 2
+    return "0R", 3
+
+
+def _mfe_r_bucket(value: float) -> tuple[str, int]:
+    if value <= 0:
+        return "0R", 0
+    if value < 0.5:
+        return "0R~0.5R", 1
+    if value < 1:
+        return "0.5R~1R", 2
+    if value < 2:
+        return "1R~2R", 3
+    return ">=2R", 4
+
+
+def _mean_or_zero(values: pd.Series) -> float:
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return 0.0
+    return float(round(float(numeric.mean()), 12))
 
 
 def strategy_names_for_statistics(

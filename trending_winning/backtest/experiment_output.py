@@ -17,6 +17,7 @@ from trending_winning.backtest.experiment_models import (
     SingleStrategySweepResult,
 )
 from trending_winning.backtest.periods import compute_period_return_statistics
+from trending_winning.backtest.reporting import trade_path_distribution_statistics
 from trending_winning.backtest.sweep_analysis import (
     parameter_summary_table as _build_parameter_summary_table,
     pareto_sweep_table as _build_pareto_sweep_table,
@@ -42,6 +43,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
     result.signal_lifecycle_stats.to_csv(output_dir / "signal_lifecycle_stats.csv", index=False)
     result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
+    _experiment_trade_path_distribution(result).to_csv(output_dir / "trade_path_distribution.csv", index=False)
     result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
     result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
@@ -65,6 +67,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
     result.signal_lifecycle_stats.to_csv(output_dir / "signal_lifecycle_stats.csv", index=False)
     result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
+    _experiment_trade_path_distribution(result).to_csv(output_dir / "trade_path_distribution.csv", index=False)
     result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
     result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
@@ -153,6 +156,12 @@ def _experiment_drawdown_episodes(equity_curve: pd.DataFrame) -> pd.DataFrame:
         return drawdown_episodes(pd.DataFrame(), pd.Series(dtype=float))
     drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
     return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=20)
+
+
+def _experiment_trade_path_distribution(result: SingleStrategyExperimentResult | PortfolioExperimentResult) -> pd.DataFrame:
+    if not result.trade_path_distribution_stats.empty:
+        return result.trade_path_distribution_stats
+    return trade_path_distribution_statistics(result.backtest.trades)
 
 
 def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | SingleStrategySweepResult) -> None:

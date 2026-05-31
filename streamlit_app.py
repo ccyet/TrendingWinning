@@ -180,6 +180,9 @@ DISPLAY_COLUMN_LABELS = {
     "underwater_bars": "水下K数",
     "recovery_bars": "修复K数",
     "recovered": "已修复",
+    "dimension": "分布维度",
+    "bucket": "区间",
+    "bucket_order": "区间顺序",
     "data_inventory_signature": "数据快照指纹",
     "data_inventory_row_count": "缓存检查项数",
     "data_inventory_cached_count": "缓存可用数",
@@ -199,11 +202,15 @@ DISPLAY_COLUMN_LABELS = {
     "order_id": "订单ID",
     "event_id": "信号ID",
     "trade_count": "交易次数",
+    "avg_holding_bars": "平均持有K数",
     "win_rate": "胜率",
     "win_rate_ci_lower": "胜率95%下限",
     "win_rate_ci_upper": "胜率95%上限",
     "total_return": "总收益",
     "avg_return": "平均收益",
+    "avg_r_multiple": "平均R倍数",
+    "avg_mae_r": "平均最大不利R",
+    "avg_mfe_r": "平均最大有利R",
     "annualized_return": "年化收益",
     "annualized_sharpe": "年化Sharpe",
     "annualized_sortino": "年化Sortino",
@@ -228,7 +235,6 @@ DISPLAY_COLUMN_LABELS = {
     "avg_loss": "平均亏损",
     "payoff_ratio": "盈亏比",
     "holding_bars": "持有K数",
-    "avg_holding_bars": "平均持有K数",
     "market_bar_count": "市场K数",
     "exposure_bars": "场内K数",
     "exposure_bar_ratio": "场内时间比例",
@@ -242,7 +248,6 @@ DISPLAY_COLUMN_LABELS = {
     "mae_pct": "最大不利波动",
     "mfe_pct": "最大有利波动",
     "r_multiple": "R倍数",
-    "avg_r_multiple": "平均R倍数",
     "system_quality_number": "SQN系统质量",
     "actual_risk_pct": "实际止损风险",
     "actual_chase_pct": "追价距离",
@@ -1292,6 +1297,53 @@ def _equity_drawdown_episodes_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     drawdown_column = "drawdown_net_value" if "drawdown_net_value" in equity_curve.columns else "net_value"
     return drawdown_episodes(equity_curve, equity_curve[drawdown_column], limit=10)
+
+
+def _render_trade_path_distribution_chart(frame: pd.DataFrame) -> None:
+    chart_data = _trade_path_distribution_chart_frame(frame)
+    if chart_data.empty:
+        return
+    chart = (
+        alt.Chart(chart_data)
+        .mark_bar(cornerRadiusEnd=3)
+        .encode(
+            x=alt.X("交易次数:Q", title="交易次数"),
+            y=alt.Y("区间:N", title="", sort=alt.SortField(field="区间顺序", order="ascending")),
+            color=alt.Color("分布维度:N", title="分布维度"),
+            row=alt.Row("分布维度:N", title="", header=alt.Header(labelAngle=0, labelAlign="left")),
+            tooltip=[
+                "分布维度:N",
+                "区间:N",
+                alt.Tooltip("交易次数:Q", format=".0f"),
+                alt.Tooltip("胜率:Q", format=".1%"),
+                alt.Tooltip("平均收益:Q", format=".2%"),
+            ],
+        )
+        .properties(height=96)
+        .resolve_scale(y="independent")
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _trade_path_distribution_chart_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """把交易路径分布表转为中文图表字段，页面和测试共用同一口径。"""
+    required = {"dimension", "bucket", "bucket_order", "trade_count", "win_rate", "avg_return"}
+    if frame.empty or not required.issubset(frame.columns):
+        return pd.DataFrame(columns=["分布维度", "区间", "区间顺序", "交易次数", "胜率", "平均收益"])
+    chart_data = frame.loc[:, ["dimension", "bucket", "bucket_order", "trade_count", "win_rate", "avg_return"]].copy()
+    for column in ("bucket_order", "trade_count", "win_rate", "avg_return"):
+        chart_data[column] = pd.to_numeric(chart_data[column], errors="coerce")
+    chart_data = chart_data.dropna(subset=["bucket_order", "trade_count"])
+    return chart_data.rename(
+        columns={
+            "dimension": "分布维度",
+            "bucket": "区间",
+            "bucket_order": "区间顺序",
+            "trade_count": "交易次数",
+            "win_rate": "胜率",
+            "avg_return": "平均收益",
+        }
+    ).reset_index(drop=True)
 
 
 def _equity_chart_frame(equity_curve: pd.DataFrame) -> pd.DataFrame:
@@ -3399,6 +3451,10 @@ def _render_backtest_result(
 
 def _render_experiment_breakdowns(experiment, *, stock_names: Mapping[str, str] | None = None) -> None:
     """展示实验拆分统计；单策略和组合回测复用同一组产物。"""
+    if not experiment.trade_path_distribution_stats.empty:
+        st.markdown("##### 交易路径分布")
+        _render_trade_path_distribution_chart(experiment.trade_path_distribution_stats)
+        _render_display_table("交易路径分布", experiment.trade_path_distribution_stats, stock_names=stock_names)
     for title, frame in [
         ("策略绩效", experiment.strategy_stats),
         ("股票绩效", experiment.symbol_stats),
