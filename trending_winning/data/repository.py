@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import pyarrow as pa
 
 from trending_winning.data.filters import filter_limit_open_days, limit_open_dates
 from trending_winning.data.inventory import (
@@ -17,9 +16,6 @@ from trending_winning.data.inventory import (
 from trending_winning.data.schema import (
     CANONICAL_COLUMNS,
     SUPPORTED_TIMEFRAMES,
-    TIMEFRAME_DIR_NAMES,
-    empty_bars,
-    empty_download_result,
     ensure_supported_timeframe,
     inclusive_end_timestamp,
     normalize_bars,
@@ -38,6 +34,7 @@ from trending_winning.data.summary import (
     summarize_data_management,
     summarize_limit_filter_audit,
 )
+from trending_winning.data.storage import load_daily_bars, load_local_bars, resolve_daily_root, write_local_bars
 from trending_winning.data.symbols import load_symbol_metadata, resolve_symbol_names
 
 __all__ = [
@@ -420,93 +417,6 @@ class MarketDataRepository:
             strict_data_quality=strict_data_quality,
             min_coverage_ratio=min_coverage_ratio,
         )
-
-
-def resolve_daily_root(data_root: str | Path) -> Path:
-    root = Path(data_root).expanduser()
-    if root.name.lower() == "daily":
-        return root
-    if root.name.lower() in set(TIMEFRAME_DIR_NAMES.values()):
-        return root.parent / "daily"
-    return root / "daily"
-
-
-def load_local_bars(
-    *,
-    data_root: str | Path,
-    timeframe: str,
-    adjust: str,
-    symbols: tuple[str, ...] | list[str],
-    start: str | pd.Timestamp,
-    end: str | pd.Timestamp,
-) -> pd.DataFrame:
-    root = resolve_timeframe_root(data_root, timeframe) / adjust
-    start_ts, end_ts = parse_time_window(start, end)
-    frames: list[pd.DataFrame] = []
-    for symbol in unique_symbols(tuple(symbols)):
-        path = root / f"{symbol}.parquet"
-        if not path.exists():
-            continue
-        frame = _read_bars_parquet_window(path, symbol=symbol, start_ts=start_ts, end_ts=end_ts)
-        if not frame.empty:
-            frames.append(frame)
-    if not frames:
-        return empty_bars()
-    return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
-
-
-def load_daily_bars(
-    *,
-    data_root: str | Path,
-    adjust: str,
-    symbols: tuple[str, ...] | list[str],
-    start: str | pd.Timestamp,
-    end: str | pd.Timestamp,
-) -> pd.DataFrame:
-    root = resolve_daily_root(data_root) / adjust
-    start_ts, end_ts = parse_time_window(start, end)
-    frames: list[pd.DataFrame] = []
-    for symbol in unique_symbols(tuple(symbols)):
-        path = root / f"{symbol}.parquet"
-        if not path.exists():
-            continue
-        frame = _read_bars_parquet_window(path, symbol=symbol, start_ts=start_ts, end_ts=end_ts)
-        if not frame.empty:
-            frames.append(frame)
-    if not frames:
-        return empty_bars()
-    return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
-
-
-def _read_bars_parquet_window(
-    path: Path,
-    *,
-    symbol: str,
-    start_ts: pd.Timestamp,
-    end_ts: pd.Timestamp,
-) -> pd.DataFrame:
-    """按标准列和时间窗口读取 parquet，减少分钟线大文件的无效 IO。"""
-    try:
-        frame = pd.read_parquet(
-            path,
-            columns=list(CANONICAL_COLUMNS),
-            filters=_date_window_filters(start_ts, end_ts),
-        )
-    except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as exc:
-        if not _is_date_filter_type_mismatch(exc):
-            raise
-        frame = pd.read_parquet(path, columns=list(CANONICAL_COLUMNS))
-    normalized = normalize_bars(frame, symbol)
-    return normalized.loc[normalized["date"].between(start_ts, end_ts)].reset_index(drop=True)
-
-
-def _date_window_filters(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> list[tuple[str, str, pd.Timestamp]]:
-    return [("date", ">=", start_ts), ("date", "<=", end_ts)]
-
-
-def _is_date_filter_type_mismatch(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "timestamp" in message and "string" in message and ("greater_equal" in message or "less_equal" in message)
 
 
 def load_backtest_data(
@@ -1526,7 +1436,6 @@ def _tdx_plan_rows(audit: pd.DataFrame, *, min_coverage_ratio: float | None) -> 
         )
     return rows
 
-
 def _audit_row_requires_tdx_update(row: object, *, min_coverage_ratio: float | None) -> bool:
     status = str(getattr(row, "status"))
     if status != "ok":
@@ -1598,48 +1507,3 @@ def _prepare_summary_rows(
             }
         )
     return rows
-
-
-def write_local_bars(
-    *,
-    data_root: str | Path,
-    timeframe: str,
-    adjust: str,
-    bars: pd.DataFrame,
-) -> pd.DataFrame:
-    normalized = normalize_bars(bars)
-    if normalized.empty:
-        return empty_download_result()
-
-    root = resolve_timeframe_root(data_root, timeframe) / adjust
-    root.mkdir(parents=True, exist_ok=True)
-    rows: list[dict[str, object]] = []
-    for symbol, incoming in normalized.groupby("stock_code", sort=True):
-        path = root / f"{symbol}.parquet"
-        previous_rows = 0
-        if path.exists():
-            previous = normalize_bars(pd.read_parquet(path), str(symbol))
-            previous_rows = len(previous)
-            merged = pd.concat([previous, incoming], ignore_index=True)
-        else:
-            merged = incoming.copy()
-        merged = (
-            merged[CANONICAL_COLUMNS]
-            .drop_duplicates(subset=["stock_code", "date"], keep="last")
-            .sort_values(["stock_code", "date"])
-            .reset_index(drop=True)
-        )
-        merged.to_parquet(path, index=False)
-        rows.append(
-            {
-                "symbol": str(symbol),
-                "status": "success",
-                "rows": int(len(merged)),
-                "new_rows": int(max(len(merged) - previous_rows, 0)),
-                "path": str(path),
-                "start": merged["date"].min(),
-                "end": merged["date"].max(),
-                "message": "TDX 行情已写入本地 parquet。",
-            }
-        )
-    return pd.DataFrame(rows)

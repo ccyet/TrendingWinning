@@ -42,6 +42,11 @@ from trending_winning.data.summary import (
     summarize_data_management as summarize_data_management_from_summary,
     summarize_limit_filter_audit as summarize_limit_filter_audit_from_summary,
 )
+from trending_winning.data.storage import (
+    load_local_bars as load_local_bars_from_storage,
+    resolve_daily_root as resolve_daily_root_from_storage,
+    write_local_bars as write_local_bars_from_storage,
+)
 
 
 class FakeTq:
@@ -182,6 +187,37 @@ def test_write_local_bars_merges_and_deduplicates_by_symbol_date(tmp_path: Path)
     assert second_result.loc[0, "rows"] == 2
     assert loaded["close"].tolist() == [10.7, 11.2]
     assert (tmp_path / "market" / "60m" / "qfq" / "000001.SZ.parquet").exists()
+
+
+def test_storage_has_independent_module_entrypoint(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-25 10:00:00", "2026-05-25 10:30:00"]),
+            "stock_code": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.1],
+            "high": [10.3, 10.4],
+            "low": [9.9, 10.0],
+            "close": [10.2, 10.3],
+            "volume": [1000.0, 1100.0],
+            "amount": [10200.0, 11330.0],
+        }
+    )
+
+    summary = write_local_bars_from_storage(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    loaded = load_local_bars_from_storage(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25 10:30:00",
+        end="2026-05-25 10:30:00",
+    )
+
+    assert summary.loc[0, "rows"] == 2
+    assert loaded["date"].tolist() == [pd.Timestamp("2026-05-25 10:30:00")]
+    assert loaded["close"].tolist() == [10.3]
+    assert resolve_daily_root_from_storage(tmp_path / "market" / "30m") == tmp_path / "market" / "daily"
 
 
 def test_inventory_local_data_reports_cached_and_missing_symbols(tmp_path: Path) -> None:
