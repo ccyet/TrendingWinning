@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-import math
 import re
 
 import pandas as pd
@@ -13,13 +12,13 @@ from trending_winning.backtest.drawdown import (
     max_drawdown_duration,
 )
 from trending_winning.backtest.exposure import trade_exposure_statistics
+from trending_winning.backtest.equity_metrics import equity_return_statistics
 from trending_winning.backtest.periods import (
     PERIOD_STAT_KEYS as PERIOD_STAT_KEYS,
     compute_period_return_statistics as compute_period_return_statistics,
     compute_period_returns as compute_period_returns,
 )
 from trending_winning.backtest.returns import (
-    downside_deviation as return_downside_deviation,
     return_series_statistics,
 )
 from trending_winning.backtest.risk_metrics import trade_risk_quality_statistics
@@ -402,33 +401,25 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     net_value = data["net_value"].reset_index(drop=True)
     if net_value.empty:
         return _empty_equity_statistics()
-    returns = net_value.pct_change().dropna()
     drawdown_stats = equity_drawdown_statistics(data, net_value)
-    std = _std_or_zero(returns)
-    downside_deviation = return_downside_deviation(returns)
-    total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
     max_drawdown = float(drawdown_stats["max_drawdown"])
-    annual_periods = float(periods_per_year or _infer_periods_per_year(data))
-    annualized_return = _annualized_return(net_value, annual_periods, len(returns))
-    annualized_volatility = _round_float(std * math.sqrt(annual_periods))
-    annualized_sharpe = _annualized_ratio(returns, std, annual_periods)
-    annualized_sortino = _annualized_ratio(returns, downside_deviation, annual_periods)
+    equity_return_stats = equity_return_statistics(data, net_value, max_drawdown=max_drawdown, periods_per_year=periods_per_year)
     gross_exposure = _numeric_column(data, "gross_exposure")
     margin_exposure = _numeric_column(data, "margin_exposure")
     open_positions = _numeric_column(data, "open_positions")
     cash_ratio = _ratio_column_to_net_value(data, "cash", net_value)
     net_exposure = _ratio_column_to_net_value(data, "position_value", net_value)
     return {
-        "total_return": total_return,
+        "total_return": equity_return_stats["total_return"],
         **drawdown_stats,
-        "equity_return_std": std,
-        "equity_sharpe": _ratio_or_zero(_round_float(returns.mean()), std),
-        "equity_sortino": _ratio_or_zero(_round_float(returns.mean()), downside_deviation),
-        "annualized_return": annualized_return,
-        "annualized_volatility": annualized_volatility,
-        "annualized_sharpe": annualized_sharpe,
-        "annualized_sortino": annualized_sortino,
-        "calmar_ratio": _ratio_or_zero(annualized_return, abs(max_drawdown)),
+        "equity_return_std": equity_return_stats["equity_return_std"],
+        "equity_sharpe": equity_return_stats["equity_sharpe"],
+        "equity_sortino": equity_return_stats["equity_sortino"],
+        "annualized_return": equity_return_stats["annualized_return"],
+        "annualized_volatility": equity_return_stats["annualized_volatility"],
+        "annualized_sharpe": equity_return_stats["annualized_sharpe"],
+        "annualized_sortino": equity_return_stats["annualized_sortino"],
+        "calmar_ratio": equity_return_stats["calmar_ratio"],
         "avg_gross_exposure": _mean_or_zero(gross_exposure),
         "max_gross_exposure": _round_float(gross_exposure.max()) if not gross_exposure.empty else 0.0,
         "avg_margin_exposure": _mean_or_zero(margin_exposure),
@@ -805,40 +796,6 @@ def _masked_max(frame: pd.DataFrame, mask: pd.Series, column: str) -> float:
 def _masked_min(frame: pd.DataFrame, mask: pd.Series, column: str) -> float:
     values = _masked_values(frame, mask, column)
     return _round_float(values.min()) if not values.empty else 0.0
-
-
-def _infer_periods_per_year(equity_curve: pd.DataFrame) -> float:
-    if "date" not in equity_curve.columns:
-        return 252.0
-    dates = pd.to_datetime(equity_curve["date"], errors="coerce").dropna().drop_duplicates().sort_values()
-    if len(dates) < 2:
-        return 252.0
-    delta_seconds = dates.diff().dropna().dt.total_seconds()
-    if delta_seconds.empty:
-        return 252.0
-    median_seconds = float(delta_seconds.median())
-    if median_seconds <= 0:
-        return 252.0
-    trading_day_seconds = 4.0 * 60.0 * 60.0
-    if median_seconds < trading_day_seconds:
-        return _round_float(252.0 * trading_day_seconds / median_seconds)
-    return 252.0
-
-
-def _annualized_return(net_value: pd.Series, periods_per_year: float, observed_periods: int) -> float:
-    if observed_periods <= 0 or periods_per_year <= 0:
-        return 0.0
-    start = float(net_value.iloc[0])
-    end = float(net_value.iloc[-1])
-    if start <= 0 or end <= 0:
-        return 0.0
-    return _round_float((end / start) ** (periods_per_year / observed_periods) - 1.0)
-
-
-def _annualized_ratio(returns: pd.Series, denominator: float, periods_per_year: float) -> float:
-    if returns.empty or denominator <= 0 or periods_per_year <= 0:
-        return 0.0
-    return _round_float(float(returns.mean()) / denominator * math.sqrt(periods_per_year))
 
 
 def _round_float(value: float) -> float:
