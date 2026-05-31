@@ -8,6 +8,7 @@ from trending_winning.backtest.stats import STAT_KEYS, compute_grouped_trade_sta
 
 
 SETUP_STAT_FIELDS = ("detector_name", "event_type", "side")
+SIGNAL_LIFECYCLE_FIELDS = ("detector_name", "event_type", "side", "exit_reason")
 
 
 def grouped_trade_statistics(trades: pd.DataFrame, *, by: str | Sequence[str]) -> pd.DataFrame:
@@ -102,6 +103,11 @@ def setup_trade_statistics(
     if not frames:
         return pd.DataFrame(columns=columns)
     return _sort_setup_statistics(pd.concat(frames, ignore_index=True))
+
+
+def signal_lifecycle_statistics(trades: pd.DataFrame) -> pd.DataFrame:
+    """按信号形态、方向和退出原因汇总绩效，用于观察开仓信号到平仓结果的完整路径。"""
+    return grouped_trade_statistics(trades, by=SIGNAL_LIFECYCLE_FIELDS)
 
 
 def trade_dated_equity_curve(equity_curve: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:

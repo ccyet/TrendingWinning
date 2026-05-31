@@ -71,6 +71,7 @@ from trending_winning.backtest.portfolio_models import PortfolioCandidateSet
 from trending_winning.backtest.reporting import (
     detector_trade_statistics as _detector_trade_statistics,
     grouped_trade_statistics as _grouped_trade_statistics,
+    signal_lifecycle_statistics as _signal_lifecycle_statistics,
     setup_trade_statistics as _setup_trade_statistics,
     strategy_names_for_statistics as _strategy_names_for_statistics,
     strategy_trade_statistics as _strategy_trade_statistics,
@@ -167,6 +168,7 @@ def run_single_strategy_experiment(
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
+        signal_lifecycle_stats=_signal_lifecycle_statistics(backtest.trades),
         detector_stats=_detector_trade_statistics(
             backtest.trades,
             _configured_detector_names(config),
@@ -236,6 +238,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         symbol_stats=_symbol_grouped_trade_statistics(backtest.trades, config),
         side_stats=_grouped_trade_statistics(backtest.trades, by="side"),
         exit_reason_stats=_grouped_trade_statistics(backtest.trades, by="exit_reason"),
+        signal_lifecycle_stats=_signal_lifecycle_statistics(backtest.trades),
         detector_stats=_detector_trade_statistics(
             backtest.trades,
             _configured_detector_names(config),

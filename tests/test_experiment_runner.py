@@ -313,6 +313,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert (output_dir / "symbol_stats.csv").exists()
     assert (output_dir / "side_stats.csv").exists()
     assert (output_dir / "exit_reason_stats.csv").exists()
+    assert (output_dir / "signal_lifecycle_stats.csv").exists()
     assert (output_dir / "event_type_stats.csv").exists()
     assert (output_dir / "monthly_returns.csv").exists()
     saved_config = json.loads((output_dir / "config.json").read_text())
@@ -388,6 +389,7 @@ def test_portfolio_experiment_saves_reproducible_config_and_outputs(tmp_path: Pa
     assert saved_symbol_stats.set_index("stock_code").loc["000001.SZ", "stock_name"] == "平安银行"
     assert "side" in result.side_stats.columns
     assert "exit_reason" in result.exit_reason_stats.columns
+    assert {"detector_name", "event_type", "side", "exit_reason"}.issubset(result.signal_lifecycle_stats.columns)
     assert "event_type" in result.event_type_stats.columns
     assert result.monthly_returns["period"].tolist() == ["2026-05"]
 

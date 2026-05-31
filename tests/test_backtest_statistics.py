@@ -20,6 +20,7 @@ from trending_winning.backtest.periods import (
     compute_period_return_statistics as compute_period_return_statistics_from_periods,
     compute_period_returns as compute_period_returns_from_periods,
 )
+from trending_winning.backtest.reporting import signal_lifecycle_statistics
 
 
 def test_build_equity_curve_keeps_trade_dates_for_period_statistics() -> None:
@@ -239,6 +240,27 @@ def test_compute_grouped_trade_statistics_includes_sample_confidence_metrics() -
     assert "win_rate_ci_lower" in grouped.columns
     assert "avg_return_ci_upper" in grouped.columns
     assert grouped.set_index("strategy_name").loc["trend", "avg_return_standard_error"] > 0
+
+
+def test_signal_lifecycle_statistics_groups_signal_setup_to_exit_reason() -> None:
+    trades = pd.DataFrame(
+        {
+            "detector_name": ["trend", "trend", "range"],
+            "event_type": ["bull_h2_setup", "bull_h2_setup", "failed_breakout"],
+            "side": ["long", "long", "short"],
+            "exit_reason": ["take_profit", "stop_loss", "trailing_take_profit"],
+            "return_pct": [6.0, -3.0, 4.0],
+            "holding_bars": [3, 2, 4],
+        }
+    )
+
+    stats = signal_lifecycle_statistics(trades)
+
+    assert stats.columns[:4].tolist() == ["detector_name", "event_type", "side", "exit_reason"]
+    by_path = stats.set_index(["detector_name", "event_type", "side", "exit_reason"])
+    assert by_path.loc[("trend", "bull_h2_setup", "long", "take_profit"), "trade_count"] == 1.0
+    assert by_path.loc[("trend", "bull_h2_setup", "long", "stop_loss"), "total_return"] == pytest.approx(-0.03)
+    assert by_path.loc[("range", "failed_breakout", "short", "trailing_take_profit"), "win_rate"] == 1.0
 
 
 def test_compute_trade_statistics_reports_r_profit_factor_and_sqn() -> None:

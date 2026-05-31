@@ -145,6 +145,7 @@ class PortfolioExperimentResult:
     exit_reason_stats: pd.DataFrame
     monthly_returns: pd.DataFrame
     elapsed_seconds: float
+    signal_lifecycle_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -172,6 +173,7 @@ class SingleStrategyExperimentResult:
     side_stats: pd.DataFrame
     exit_reason_stats: pd.DataFrame
     monthly_returns: pd.DataFrame
+    signal_lifecycle_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     event_type_stats: pd.DataFrame = field(default_factory=pd.DataFrame)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import getsource
 from pathlib import Path
 
 import pandas as pd
@@ -276,6 +277,13 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
     assert "最大盈利回撤幅度" in source
     assert "当前周期均线周期" in source
     assert "bt_enable_trailing_take_profit" in source
+
+
+def test_streamlit_experiment_breakdowns_include_signal_lifecycle_stats() -> None:
+    source = getsource(streamlit_app._render_experiment_breakdowns)
+
+    assert "开平仓路径绩效" in source
+    assert "signal_lifecycle_stats" in source
 
 
 def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
@@ -662,6 +670,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
+    assert "signal_lifecycle_stats.csv" in html
     assert "monthly_win_rate" in html
     assert "周期稳定性" in html
     assert "策略K线运行区间" in html
@@ -711,6 +720,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "目标平仓价" in html
     assert "只有信号但没有成交的 setup" in html
     assert "策略K线运行区间" in html
+    assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html
     assert html.count("<svg") >= 6
     assert "门禁" not in html
