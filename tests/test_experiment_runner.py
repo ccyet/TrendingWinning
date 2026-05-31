@@ -161,7 +161,7 @@ def test_experiment_module_does_not_import_trend_detector_at_module_load() -> No
 
 
 def test_experiment_json_ready_replaces_non_finite_numbers_for_strict_json() -> None:
-    payload = experiment_module._json_ready(
+    payload = experiment_case_module.json_ready(
         {
             "profit_factor": float("inf"),
             "loss_factor": float("-inf"),
@@ -2449,7 +2449,7 @@ def test_load_sweep_case_config_rejects_tampered_config_hash(tmp_path: Path) -> 
     payload = {
         "case_name": "single-sweep-001",
         "case_config_hash": config_hash,
-        "config": experiment_module._json_ready(config.__dict__),
+        "config": experiment_case_module.json_ready(config.__dict__),
     }
     payload["config"]["risk_reward"] = 2.0
     case_configs = tmp_path / "case_configs.jsonl"

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict
-from pathlib import Path
 from time import perf_counter
 
 import numpy as np
@@ -12,13 +10,9 @@ from trending_winning.backtest.engine import run_order_backtest_from_normalized,
 from trending_winning.backtest.experiment_cases import (
     case_config_hash as _case_config_hash,
     effective_sweep_grid as _effective_sweep_grid,
-    json_dump as _json_dump,
-    json_ready as _json_ready,
     load_sweep_case_config as load_sweep_case_config,
-    sweep_case_config_records as _sweep_case_config_records,
     sweep_parameter_record as _sweep_parameter_record,
     sweep_variants as _sweep_variants,
-    write_jsonl as _write_jsonl,
 )
 from trending_winning.backtest.experiment_data import (
     load_experiment_data as _load_experiment_data,
@@ -57,18 +51,22 @@ from trending_winning.backtest.stats import (
     summarize_strategy_filter_decisions,
 )
 from trending_winning.backtest.sweep_analysis import (
-    parameter_summary_table as _build_parameter_summary_table,
     pareto_dominance_matrix as _build_pareto_dominance_matrix,
     pareto_front_ranks as _build_pareto_front_ranks,
     pareto_score_table as _build_pareto_score_table,
-    pareto_sweep_table as _build_pareto_sweep_table,
     rank_sweep_table,
 )
-from trending_winning.backtest.sweep_summary import sweep_summary_statistics as _build_sweep_summary_statistics
 from trending_winning.data.repository import MarketDataRepository
 from trending_winning.data.schema import unique_symbols
 from trending_winning.data.summary import summarize_data_management
-from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
+from trending_winning.backtest.experiment_output import (
+    save_portfolio_benchmark as save_portfolio_benchmark,
+    save_portfolio_experiment as save_portfolio_experiment,
+    save_portfolio_sweep as save_portfolio_sweep,
+    save_single_strategy_experiment as save_single_strategy_experiment,
+    save_single_strategy_sweep as save_single_strategy_sweep,
+    symbol_metadata_for_config as _symbol_metadata_for_config,
+)
 from trending_winning.strategies.multitimeframe import HigherTimeframeAlignmentStrategy, TimeframeAlignmentConfig
 from trending_winning.strategies.runtime import execute_strategy, execute_strategies
 from trending_winning.strategies.suite import StrategySuiteConfig, create_default_strategy_suite, create_strategy_for_detector
@@ -879,31 +877,6 @@ def build_portfolio_benchmark_report(result: PortfolioExperimentResult) -> Portf
     )
 
 
-def _symbol_metadata_for_config(
-    config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
-) -> pd.DataFrame:
-    """把实验涉及的股票名称随结果一起保存，避免统计表脱离代码名称映射。"""
-    metadata = load_symbol_metadata(config.data_root)
-    metadata_by_symbol = {str(row.stock_code): row for row in metadata.itertuples(index=False)}
-    rows: list[dict[str, object]] = []
-    for symbol in unique_symbols(tuple(config.symbols)):
-        if symbol in metadata_by_symbol:
-            record = metadata_by_symbol[symbol]
-            rows.append(
-                {
-                    "stock_code": symbol,
-                    "stock_name": str(record.stock_name),
-                    "source": str(record.source),
-                    "path": str(record.path),
-                }
-            )
-            continue
-        name = DEFAULT_STOCK_NAME_BY_CODE.get(symbol)
-        if name:
-            rows.append({"stock_code": symbol, "stock_name": name, "source": "default_builtin", "path": ""})
-    return pd.DataFrame(rows, columns=pd.Index(SYMBOL_METADATA_COLUMNS))
-
-
 def _symbol_name_map_for_config(
     config: PortfolioExperimentConfig | SingleStrategyExperimentConfig,
 ) -> dict[str, str]:
@@ -958,165 +931,6 @@ def _zero_symbol_statistics(symbols: Sequence[str], symbol_name_by_code: Mapping
         for symbol in symbols
     ]
     return pd.DataFrame(rows, columns=pd.Index(["stock_name", "stock_code", *STAT_KEYS]))
-
-
-def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
-    output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
-    stats = dict(result.backtest.stats)
-    stats.update(
-        summarize_data_management(
-            result.data_coverage,
-            result.limit_filter_audit,
-            filtered_limit_open_count=result.filtered_limit_open_count,
-            data_inventory=result.data_inventory,
-            min_coverage_ratio=result.config.min_coverage_ratio,
-        )
-    )
-    stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))
-    stats["elapsed_seconds"] = float(result.elapsed_seconds)
-    (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
-    result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
-    result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
-    result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
-    result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
-    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
-    result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
-    result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
-    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
-    result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
-    result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
-    result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
-    result.symbol_stats.to_csv(output_dir / "symbol_stats.csv", index=False)
-    result.side_stats.to_csv(output_dir / "side_stats.csv", index=False)
-    result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
-    result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
-    result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
-    result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
-    result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
-    result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
-    result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
-    return output_dir
-
-
-def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
-    output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "config.json").write_text(_json_dump(_json_ready(asdict(result.config))))
-    stats = dict(result.backtest.stats)
-    stats.update(
-        summarize_data_management(
-            result.data_coverage,
-            result.limit_filter_audit,
-            filtered_limit_open_count=result.filtered_limit_open_count,
-            data_inventory=result.data_inventory,
-            min_coverage_ratio=result.config.min_coverage_ratio,
-        )
-    )
-    stats.update(compute_period_return_statistics(result.monthly_returns, prefix="monthly"))
-    stats["elapsed_seconds"] = float(result.elapsed_seconds)
-    (output_dir / "stats.json").write_text(_json_dump(_json_ready(stats)))
-    result.backtest.trades.to_csv(output_dir / "trades.csv", index=False)
-    result.backtest.order_decisions.to_csv(output_dir / "order_decisions.csv", index=False)
-    result.backtest.strategy_filter_decisions.to_csv(output_dir / "strategy_filter_decisions.csv", index=False)
-    result.backtest.equity_curve.to_csv(output_dir / "equity_curve.csv", index=False)
-    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
-    result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
-    result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
-    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
-    result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
-    result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
-    result.setup_stats.to_csv(output_dir / "setup_stats.csv", index=False)
-    result.symbol_stats.to_csv(output_dir / "symbol_stats.csv", index=False)
-    result.side_stats.to_csv(output_dir / "side_stats.csv", index=False)
-    result.exit_reason_stats.to_csv(output_dir / "exit_reason_stats.csv", index=False)
-    result.event_type_stats.to_csv(output_dir / "event_type_stats.csv", index=False)
-    result.order_decision_stats.to_csv(output_dir / "order_decision_stats.csv", index=False)
-    result.strategy_filter_stats.to_csv(output_dir / "strategy_filter_stats.csv", index=False)
-    result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
-    result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
-    result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
-    return output_dir
-
-
-def save_portfolio_benchmark(config: PortfolioExperimentConfig, report: PortfolioBenchmarkReport) -> Path:
-    output_dir = Path(config.output_dir or f"runs/{config.name}").expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "benchmark.json").write_text(_json_dump(_json_ready(asdict(report))))
-    return output_dir
-
-
-def save_portfolio_sweep(result: PortfolioSweepResult) -> Path:
-    output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    config_payload = _json_ready(asdict(result.config))
-    config_payload["sweep_grid"] = _json_ready(result.grid)
-    (output_dir / "config.json").write_text(_json_dump(config_payload))
-    (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
-    result.table.to_csv(output_dir / "sweep.csv", index=False)
-    _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
-    _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
-    result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
-    result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
-    result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
-    result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
-    result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
-    result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
-    _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
-    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
-    result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
-    result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
-    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
-    return output_dir
-
-
-def save_single_strategy_sweep(result: SingleStrategySweepResult) -> Path:
-    output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    config_payload = _json_ready(asdict(result.config))
-    config_payload["sweep_grid"] = _json_ready(result.grid)
-    (output_dir / "config.json").write_text(_json_dump(config_payload))
-    (output_dir / "summary.json").write_text(_json_dump(_json_ready(_sweep_summary_statistics(result))))
-    result.table.to_csv(output_dir / "sweep.csv", index=False)
-    _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
-    _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
-    result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
-    result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
-    result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
-    result.symbol_stats.to_csv(output_dir / "case_symbol_stats.csv", index=False)
-    result.setup_order_decision_stats.to_csv(output_dir / "case_setup_order_decision_stats.csv", index=False)
-    result.setup_strategy_filter_stats.to_csv(output_dir / "case_setup_strategy_filter_stats.csv", index=False)
-    _write_jsonl(output_dir / "case_configs.jsonl", _sweep_case_config_records(result))
-    result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
-    result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
-    result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
-    _symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
-    return output_dir
-
-
-def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweepResult) -> dict[str, object]:
-    return _build_sweep_summary_statistics(
-        table=result.table,
-        grid=result.grid,
-        elapsed_seconds=result.elapsed_seconds,
-        input_bar_count=result.input_bar_count,
-        filtered_limit_open_count=result.filtered_limit_open_count,
-        strategy_stats=result.strategy_stats,
-        detector_stats=result.detector_stats,
-        setup_stats=result.setup_stats,
-        symbol_stats=result.symbol_stats,
-        setup_order_decision_stats=result.setup_order_decision_stats,
-        setup_strategy_filter_stats=result.setup_strategy_filter_stats,
-    )
-
-
-def _pareto_sweep_table(table: pd.DataFrame) -> pd.DataFrame:
-    return _build_pareto_sweep_table(table)
-
-
-def _parameter_summary_table(result: PortfolioSweepResult | SingleStrategySweepResult) -> pd.DataFrame:
-    return _build_parameter_summary_table(result.table, result.grid)
 
 
 def _case_setup_statistics(
