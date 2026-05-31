@@ -7,6 +7,11 @@ import re
 import pandas as pd
 
 from trending_winning.backtest.confidence import sample_confidence_statistics
+from trending_winning.backtest.drawdown import (
+    empty_drawdown_statistics,
+    equity_drawdown_statistics,
+    max_drawdown_duration,
+)
 from trending_winning.backtest.periods import (
     PERIOD_STAT_KEYS as PERIOD_STAT_KEYS,
     compute_period_return_statistics as compute_period_return_statistics,
@@ -348,7 +353,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "return_p75": return_p75,
         "return_p95": return_p95,
         "cvar_95": _mean_or_zero(returns.loc[returns <= return_p05]),
-        "max_drawdown_duration": float(_max_drawdown_duration(equity)),
+        "max_drawdown_duration": float(max_drawdown_duration(equity)),
         "recovery_factor": _ratio_or_zero(total_return, abs(max_drawdown)),
         "avg_r_multiple": _mean_or_zero(r_multiple),
         "median_r_multiple": _median_or_zero(r_multiple),
@@ -416,15 +421,11 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     if net_value.empty:
         return _empty_equity_statistics()
     returns = net_value.pct_change().dropna()
-    drawdown = net_value / net_value.cummax() - 1.0
-    drawdown_episode = _drawdown_episode_statistics(data, net_value, drawdown)
+    drawdown_stats = equity_drawdown_statistics(data, net_value)
     std = _std_or_zero(returns)
     downside_deviation = _downside_deviation(returns)
     total_return = _round_float(net_value.iloc[-1] / net_value.iloc[0] - 1.0)
-    max_drawdown = _round_float(drawdown.min())
-    avg_drawdown = _mean_or_zero(drawdown)
-    ulcer_index = _round_float(math.sqrt(float(drawdown.pow(2).mean()))) if not drawdown.empty else 0.0
-    time_under_water_ratio = _round_float(float(drawdown.lt(0).mean())) if not drawdown.empty else 0.0
+    max_drawdown = float(drawdown_stats["max_drawdown"])
     annual_periods = float(periods_per_year or _infer_periods_per_year(data))
     annualized_return = _annualized_return(net_value, annual_periods, len(returns))
     annualized_volatility = _round_float(std * math.sqrt(annual_periods))
@@ -437,9 +438,7 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
     net_exposure = _ratio_column_to_net_value(data, "position_value", net_value)
     return {
         "total_return": total_return,
-        "max_drawdown": max_drawdown,
-        "max_drawdown_duration": float(_max_drawdown_duration(net_value.reset_index(drop=True))),
-        **drawdown_episode,
+        **drawdown_stats,
         "equity_return_std": std,
         "equity_sharpe": _ratio_or_zero(_round_float(returns.mean()), std),
         "equity_sortino": _ratio_or_zero(_round_float(returns.mean()), downside_deviation),
@@ -448,9 +447,6 @@ def compute_equity_statistics(equity_curve: pd.DataFrame, *, periods_per_year: f
         "annualized_sharpe": annualized_sharpe,
         "annualized_sortino": annualized_sortino,
         "calmar_ratio": _ratio_or_zero(annualized_return, abs(max_drawdown)),
-        "avg_drawdown": avg_drawdown,
-        "ulcer_index": ulcer_index,
-        "time_under_water_ratio": time_under_water_ratio,
         "avg_gross_exposure": _mean_or_zero(gross_exposure),
         "max_gross_exposure": _round_float(gross_exposure.max()) if not gross_exposure.empty else 0.0,
         "avg_margin_exposure": _mean_or_zero(margin_exposure),
@@ -770,81 +766,9 @@ def _ratio_or_zero(numerator: float, denominator: float) -> float:
     return 0.0
 
 
-def _drawdown_episode_statistics(
-    data: pd.DataFrame,
-    net_value: pd.Series,
-    drawdown: pd.Series,
-) -> dict[str, object]:
-    """定位最大回撤的开始、触底、修复点，同时给出当前水下状态。"""
-    result = _empty_drawdown_episode_statistics()
-    if net_value.empty or drawdown.empty:
-        return result
-
-    result["current_drawdown"] = _round_float(float(drawdown.iloc[-1]))
-    result["current_underwater_bars"] = float(_trailing_underwater_length(drawdown))
-    if float(drawdown.min()) >= 0:
-        return result
-
-    trough_pos = int(drawdown.idxmin())
-    peak_value = float(net_value.cummax().iloc[trough_pos])
-    prior_values = net_value.iloc[: trough_pos + 1]
-    peak_positions = prior_values.index[prior_values.eq(peak_value)]
-    peak_pos = int(peak_positions[-1]) if len(peak_positions) else trough_pos
-    after_trough = net_value.iloc[trough_pos + 1 :]
-    recovered_positions = after_trough.index[after_trough.ge(peak_value)]
-
-    result["max_drawdown_start_at"] = _equity_point_label(data, peak_pos)
-    result["max_drawdown_trough_at"] = _equity_point_label(data, trough_pos)
-    if len(recovered_positions):
-        result["max_drawdown_recovery_at"] = _equity_point_label(data, int(recovered_positions[0]))
-    return result
-
-
-def _empty_drawdown_episode_statistics() -> dict[str, object]:
-    return {
-        "max_drawdown_start_at": "",
-        "max_drawdown_trough_at": "",
-        "max_drawdown_recovery_at": "",
-        "current_drawdown": 0.0,
-        "current_underwater_bars": 0.0,
-    }
-
-
-def _equity_point_label(data: pd.DataFrame, position: int) -> str:
-    if position < 0 or position >= len(data):
-        return ""
-    row = data.iloc[position]
-    if "date" in data.columns:
-        timestamp = pd.to_datetime(row["date"], errors="coerce")
-        if pd.notna(timestamp):
-            return timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    if "trade_no" in data.columns and pd.notna(row["trade_no"]):
-        return _compact_numeric_label(row["trade_no"])
-    return str(position)
-
-
-def _compact_numeric_label(value: object) -> str:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return str(value)
-    if math.isfinite(numeric) and numeric.is_integer():
-        return str(int(numeric))
-    return str(value)
-
-
-def _trailing_underwater_length(drawdown: pd.Series) -> int:
-    count = 0
-    for value in reversed(drawdown.tolist()):
-        if pd.isna(value) or float(value) >= 0:
-            break
-        count += 1
-    return count
-
-
 def _empty_equity_statistics() -> dict[str, object]:
     result: dict[str, object] = {key: 0.0 for key in EQUITY_STAT_KEYS}
-    result.update(_empty_drawdown_episode_statistics())
+    result.update(empty_drawdown_statistics())
     return result
 
 
@@ -1001,20 +925,6 @@ def _max_streak(returns: pd.Series, *, positive: bool) -> int:
             best = max(best, current)
         else:
             current = 0
-    return best
-
-
-def _max_drawdown_duration(equity: pd.Series) -> int:
-    peak = -math.inf
-    current = 0
-    best = 0
-    for value in equity:
-        if value >= peak:
-            peak = float(value)
-            current = 0
-        else:
-            current += 1
-            best = max(best, current)
     return best
 
 
