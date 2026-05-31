@@ -44,7 +44,7 @@ BACKTEST_HELP_TEXT = {
     "enable_trailing_take_profit": "开启后，所有策略在实际成交后共用盈利通道回撤止盈；关闭时下方三个参数强制按 0 处理。",
     "trailing_take_profit_activation_pct": "盈利通道启动条件。实际成交后，上一根已完成 K 的浮盈先达到该比例才开始跟踪；0 表示关闭。",
     "trailing_take_profit_drawdown_pct": "回撤平仓触发幅度。启动后按上一根已完成 K 的峰值/谷值计算回撤线，避免同一根 K 同时启动和退出。",
-    "trailing_take_profit_ma_period": "均线回撤止盈周期。用当前回测周期的上一根已完成 K 均线作为移动平仓线，0 表示关闭。",
+    "trailing_take_profit_ma_period": "当前周期均线周期。由用户输入 K 数，用当前回测周期上一根已完成 K 的均线作为移动平仓线；0 表示关闭。",
     "max_holding": "最多持有多少根当前周期 K 线，到期仍未止盈止损就平仓。",
     "fee_rate": "单边手续费率，0.0003 表示 0.03%。",
     "slippage_bps": "撮合滑点，1 bps 等于 0.01%。",
@@ -2037,7 +2037,7 @@ def _backtest_risk_module(mode: str) -> BacktestRiskInputs:
             )
         with trailing3:
             trailing_take_profit_ma_period = st.number_input(
-                "均线回撤止盈周期",
+                "当前周期均线周期",
                 min_value=0,
                 value=0,
                 step=1,

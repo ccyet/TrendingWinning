@@ -272,7 +272,7 @@ def test_streamlit_backtest_parameters_have_hover_help_text() -> None:
         assert f'BACKTEST_HELP_TEXT["{help_key}"]' in source
 
     assert "启用盈利通道回撤止盈" in source
-    assert "均线回撤止盈周期" in source
+    assert "当前周期均线周期" in source
     assert "bt_enable_trailing_take_profit" in source
 
 
@@ -281,6 +281,9 @@ def test_streamlit_trailing_take_profit_help_mentions_three_controls() -> None:
 
     assert "下方三个参数" in help_text
     assert "两个参数" not in help_text
+    ma_help = streamlit_app.BACKTEST_HELP_TEXT["trailing_take_profit_ma_period"]
+    assert "用户输入" in ma_help
+    assert "当前回测周期" in ma_help
 
 
 def test_trailing_take_profit_control_forces_zero_when_disabled() -> None:

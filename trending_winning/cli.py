@@ -78,7 +78,7 @@ def _add_trailing_take_profit_args(parser: argparse.ArgumentParser) -> None:
         "--trailing-take-profit-ma-period",
         type=int,
         default=0,
-        help="回撤止盈均线周期；按当前周期上一根已完成 K 的均线触发，0 表示关闭。",
+        help="回撤止盈当前周期均线周期；由用户输入 K 数，按当前周期上一根已完成 K 的均线触发，0 表示关闭。",
     )
 
 
