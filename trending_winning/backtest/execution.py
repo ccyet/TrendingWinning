@@ -10,6 +10,7 @@ import pandas as pd
 from trending_winning.backtest.trailing_take_profit import (
     trailing_take_profit_masks as compute_trailing_take_profit_masks,
 )
+from trending_winning.backtest.indicators import completed_bar_moving_average
 
 
 @dataclass(frozen=True)
@@ -272,7 +273,7 @@ def _first_exit_after_entry(
         entry_price=entry_price,
         activation_pct=trailing_activation_pct,
         drawdown_pct=trailing_drawdown_pct,
-        moving_average=_shifted_moving_average(group, path.index, trailing_ma_period),
+        moving_average=completed_bar_moving_average(group, path.index, trailing_ma_period),
     )
 
     _set_exit_values(reasons, prices, gap_stop, opens, "stop_loss")
@@ -344,15 +345,6 @@ def _trailing_take_profit_masks(
         moving_average=moving_average,
     )
     return result.gap, result.hit, result.prices
-
-
-def _shifted_moving_average(group: pd.DataFrame, path_index: pd.Index, period: int) -> np.ndarray | None:
-    """用当前周期收盘价计算上一根完成 K 的均线，返回与持仓路径对齐的数组。"""
-    if period < 2:
-        return None
-    closes = pd.to_numeric(group["close"], errors="coerce").astype(float)
-    moving_average = closes.rolling(period, min_periods=period).mean().shift(1)
-    return moving_average.loc[path_index].to_numpy(dtype=float)
 
 
 def _set_exit_values(

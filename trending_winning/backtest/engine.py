@@ -19,6 +19,7 @@ from trending_winning.backtest.execution import (
     trade_path_metrics,
     validate_backtest_config,
 )
+from trending_winning.backtest.indicators import completed_bar_moving_average
 from trending_winning.backtest.stats import (
     build_equity_curve,
     compute_equity_statistics,
@@ -389,7 +390,7 @@ def _first_legacy_long_exit(
         path,
         entry_price,
         cfg,
-        moving_average=_legacy_shifted_moving_average(group, path.index, cfg.trailing_take_profit_ma_period),
+        moving_average=completed_bar_moving_average(group, path.index, cfg.trailing_take_profit_ma_period),
     )
     gap_trailing = hit_trailing & (opens <= trailing_prices)
     reasons = np.full(len(path), "", dtype=object)
@@ -457,15 +458,6 @@ def _trailing_take_profit_enabled(cfg: BacktestConfig) -> bool:
         float(cfg.trailing_take_profit_drawdown_pct),
         int(cfg.trailing_take_profit_ma_period),
     )
-
-
-def _legacy_shifted_moving_average(group: pd.DataFrame, path_index: pd.Index, period: int) -> np.ndarray | None:
-    """旧版突破回测同样使用当前周期上一根完成 K 的均线，避免未来函数。"""
-    if period < 2:
-        return None
-    closes = pd.to_numeric(group["close"], errors="coerce").astype(float)
-    moving_average = closes.rolling(period, min_periods=period).mean().shift(1)
-    return moving_average.loc[path_index].to_numpy(dtype=float)
 
 
 def run_single_strategy_backtest(
