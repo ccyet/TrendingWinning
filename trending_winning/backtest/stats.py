@@ -22,6 +22,7 @@ from trending_winning.backtest.returns import (
     downside_deviation as return_downside_deviation,
     return_series_statistics,
 )
+from trending_winning.backtest.risk_metrics import trade_risk_quality_statistics
 
 
 STAT_KEYS = [
@@ -296,14 +297,7 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     return_std = return_stats["return_std"]
     downside_deviation = return_stats["downside_deviation"]
     exposure_bars = pd.to_numeric(trades.get("holding_bars", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
-    r_multiple = _numeric_column(trades, "r_multiple")
-    positive_r = r_multiple.loc[r_multiple > 0]
-    negative_r = r_multiple.loc[r_multiple < 0]
-    r_std = _std_or_zero(r_multiple)
-    mae_pct = _numeric_column(trades, "mae_pct")
-    mfe_pct = _numeric_column(trades, "mfe_pct")
-    mae_r = _numeric_column(trades, "mae_r")
-    mfe_r = _numeric_column(trades, "mfe_r")
+    risk_quality_stats = trade_risk_quality_statistics(trades)
     exposure_stats = trade_exposure_statistics(trades, returns)
     confidence_stats = sample_confidence_statistics(returns)
 
@@ -343,16 +337,16 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
         "cvar_95": return_stats["cvar_95"],
         "max_drawdown_duration": float(max_drawdown_duration(equity)),
         "recovery_factor": _ratio_or_zero(total_return, abs(max_drawdown)),
-        "avg_r_multiple": _mean_or_zero(r_multiple),
-        "median_r_multiple": _median_or_zero(r_multiple),
-        "best_r_multiple": _round_float(r_multiple.max()) if not r_multiple.empty else 0.0,
-        "worst_r_multiple": _round_float(r_multiple.min()) if not r_multiple.empty else 0.0,
-        "r_profit_factor": _ratio_or_inf(_round_float(positive_r.sum()), _round_float(abs(negative_r.sum()))),
-        "system_quality_number": _system_quality_number(r_multiple, r_std),
-        "avg_mae_pct": _mean_or_zero(mae_pct),
-        "avg_mfe_pct": _mean_or_zero(mfe_pct),
-        "avg_mae_r": _mean_or_zero(mae_r),
-        "avg_mfe_r": _mean_or_zero(mfe_r),
+        "avg_r_multiple": risk_quality_stats["avg_r_multiple"],
+        "median_r_multiple": risk_quality_stats["median_r_multiple"],
+        "best_r_multiple": risk_quality_stats["best_r_multiple"],
+        "worst_r_multiple": risk_quality_stats["worst_r_multiple"],
+        "r_profit_factor": risk_quality_stats["r_profit_factor"],
+        "system_quality_number": risk_quality_stats["system_quality_number"],
+        "avg_mae_pct": risk_quality_stats["avg_mae_pct"],
+        "avg_mfe_pct": risk_quality_stats["avg_mfe_pct"],
+        "avg_mae_r": risk_quality_stats["avg_mae_r"],
+        "avg_mfe_r": risk_quality_stats["avg_mfe_r"],
         "return_contribution": exposure_stats["return_contribution"],
         "return_per_exposure_bar": exposure_stats["return_per_exposure_bar"],
         "capital_turnover": exposure_stats["capital_turnover"],
@@ -716,12 +710,6 @@ def _mean_or_zero(values: pd.Series) -> float:
     return _round_float(values.mean())
 
 
-def _median_or_zero(values: pd.Series) -> float:
-    if values.empty:
-        return 0.0
-    return _round_float(values.median())
-
-
 def _std_or_zero(values: pd.Series) -> float:
     if values.empty:
         return 0.0
@@ -851,13 +839,6 @@ def _annualized_ratio(returns: pd.Series, denominator: float, periods_per_year: 
     if returns.empty or denominator <= 0 or periods_per_year <= 0:
         return 0.0
     return _round_float(float(returns.mean()) / denominator * math.sqrt(periods_per_year))
-
-
-def _system_quality_number(r_multiple: pd.Series, r_std: float) -> float:
-    """按 Van Tharp SQN 口径衡量 R 倍数序列质量。"""
-    if r_multiple.empty or r_std <= 0:
-        return 0.0
-    return _round_float(math.sqrt(len(r_multiple)) * float(r_multiple.mean()) / r_std)
 
 
 def _round_float(value: float) -> float:
