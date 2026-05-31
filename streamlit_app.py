@@ -1795,7 +1795,26 @@ def _experiment_name(prefix: str, timeframe: str, start: str, end: str) -> str:
     return f"{prefix}-{timeframe}-{start}-{end}".replace("/", "-")
 
 
-def _experiment_output_controls(prefix: str, default_name: str) -> tuple[bool, str]:
+def _experiment_output_controls(prefix: str, default_name: str, *, compact: bool = False) -> tuple[bool, str]:
+    if compact:
+        save_outputs = st.checkbox(
+            "保存实验产物",
+            value=False,
+            key=f"{prefix}_save_outputs",
+            help=BACKTEST_HELP_TEXT["save_outputs"],
+        )
+        output_root = _directory_picker(
+            "输出父目录",
+            DEFAULT_OUTPUT_ROOT,
+            key=f"{prefix}_output_root",
+            disabled=not save_outputs,
+            help_text=BACKTEST_HELP_TEXT["output_parent"],
+        )
+        output_dir = output_root / default_name
+        if save_outputs:
+            st.caption(f"本次保存到：{_display_path(str(output_dir))}")
+        return bool(save_outputs), str(output_dir)
+
     c1, c2 = st.columns([1, 3])
     with c1:
         save_outputs = st.checkbox(
@@ -2381,7 +2400,7 @@ def _backtest_panel(data_root: Path, adjust: str) -> None:
         with single_col:
             single = _single_strategy_module(scope)
         with single_run_col:
-            output = _backtest_output_module("single", single.experiment_name, "运行单策略回测")
+            output = _backtest_output_module("single", single.experiment_name, "运行单策略回测", compact=True)
         if output.run_clicked:
             _execute_single_strategy_experiment(data_root, adjust, scope, risk, quality, higher, single, output)
         return
@@ -3111,10 +3130,11 @@ def _backtest_output_module(
     *,
     enable_save: bool = True,
     title: str = "6. 保存与运行",
+    compact: bool = False,
 ) -> BacktestOutputInputs:
     with _backtest_module_container(title, "输出目录和运行按钮单独放置，避免和参数区混在一起。"):
         if enable_save:
-            save_outputs, output_dir = _experiment_output_controls(prefix, experiment_name)
+            save_outputs, output_dir = _experiment_output_controls(prefix, experiment_name, compact=compact)
         else:
             save_outputs, output_dir = False, ""
         run_clicked = st.button(button_label, type="primary")

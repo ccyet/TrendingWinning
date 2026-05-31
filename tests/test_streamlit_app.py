@@ -230,6 +230,7 @@ def test_streamlit_primary_inputs_are_grouped_horizontally() -> None:
     assert "quality_col, higher_col = st.columns([1, 1])" in source
     assert "single_col, single_run_col = st.columns([3, 1])" in source
     assert "portfolio_allocation_col, portfolio_detector_col = st.columns([1, 1])" in source
+    assert '_backtest_output_module("single", single.experiment_name, "运行单策略回测", compact=True)' in source
 
 
 def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None:
