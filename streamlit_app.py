@@ -2366,22 +2366,31 @@ def _backtest_panel(data_root: Path, adjust: str) -> None:
     st.subheader("突破策略回测")
     scope = _backtest_scope_module(data_root)
     risk = _backtest_risk_module(scope.mode)
-    quality = _backtest_data_quality_module()
-    higher = _backtest_higher_timeframe_module(scope.timeframe)
+    quality_col, higher_col = st.columns([1, 1])
+    with quality_col:
+        quality = _backtest_data_quality_module()
+    with higher_col:
+        higher = _backtest_higher_timeframe_module(scope.timeframe)
 
     if scope.mode == "旧突破回测":
         _legacy_backtest_module(data_root, adjust, scope, risk, quality)
         return
 
     if scope.mode == "单策略回测":
-        single = _single_strategy_module(scope)
-        output = _backtest_output_module("single", single.experiment_name, "运行单策略回测")
+        single_col, single_run_col = st.columns([3, 1])
+        with single_col:
+            single = _single_strategy_module(scope)
+        with single_run_col:
+            output = _backtest_output_module("single", single.experiment_name, "运行单策略回测")
         if output.run_clicked:
             _execute_single_strategy_experiment(data_root, adjust, scope, risk, quality, higher, single, output)
         return
 
-    allocation = _portfolio_allocation_module(scope)
-    detector = _portfolio_detector_module()
+    portfolio_allocation_col, portfolio_detector_col = st.columns([1, 1])
+    with portfolio_allocation_col:
+        allocation = _portfolio_allocation_module(scope)
+    with portfolio_detector_col:
+        detector = _portfolio_detector_module()
     output = _backtest_output_module("pf", allocation.experiment_name, "运行组合回测", title="7. 保存与运行")
     if output.run_clicked:
         _execute_portfolio_strategy_experiment(data_root, adjust, scope, risk, quality, higher, allocation, detector, output)

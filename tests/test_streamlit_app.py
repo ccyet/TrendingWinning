@@ -227,6 +227,9 @@ def test_streamlit_primary_inputs_are_grouped_horizontally() -> None:
     assert "scope_cols = st.columns([1, 2, 1, 1])" in source
     assert "fetch_cols = st.columns([2, 2, 1, 1, 1])" in source
     assert "scan_cols = st.columns([2, 2, 1, 1])" in source
+    assert "quality_col, higher_col = st.columns([1, 1])" in source
+    assert "single_col, single_run_col = st.columns([3, 1])" in source
+    assert "portfolio_allocation_col, portfolio_detector_col = st.columns([1, 1])" in source
 
 
 def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None:
