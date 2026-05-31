@@ -15,6 +15,11 @@ from trending_winning.backtest.stats import (
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
+from trending_winning.backtest.periods import (
+    PERIOD_RETURN_COLUMNS,
+    compute_period_return_statistics as compute_period_return_statistics_from_periods,
+    compute_period_returns as compute_period_returns_from_periods,
+)
 
 
 def test_build_equity_curve_keeps_trade_dates_for_period_statistics() -> None:
@@ -38,6 +43,22 @@ def test_build_equity_curve_keeps_trade_dates_for_period_statistics() -> None:
     monthly = compute_period_returns(equity, freq="M").set_index("period")
     assert monthly.loc["2026-05", "return"] == pytest.approx(0.0)
     assert monthly.loc["2026-06", "return"] == pytest.approx(2.09 / 2.0 - 1.0)
+
+
+def test_period_statistics_have_independent_module_entrypoint() -> None:
+    equity = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-05-30", "2026-06-01"]),
+            "net_value": [1.0, 1.1],
+        }
+    )
+
+    monthly = compute_period_returns_from_periods(equity, freq="M")
+    stats = compute_period_return_statistics_from_periods(monthly, prefix="monthly")
+
+    assert monthly.columns.tolist() == PERIOD_RETURN_COLUMNS.tolist()
+    assert stats["monthly_count"] == 2.0
+    assert stats["monthly_best_return_period"] == "2026-06"
 
 
 def test_compute_equity_statistics_preserves_same_date_trade_order() -> None:

@@ -18,6 +18,7 @@ from trending_winning.backtest.engine import (
     run_order_backtest_from_normalized,
     run_single_strategy_backtest_from_normalized,
 )
+from trending_winning.backtest.periods import compute_period_return_statistics, compute_period_returns
 from trending_winning.backtest.portfolio import (
     PortfolioConfig,
     PortfolioCandidateSet,
@@ -29,8 +30,6 @@ from trending_winning.backtest.stats import (
     STAT_KEYS,
     compute_decision_reason_statistics,
     compute_grouped_trade_statistics,
-    compute_period_return_statistics,
-    compute_period_returns,
     summarize_order_decisions,
     summarize_strategy_filter_decisions,
 )
