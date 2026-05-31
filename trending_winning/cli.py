@@ -9,8 +9,6 @@ import sys
 import pandas as pd
 
 from trending_winning.backtest.experiment import (
-    PortfolioExperimentConfig,
-    SingleStrategyExperimentConfig,
     build_portfolio_benchmark_report,
     load_sweep_case_config,
     run_portfolio_parameter_sweep,
@@ -19,6 +17,7 @@ from trending_winning.backtest.experiment import (
     run_single_strategy_experiment,
     save_portfolio_benchmark,
 )
+from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
 from trending_winning.backtest.engine import run_backtest
 from trending_winning.backtest.models import BacktestConfig
 from trending_winning.data.repository import MarketDataRepository

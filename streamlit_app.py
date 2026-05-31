@@ -13,11 +13,10 @@ import streamlit as st
 
 from trending_winning.backtest.engine import BacktestConfig, run_backtest
 from trending_winning.backtest.experiment import (
-    PortfolioExperimentConfig,
-    SingleStrategyExperimentConfig,
     run_portfolio_experiment,
     run_single_strategy_experiment,
 )
+from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
 from trending_winning.data.repository import BacktestDataBundle, MarketDataRepository, available_symbols
 from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE
