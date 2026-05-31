@@ -32,6 +32,12 @@ from trending_winning.backtest.returns import (
     return_series_statistics,
 )
 from trending_winning.backtest.risk_metrics import trade_risk_quality_statistics
+from trending_winning.backtest.trade_path import (
+    coalesced_datetime_columns as _coalesced_datetime_columns,
+    equity_with_initial_point as _equity_with_initial_point,
+    trade_path_frame as _trades_for_path_statistics,
+    trade_returns_as_decimal as _returns_as_decimal,
+)
 
 
 STAT_KEYS = [
@@ -346,45 +352,6 @@ def _trade_equity_dates(trades: pd.DataFrame) -> pd.Series | None:
     if start_pool.empty:
         return None
     return pd.Series([start_pool.min(), *trade_dates.tolist()])
-
-
-def _trades_for_path_statistics(trades: pd.DataFrame) -> pd.DataFrame:
-    """路径类统计按真实平仓时间排序；没有时间字段时保留调用方给定顺序。"""
-    realized_at = _coalesced_datetime_columns(trades, ("exit_date", "entry_date", "signal_date"))
-    if realized_at is None or realized_at.isna().all():
-        return trades
-    result = trades.copy()
-    result["_realized_at"] = realized_at.to_numpy()
-    result["_row_order"] = range(len(result))
-    sort_columns = ["_realized_at", "_row_order"]
-    if "trade_no" in result.columns:
-        result["_trade_no_sort"] = pd.to_numeric(result["trade_no"], errors="coerce")
-        sort_columns = ["_realized_at", "_trade_no_sort", "_row_order"]
-    return (
-        result.sort_values(sort_columns, kind="mergesort", na_position="last")
-        .drop(columns=[column for column in ("_realized_at", "_trade_no_sort", "_row_order") if column in result.columns])
-        .reset_index(drop=True)
-    )
-
-
-def _coalesced_datetime_columns(frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series | None:
-    """按优先级合并多个日期列，避免单列缺失导致时间轴丢失。"""
-    result: pd.Series | None = None
-    for column in columns:
-        if column not in frame.columns:
-            continue
-        values = pd.to_datetime(frame[column], errors="coerce").reset_index(drop=True)
-        result = values if result is None else result.fillna(values)
-    return result
-
-
-def _returns_as_decimal(trades: pd.DataFrame) -> pd.Series:
-    return pd.to_numeric(trades.get("return_pct", pd.Series(dtype=float)), errors="coerce").fillna(0.0) / 100.0
-
-
-def _equity_with_initial_point(returns: pd.Series) -> pd.Series:
-    equity = (1.0 + returns).cumprod()
-    return pd.concat([pd.Series([1.0]), equity], ignore_index=True)
 
 
 def _mean_or_zero(values: pd.Series) -> float:
