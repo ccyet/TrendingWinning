@@ -28,6 +28,19 @@
     .formula-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
     .formula-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .formula-card b { display:block; margin-bottom:8px; }
+    .entry-rule-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:14px; margin-top:16px; }
+    .entry-rule-card { padding:16px; border:1px solid #cfe0f2; border-radius:8px; background:#f7fbff; }
+    .entry-rule-card b { display:block; margin-bottom:8px; }
+    .entry-rule-card p { margin:0 0 10px; color:var(--muted); font-size:14px; }
+    .factor-calc-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .factor-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .factor-card b { display:block; margin-bottom:6px; color:#24364d; }
+    .factor-card span { display:block; color:var(--muted); font-size:13px; }
+    .scenario-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .scenario-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .scenario-card b { display:block; margin-bottom:8px; }
+    .scenario-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
+    .mini-kline { width:100%; height:auto; border:1px solid #e6edf5; border-radius:7px; background:#fff; }
     .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .logic-card b { display:block; margin-bottom:8px; }
@@ -57,7 +70,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -73,7 +86,88 @@
 <nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#triggers">触发条件</a><a href="#space">策略空间</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
 <main class="wrap">
   <section id="defaults"><h2>默认参数</h2><table><tr><th>识别窗口</th><td>trend_lookback = 20 根 K</td></tr><tr><th>趋势阈值</th><td>trend_min_score = 1.0；高于阈值为多头趋势，低于 -1.0 为空头趋势</td></tr><tr><th>信号K质量</th><td>strong_close_pos = 0.65；min_body_ratio = 0.45</td></tr><tr><th>回撤窗口</th><td>pullback_lookback = 5；H2/L2 至少 2 段回撤或反弹</td></tr><tr><th>挂单方式</th><td>多头：信号K高点 + 0.01；空头：信号K低点 - 0.01</td></tr><tr><th>风控</th><td>结构止损来自 5 根 K 的回撤低点/反弹高点；risk_reward = 2.0；max_holding_bars = 12</td></tr></table></section>
-  <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>趋势评分</b><code>TrendScore = slope_z + structure + 0.5*ma_align + close_quality + follow</code></div><div class="formula-card"><b>多头信号</b><code>TrendScore &gt;= 1.0 AND close_pos &gt;= 0.65 AND body_ratio &gt;= 0.45 AND close &gt; open</code></div><div class="formula-card"><b>空头信号</b><code>TrendScore &lt;= -1.0 AND close_pos &lt;= 0.35 AND body_ratio &gt;= 0.45 AND close &lt; open</code></div></div></section>
+  <section id="formula">
+    <h2>数学定义转成盘面动作</h2>
+    <div class="formula-grid">
+      <div class="formula-card"><b>趋势评分</b><code>TrendScore = slope_z + structure_score + ma_alignment + close_strength + follow_through</code></div>
+      <div class="formula-card"><b>多头信号</b><code>TrendScore >= 1.0 AND close_pos >= 0.65 AND body_ratio >= 0.45 AND close > open</code></div>
+      <div class="formula-card"><b>空头信号</b><code>TrendScore <= -1.0 AND close_pos <= 0.35 AND body_ratio >= 0.45 AND close < open</code></div>
+    </div>
+
+    <h3>开仓量化规则</h3>
+    <div class="entry-rule-grid">
+      <div class="entry-rule-card entry_rule_card">
+        <b>开仓由四个条件合并判断</b>
+        <p>合并卡片把背景、信号K、挂单和风控放在同一视图里，交易员可以逐项核对，不需要在多个段落里来回找规则。</p>
+        <code>trend_ok_long = TrendScore >= trend_min_score
+trend_ok_short = TrendScore <= -trend_min_score
+signal_long = trend_ok_long AND close_pos >= 0.65 AND body_ratio >= 0.45 AND close > open AND pullback_legs >= 2
+signal_short = trend_ok_short AND close_pos <= 0.35 AND body_ratio >= 0.45 AND close < open AND pullback_legs >= 2
+entry_long = signal_high + tick
+entry_short = signal_low - tick
+stop_long = min(low[-pullback_lookback:]) - tick
+stop_short = max(high[-pullback_lookback:]) + tick
+target_long = entry_long + risk_reward * (entry_long - stop_long)
+target_short = entry_short - risk_reward * (stop_short - entry_short)</code>
+      </div>
+      <div class="entry-rule-card entry_rule_card">
+        <b>H2/L2 二次顺势入场</b>
+        <p>H2/L2 不是预测反转，而是趋势内第二次回撤失败后的继续跟随。多头只在信号K高点上方挂单，空头只在信号K低点下方挂单；虚线挂单、虚线止损、虚线目标都来自信号K已完成后的数值。</p>
+        <code>risk_long = entry_long - stop_long
+risk_short = stop_short - entry_short
+valid_risk = risk > 0 AND risk_pct <= max_structure_risk_pct
+filled = next_high >= entry_long OR next_low <= entry_short</code>
+      </div>
+    </div>
+
+    <h3>因子计算方式</h3>
+    <div class="factor-calc-grid factor_calc_grid">
+      <div class="factor-card"><b>slope_z</b><code>slope_z = zscore(linreg_slope(close, 20))</code><span>衡量最近 20 根 K 的斜率是否显著；斜率越陡，趋势背景越强。</span></div>
+      <div class="factor-card"><b>structure_score</b><code>structure_score = sign(HH + HL - LH - LL)</code><span>用摆动高低点判断结构，多头看 HH/HL，空头看 LH/LL。</span></div>
+      <div class="factor-card"><b>ma_alignment</b><code>ma_alignment = sign(EMA20 - EMA50)</code><span>短均线在长均线上方加多头分，在下方加空头分。</span></div>
+      <div class="factor-card"><b>close_strength</b><code>close_pos = (close - low) / max(high - low, eps)
+body_ratio = abs(close - open) / max(high - low, eps)</code><span>收盘位置和实体占比决定信号K有没有推进质量。</span></div>
+      <div class="factor-card"><b>follow_through</b><code>follow_through = sign(close - highest(close[-3:-1]))</code><span>多头看是否推进到短线新高，空头对称看是否打出短线新低。</span></div>
+      <div class="factor-card"><b>pullback_legs</b><code>pullback_legs = count_countertrend_swings(last_pullback)</code><span>默认更偏好两段回撤后的 H2/L2，减少第一下追高或追空。</span></div>
+    </div>
+
+    <h3>可能性展示：早期顺势 / 中段回撤 / 末端衰竭</h3>
+    <div class="scenario-strip">
+      <div class="scenario-card">
+        <b>早期顺势</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="早期顺势K线虚线示意">
+          <line class="grid" x1="20" y1="42" x2="300" y2="42"/><line class="grid" x1="20" y1="78" x2="300" y2="78"/><line class="grid" x1="20" y1="114" x2="300" y2="114"/>
+          <polyline class="line-fast" points="35,108 70,96 105,86 140,72 175,66 210,58 245,48"/>
+          <line class="entry-line" x1="28" y1="46" x2="300" y2="46"/><line class="stop-line" x1="28" y1="96" x2="300" y2="96"/><line class="target-line" x1="28" y1="22" x2="300" y2="22"/>
+          <text class="label-entry" x="34" y="40">虚线挂单</text><text class="label-stop" x="34" y="111">虚线止损</text><text class="label-target" x="210" y="18">虚线目标</text>
+          <rect class="body up" x="235" y="48" width="13" height="30"/><line class="wick up" x1="241" y1="40" x2="241" y2="84"/>
+        </svg>
+        <p>趋势刚形成，H1/H2 可以更积极；只要风险距离合理，突破信号K高点后顺势跟随。</p>
+      </div>
+      <div class="scenario-card">
+        <b>中段回撤</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="中段回撤K线虚线示意">
+          <line class="grid" x1="20" y1="42" x2="300" y2="42"/><line class="grid" x1="20" y1="78" x2="300" y2="78"/><line class="grid" x1="20" y1="114" x2="300" y2="114"/>
+          <polyline class="line-fast" points="35,58 75,52 115,68 155,86 195,78 235,60 275,48"/>
+          <line class="entry-line" x1="28" y1="50" x2="300" y2="50"/><line class="stop-line" x1="28" y1="96" x2="300" y2="96"/><line class="target-line" x1="28" y1="26" x2="300" y2="26"/>
+          <text class="label-entry" x="34" y="44">虚线挂单</text><text class="label-stop" x="34" y="111">虚线止损</text><text class="label-target" x="210" y="22">虚线目标</text>
+          <rect class="body up" x="225" y="58" width="13" height="26"/><line class="wick up" x1="231" y1="48" x2="231" y2="92"/>
+        </svg>
+        <p>核心看 H2/L2：回撤不能破坏结构，信号K必须重新收强；未穿越挂单价就不追。</p>
+      </div>
+      <div class="scenario-card">
+        <b>末端衰竭</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="末端衰竭K线虚线示意">
+          <line class="grid" x1="20" y1="42" x2="300" y2="42"/><line class="grid" x1="20" y1="78" x2="300" y2="78"/><line class="grid" x1="20" y1="114" x2="300" y2="114"/>
+          <polyline class="line-fast" points="35,110 70,88 105,64 140,45 175,38 210,36 245,34"/>
+          <line class="entry-line" x1="28" y1="31" x2="300" y2="31"/><line class="stop-line" x1="28" y1="86" x2="300" y2="86"/><line class="target-line" x1="28" y1="14" x2="300" y2="14"/>
+          <text class="label-entry" x="34" y="27">虚线挂单</text><text class="label-stop" x="34" y="101">虚线止损</text><text class="label-target" x="210" y="12">虚线目标</text>
+          <rect class="body down" x="235" y="38" width="13" height="18"/><line class="wick down" x1="241" y1="18" x2="241" y2="70"/>
+        </svg>
+        <p>趋势过久、远离均线、影线失败或推进不足时，优先过滤末端假突破，不把高位强 K 当新趋势起点。</p>
+      </div>
+    </div>
+  </section>
   <section id="triggers">
     <h2>触发条件拆解</h2>
     <p>趋势策略的触发条件不是单根强 K，而是“背景条件 + 信号K条件 + 订单条件 + 风控条件”同时成立。任何一层不满足，都只进入观察或拒单分支。</p>

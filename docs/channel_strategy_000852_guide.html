@@ -28,6 +28,19 @@
     .formula-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
     .formula-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .formula-card b { display:block; margin-bottom:8px; }
+    .entry-rule-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:14px; margin-top:16px; }
+    .entry-rule-card { padding:16px; border:1px solid #cfe0f2; border-radius:8px; background:#f7fbff; }
+    .entry-rule-card b { display:block; margin-bottom:8px; }
+    .entry-rule-card p { margin:0 0 10px; color:var(--muted); font-size:14px; }
+    .factor-calc-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .factor-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .factor-card b { display:block; margin-bottom:6px; color:#24364d; }
+    .factor-card span { display:block; color:var(--muted); font-size:13px; }
+    .scenario-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .scenario-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .scenario-card b { display:block; margin-bottom:8px; }
+    .scenario-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
+    .mini-kline { width:100%; height:auto; border:1px solid #e6edf5; border-radius:7px; background:#fff; }
     .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .logic-card b { display:block; margin-bottom:8px; }
@@ -57,7 +70,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -73,7 +86,95 @@
 <nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#triggers">触发条件</a><a href="#space">策略空间</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
 <main class="wrap">
   <section id="defaults"><h2>默认参数</h2><table><tr><th>通道算法</th><td>channel_method = regression；对 log(close) 做 40 根 K 滚动回归</td></tr><tr><th>通道宽度</th><td>sigma_multiple = 2.0；通道 = 中线 ± 2 倍残差波动</td></tr><tr><th>突破缓冲</th><td>channel_break_buffer = 0.0；收盘越过上一根已完成边界即成立</td></tr><tr><th>挂单方式</th><td>上轨突破：信号K高点 + 0.01；下轨跌破：信号K低点 - 0.01</td></tr><tr><th>止损</th><td>多头止损取上一根通道下轨；空头止损取上一根通道上轨</td></tr><tr><th>风控</th><td>risk_reward = 2.0；max_holding_bars = 12；末端假突破过滤默认关闭</td></tr></table></section>
-  <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>回归中线</b><code>MidLog_t = alpha + beta*t；Mid_t = exp(MidLog_t)</code></div><div class="formula-card"><b>通道边界</b><code>Upper = exp(MidLog + 2*sigma)；Lower = exp(MidLog - 2*sigma)</code></div><div class="formula-card"><b>突破信号</b><code>Long: close_i &gt; Upper_{i-1}；Short: close_i &lt; Lower_{i-1}</code></div></div></section>
+  <section id="formula">
+    <h2>数学定义转成盘面动作</h2>
+    <div class="formula-grid">
+      <div class="formula-card"><b>回归中线</b><code>channel_mid = rolling_regression(log(close), lookback=40)
+mid_price = exp(channel_mid)</code></div>
+      <div class="formula-card"><b>通道边界</b><code>residual = log(close) - channel_mid
+channel_upper = channel_mid + sigma_multiple * residual_std
+channel_lower = channel_mid - sigma_multiple * residual_std</code></div>
+      <div class="formula-card"><b>突破信号</b><code>break_up = close > prior_channel_upper + channel_break_buffer
+break_down = close < prior_channel_lower - channel_break_buffer</code></div>
+    </div>
+
+    <h3>开仓量化规则</h3>
+    <div class="entry-rule-grid">
+      <div class="entry-rule-card entry_rule_card">
+        <b>开仓由通道、信号K、挂单、风险合并判断</b>
+        <p>合并卡片把上一根已完成通道边界和当前信号K分开，避免用当前 K 重算边界。突破成立后只生成挂单，是否成交交给后续 K 线。</p>
+        <code>channel_ready = bar_count >= 40
+channel_pos = (close - channel_mid) / max(channel_upper - channel_mid, eps)
+break_up = close > prior_channel_upper + channel_break_buffer
+break_down = close < prior_channel_lower - channel_break_buffer
+signal_long = channel_ready AND break_up
+signal_short = channel_ready AND break_down
+entry_long = signal_high + tick
+entry_short = signal_low - tick
+stop_long = prior_channel_lower - tick
+stop_short = prior_channel_upper + tick
+target_long = entry_long + risk_reward * (entry_long - stop_long)
+target_short = entry_short - risk_reward * (stop_short - entry_short)</code>
+      </div>
+      <div class="entry-rule-card entry_rule_card">
+        <b>只交易边界外扩，不交易通道中部</b>
+        <p>通道策略默认不做通道内均值回归。虚线挂单画在信号K极值外侧，虚线止损画在上一根对侧通道边界，虚线目标按 2R 展示。</p>
+        <code>break_distance_up = close - prior_channel_upper
+break_distance_down = prior_channel_lower - close
+risk_long = entry_long - stop_long
+risk_short = stop_short - entry_short
+valid_risk = risk > 0 AND risk_pct <= max_structure_risk_pct</code>
+      </div>
+    </div>
+
+    <h3>因子计算方式</h3>
+    <div class="factor-calc-grid factor_calc_grid">
+      <div class="factor-card"><b>channel_mid</b><code>channel_mid = rolling_regression(log(close), lookback=40)</code><span>用 40 根 K 的 log 收盘价拟合中线，降低绝对点位变化带来的比例失真。</span></div>
+      <div class="factor-card"><b>channel_width</b><code>residual_std = std(log(close) - channel_mid)
+channel_upper = channel_mid + sigma_multiple * residual_std</code><span>残差越大，通道越宽；通道太宽时方向可能对，但交易性会变差。</span></div>
+      <div class="factor-card"><b>channel_pos</b><code>channel_pos = (close - channel_mid) / max(channel_upper - channel_mid, eps)</code><span>大于 1 表示收在上轨外，小于 -1 表示收在下轨外，0 附近是通道中部。</span></div>
+      <div class="factor-card"><b>break_distance</b><code>break_up = close > prior_channel_upper + channel_break_buffer</code><span>只用上一根已完成上轨或下轨判断突破，不用当前 K 重算后的边界。</span></div>
+      <div class="factor-card"><b>regression_quality</b><code>r2 = explained_variance(channel_mid, log(close))</code><span>R² 越高，通道越像稳定轨道；R² 低时更像宽震荡噪声。</span></div>
+      <div class="factor-card"><b>terminal_filter</b><code>edge_count + weak_progress + wick_ratio >= min_score</code><span>连续贴边、突破推进不足、上影线/下影线明显时，判为末端假突破风险。</span></div>
+    </div>
+
+    <h3>可能性展示：通道内 / 上轨突破 / 末端假突破</h3>
+    <div class="scenario-strip">
+      <div class="scenario-card">
+        <b>通道内</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="通道内K线虚线示意">
+          <path class="line-channel" d="M25 40 L295 52"/><path class="line-mid" d="M25 76 L295 82"/><path class="line-channel" d="M25 112 L295 110"/>
+          <polyline class="line-fast" points="35,86 70,70 105,92 140,73 175,87 210,72 245,88"/>
+          <line class="entry-line" x1="28" y1="36" x2="300" y2="36"/><line class="stop-line" x1="28" y1="116" x2="300" y2="116"/><line class="target-line" x1="28" y1="18" x2="300" y2="18"/>
+          <text class="label-entry" x="34" y="31">虚线挂单</text><text class="label-stop" x="34" y="132">虚线止损</text><text class="label-target" x="210" y="15">虚线目标</text>
+          <rect class="body up" x="232" y="75" width="13" height="18"/><line class="wick up" x1="238" y1="66" x2="238" y2="101"/>
+        </svg>
+        <p>收盘仍在上下轨之间，即使盘中刺破，也只是观察信号；通道策略不在中部开仓。</p>
+      </div>
+      <div class="scenario-card">
+        <b>上轨突破</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="上轨突破K线虚线示意">
+          <path class="line-channel" d="M25 78 L295 58"/><path class="line-mid" d="M25 104 L295 84"/><path class="line-channel" d="M25 130 L295 110"/>
+          <polyline class="line-fast" points="35,116 70,106 105,94 140,86 175,78 210,64 245,48"/>
+          <line class="entry-line" x1="28" y1="42" x2="300" y2="42"/><line class="stop-line" x1="28" y1="112" x2="300" y2="112"/><line class="target-line" x1="28" y1="20" x2="300" y2="20"/>
+          <text class="label-entry" x="34" y="37">虚线挂单</text><text class="label-stop" x="34" y="128">虚线止损</text><text class="label-target" x="210" y="17">虚线目标</text>
+          <rect class="body up" x="235" y="45" width="13" height="29"/><line class="wick up" x1="241" y1="36" x2="241" y2="80"/>
+        </svg>
+        <p>信号K收在上一根上轨外，后续 K 再穿越信号K高点才成交；突破但未触发不追价。</p>
+      </div>
+      <div class="scenario-card">
+        <b>末端假突破</b>
+        <svg class="mini-kline" viewBox="0 0 320 150" role="img" aria-label="末端假突破K线虚线示意">
+          <path class="line-channel" d="M25 64 L295 42"/><path class="line-mid" d="M25 94 L295 76"/><path class="line-channel" d="M25 124 L295 110"/>
+          <polyline class="line-fast" points="35,112 70,90 105,70 140,54 175,48 210,45 245,44"/>
+          <line class="entry-line" x1="28" y1="35" x2="300" y2="35"/><line class="stop-line" x1="28" y1="112" x2="300" y2="112"/><line class="target-line" x1="28" y1="15" x2="300" y2="15"/>
+          <text class="label-entry" x="34" y="30">虚线挂单</text><text class="label-stop" x="34" y="128">虚线止损</text><text class="label-target" x="210" y="12">虚线目标</text>
+          <rect class="body down" x="235" y="45" width="13" height="16"/><line class="wick down" x1="241" y1="20" x2="241" y2="78"/>
+        </svg>
+        <p>连续贴上轨、推进变弱、上影线较长时，先看末端假突破过滤；拒绝的是开仓，不改通道 detector。</p>
+      </div>
+    </div>
+  </section>
   <section id="triggers">
     <h2>触发条件拆解</h2>
     <p>通道策略的触发条件不是盘中刺破，而是“背景条件 + 信号K条件 + 订单条件 + 风控条件”同时成立。通道 detector 只负责识别边界外扩，过滤和撮合另行归因。</p>

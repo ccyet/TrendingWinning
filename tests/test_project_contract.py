@@ -79,6 +79,41 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
             "挂单",
             "止损",
             "退出",
+            "开仓量化规则",
+            "因子计算方式",
+            "可能性展示",
+            "虚线挂单",
+            "虚线止损",
+            "虚线目标",
+            "合并卡片",
+            "entry_rule_card",
+            "factor_calc_grid",
+            "scenario-strip",
             "<svg",
         ):
             assert keyword in html, f"{path.name} 缺少 {keyword}"
+
+    trend_html = guide_paths[0].read_text(encoding="utf-8")
+    for keyword in (
+        "TrendScore = slope_z + structure_score + ma_alignment + close_strength + follow_through",
+        "close_pos = (close - low) / max(high - low, eps)",
+        "body_ratio = abs(close - open) / max(high - low, eps)",
+        "entry_long = signal_high + tick",
+        "stop_long = min(low[-pullback_lookback:]) - tick",
+        "target_long = entry_long + risk_reward * (entry_long - stop_long)",
+        "H2/L2 二次顺势入场",
+        "早期顺势 / 中段回撤 / 末端衰竭",
+    ):
+        assert keyword in trend_html, f"{guide_paths[0].name} 缺少 {keyword}"
+
+    channel_html = guide_paths[1].read_text(encoding="utf-8")
+    for keyword in (
+        "channel_mid = rolling_regression(log(close), lookback=40)",
+        "channel_upper = channel_mid + sigma_multiple * residual_std",
+        "channel_pos = (close - channel_mid) / max(channel_upper - channel_mid, eps)",
+        "break_up = close > prior_channel_upper + channel_break_buffer",
+        "entry_long = signal_high + tick",
+        "stop_long = prior_channel_lower - tick",
+        "通道内 / 上轨突破 / 末端假突破",
+    ):
+        assert keyword in channel_html, f"{guide_paths[1].name} 缺少 {keyword}"
