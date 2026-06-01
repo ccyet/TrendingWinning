@@ -1590,6 +1590,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "strategy_space.csv" in guide
     assert "artifact_manifest.csv" in readme
     assert "artifact_manifest.csv" in guide
+    assert "artifact_manifest.csv saved:" in readme
+    assert "artifact_manifest.csv saved:" in guide
     assert "data_gap_episodes.csv" in readme
     assert "data_gap_episodes.csv" in guide
     assert "每段连续缺失K" in readme

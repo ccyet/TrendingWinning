@@ -57,6 +57,11 @@ def _parse_text_mapping(value: str) -> dict[str, str]:
     return _parse_key_value_pairs(value)
 
 
+def _print_saved_artifact_manifest(output_dir: str | Path) -> None:
+    path = Path(output_dir).expanduser() / "artifact_manifest.csv"
+    print(f"artifact_manifest.csv saved: {path}")
+
+
 def _add_side_mode_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--side-mode",
@@ -565,6 +570,7 @@ def main() -> None:
         print(experiment.backtest.stats)
         if args.output_dir:
             print(f"replay output saved: {Path(args.output_dir).expanduser()}")
+            _print_saved_artifact_manifest(args.output_dir)
         return
 
     symbols = tuple(item.strip() for item in args.symbols.split(",") if item.strip())
@@ -718,6 +724,8 @@ def main() -> None:
             print(result.equity_curve.tail(20).to_string(index=False))
         if not result.trades.empty:
             print(result.trades.to_string(index=False))
+        if args.output_dir:
+            _print_saved_artifact_manifest(args.output_dir)
         return
 
     if args.command == "single-sweep":
@@ -782,6 +790,7 @@ def main() -> None:
         print(result.table.to_string(index=False))
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
+            _print_saved_artifact_manifest(output_dir)
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
@@ -875,6 +884,8 @@ def main() -> None:
                     "bars_per_second": report.bars_per_second,
                 }
             )
+        if args.output_dir:
+            _print_saved_artifact_manifest(args.output_dir)
         return
 
     if args.command == "portfolio-sweep":
@@ -953,6 +964,7 @@ def main() -> None:
         print(result.table.to_string(index=False))
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
+            _print_saved_artifact_manifest(output_dir)
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
