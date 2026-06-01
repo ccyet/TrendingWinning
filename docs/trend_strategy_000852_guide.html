@@ -28,6 +28,14 @@
     .formula-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
     .formula-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .formula-card b { display:block; margin-bottom:8px; }
+    .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .logic-card b { display:block; margin-bottom:8px; }
+    .logic-card p { margin:0; color:var(--muted); font-size:14px; }
+    .space-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .space-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .space-card b { display:block; margin-bottom:6px; }
+    .space-card span { color:var(--muted); font-size:14px; }
     .case-head { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:18px; align-items:start; }
     .eyebrow { margin:0 0 6px; color:var(--blue); font-size:13px; font-weight:700; }
     .quick-box { padding:15px; border:1px solid #cfe0f2; border-radius:8px; background:#eef6fc; }
@@ -49,7 +57,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -62,10 +70,45 @@
     <div class="note"><b>样本说明</b><p>使用本地日 K：000852.SH，区间 2016-05-16 至 2026-05-22。指数日 K 缓存缺少成交量，本页为盘面教学图，正式回测仍按系统流动性过滤执行。</p></div>
   </div>
 </header>
-<nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
+<nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#triggers">触发条件</a><a href="#space">策略空间</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
 <main class="wrap">
   <section id="defaults"><h2>默认参数</h2><table><tr><th>识别窗口</th><td>trend_lookback = 20 根 K</td></tr><tr><th>趋势阈值</th><td>trend_min_score = 1.0；高于阈值为多头趋势，低于 -1.0 为空头趋势</td></tr><tr><th>信号K质量</th><td>strong_close_pos = 0.65；min_body_ratio = 0.45</td></tr><tr><th>回撤窗口</th><td>pullback_lookback = 5；H2/L2 至少 2 段回撤或反弹</td></tr><tr><th>挂单方式</th><td>多头：信号K高点 + 0.01；空头：信号K低点 - 0.01</td></tr><tr><th>风控</th><td>结构止损来自 5 根 K 的回撤低点/反弹高点；risk_reward = 2.0；max_holding_bars = 12</td></tr></table></section>
   <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>趋势评分</b><code>TrendScore = slope_z + structure + 0.5*ma_align + close_quality + follow</code></div><div class="formula-card"><b>多头信号</b><code>TrendScore &gt;= 1.0 AND close_pos &gt;= 0.65 AND body_ratio &gt;= 0.45 AND close &gt; open</code></div><div class="formula-card"><b>空头信号</b><code>TrendScore &lt;= -1.0 AND close_pos &lt;= 0.35 AND body_ratio &gt;= 0.45 AND close &lt; open</code></div></div></section>
+  <section id="triggers">
+    <h2>触发条件拆解</h2>
+    <div class="logic-grid">
+      <div class="logic-card"><b>1. 背景先行</b><p>多头只在 <code>TrendScore &gt;= 1.0</code> 且状态为 bull 时找 H1/H2；空头只在 <code>TrendScore &lt;= -1.0</code> 且状态为 bear 时找 L1/L2。趋势不成立时，强 K 只算观察，不直接开仓。</p></div>
+      <div class="logic-card"><b>2. 信号K必须有质量</b><p>多头要求收盘靠近高位、实体占比足够且阳线；空头要求收盘靠近低位、实体占比足够且阴线。影线过长、实体过小、收盘回到中部，按失败推进处理。</p></div>
+      <div class="logic-card"><b>3. 挂单不是追市</b><p>多头在信号K高点上方 1 tick 挂 stop entry；空头在信号K低点下方 1 tick 挂 stop entry。下一根 K 没有穿越挂单价，订单就是 no_fill，不补做市价单。</p></div>
+      <div class="logic-card"><b>4. 结构止损先确定</b><p>多头止损取近 5 根回撤低点下方；空头止损取近 5 根反弹高点上方。若止损距离过大，应该用最大结构风险过滤，而不是临时收窄止损。</p></div>
+    </div>
+    <h3>信号分类</h3>
+    <table>
+      <tr><th>H1 / L1</th><td>第一段回撤或反弹后的顺势信号，适合强趋势、浅回撤、均线继续同向的盘面；如果趋势已经走了很久，H1 更容易是末端追单。</td></tr>
+      <tr><th>H2 / L2</th><td>第二段回撤或反弹后的顺势信号，是默认更偏好的信号。它给市场一次失败反向尝试，进场位置通常比第一下追突破更可控。</td></tr>
+      <tr><th>强趋势连续信号</th><td>pullback_legs 不足但趋势评分很高时，系统可能给 H1/L1。交易员应检查是否已经远离均线和通道中轴，避免连续追高或追空。</td></tr>
+      <tr><th>反向强 K</th><td>趋势中第一次反向强 K 不直接反手。它更常见的用途是减仓、观察或等待第二次确认。</td></tr>
+    </table>
+    <h3>或然情况</h3>
+    <table>
+      <tr><th>触发后同 K 触及止损和目标</th><td>默认按保守规则处理，先算止损。盘面复盘时不要把无法确认先后顺序的 K 线当成确定盈利。</td></tr>
+      <tr><th>跳空越过挂单价</th><td>按实际可成交开盘价入场，真实风险和盈亏比会重算；若风险超限，应由撮合层拒单。</td></tr>
+      <tr><th>信号后不触发</th><td>不是错过交易，而是信号没有得到下一根 K 的确认。趋势策略重视“信号K + 触发K”的组合。</td></tr>
+      <tr><th>同级别中部震荡</th><td>单趋势策略不会自动调用区间 detector；手工盘面若看到重叠 K 多、均线走平、上下边界清楚，应降低趋势信号权重。</td></tr>
+      <tr><th>末端假突破</th><td>趋势持续很久、价格远离中轴、突破推进不足、上影线或下影线明显时，应开启末端假突破过滤或直接放弃追单。</td></tr>
+    </table>
+  </section>
+  <section id="space">
+    <h2>策略空间</h2>
+    <div class="space-grid">
+      <div class="space-card"><b>适用空间</b><span>清晰单边趋势、回撤不深、均线和结构同向、信号K有实体推进。核心收益来自顺势延续，不来自预测反转。</span></div>
+      <div class="space-card"><b>参数空间</b><span>趋势窗口、趋势阈值、收盘位置、实体占比、回撤腿数、最大结构风险、盈亏比、最大持有 K 数共同决定信号密度和风险距离。</span></div>
+      <div class="space-card"><b>过滤空间</b><span>交易方向、多周期趋势一致、末端假突破、同级别中部不交易、信号K流动性，都是开仓前过滤，不改变 detector 本身。</span></div>
+      <div class="space-card"><b>退出空间</b><span>结构止损、2R 固定目标、最大持有 K 数、盈利通道回撤止盈可组合使用；退出模块独立于信号识别。</span></div>
+      <div class="space-card"><b>失效空间</b><span>宽震荡、假突破密集、趋势末端、第一次反转、消息跳空后的无序波动，都会削弱 H/L 信号质量。</span></div>
+      <div class="space-card"><b>执行边界</b><span>单策略只负责产生订单和满仓进出；组合策略才处理策略优先级、资金上限、行业约束和多持仓冲突。</span></div>
+    </div>
+  </section>
   <div id="cases">
 <section class="case-block">
   <div class="case-head">

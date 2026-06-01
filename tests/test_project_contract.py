@@ -40,5 +40,18 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
     for path in guide_paths:
         assert path.exists(), f"缺少策略讲解 HTML：{path.name}"
         html = path.read_text(encoding="utf-8")
-        for keyword in ("000852.SH", "默认参数", "信号K", "挂单", "止损", "退出", "<svg"):
+        for keyword in (
+            "000852.SH",
+            "默认参数",
+            "触发条件拆解",
+            "信号分类",
+            "或然情况",
+            "策略空间",
+            "执行边界",
+            "信号K",
+            "挂单",
+            "止损",
+            "退出",
+            "<svg",
+        ):
             assert keyword in html, f"{path.name} 缺少 {keyword}"

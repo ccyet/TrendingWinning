@@ -28,6 +28,14 @@
     .formula-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
     .formula-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .formula-card b { display:block; margin-bottom:8px; }
+    .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .logic-card b { display:block; margin-bottom:8px; }
+    .logic-card p { margin:0; color:var(--muted); font-size:14px; }
+    .space-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .space-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
+    .space-card b { display:block; margin-bottom:6px; }
+    .space-card span { color:var(--muted); font-size:14px; }
     .case-head { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:18px; align-items:start; }
     .eyebrow { margin:0 0 6px; color:var(--blue); font-size:13px; font-weight:700; }
     .quick-box { padding:15px; border:1px solid #cfe0f2; border-radius:8px; background:#eef6fc; }
@@ -49,7 +57,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -62,10 +70,45 @@
     <div class="note"><b>样本说明</b><p>使用本地日 K：000852.SH，区间 2016-05-16 至 2026-05-22。指数日 K 缓存缺少成交量，本页为盘面教学图，正式回测仍按系统流动性过滤执行。</p></div>
   </div>
 </header>
-<nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
+<nav><div class="wrap"><a href="#defaults">默认参数</a><a href="#formula">数学定义</a><a href="#triggers">触发条件</a><a href="#space">策略空间</a><a href="#cases">K线案例</a><a href="#workflow">交易员检查表</a></div></nav>
 <main class="wrap">
   <section id="defaults"><h2>默认参数</h2><table><tr><th>通道算法</th><td>channel_method = regression；对 log(close) 做 40 根 K 滚动回归</td></tr><tr><th>通道宽度</th><td>sigma_multiple = 2.0；通道 = 中线 ± 2 倍残差波动</td></tr><tr><th>突破缓冲</th><td>channel_break_buffer = 0.0；收盘越过上一根已完成边界即成立</td></tr><tr><th>挂单方式</th><td>上轨突破：信号K高点 + 0.01；下轨跌破：信号K低点 - 0.01</td></tr><tr><th>止损</th><td>多头止损取上一根通道下轨；空头止损取上一根通道上轨</td></tr><tr><th>风控</th><td>risk_reward = 2.0；max_holding_bars = 12；末端假突破过滤默认关闭</td></tr></table></section>
   <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>回归中线</b><code>MidLog_t = alpha + beta*t；Mid_t = exp(MidLog_t)</code></div><div class="formula-card"><b>通道边界</b><code>Upper = exp(MidLog + 2*sigma)；Lower = exp(MidLog - 2*sigma)</code></div><div class="formula-card"><b>突破信号</b><code>Long: close_i &gt; Upper_{i-1}；Short: close_i &lt; Lower_{i-1}</code></div></div></section>
+  <section id="triggers">
+    <h2>触发条件拆解</h2>
+    <div class="logic-grid">
+      <div class="logic-card"><b>1. 通道必须先有效</b><p>默认至少需要 40 根 K 才能形成回归通道。中线来自 log(close) 回归，边界来自残差波动；没有完整窗口时不产生通道信号。</p></div>
+      <div class="logic-card"><b>2. 只看上一根边界</b><p>突破判断使用 <code>Upper_{i-1}</code> 或 <code>Lower_{i-1}</code>，不用当前 K 重算后的边界。这样手工复盘和回测都不会引入未来函数。</p></div>
+      <div class="logic-card"><b>3. 收盘突破才是信号K</b><p>多头要求收盘高于上一根上轨；空头要求收盘低于上一根下轨。盘中刺破但收回通道内，归为失败推进，不做突破信号。</p></div>
+      <div class="logic-card"><b>4. 对侧通道是结构止损</b><p>多头用上一根通道下轨止损，空头用上一根通道上轨止损。止损远说明通道宽或波动大，应过滤或降权，不应随意改成近端止损。</p></div>
+    </div>
+    <h3>信号分类</h3>
+    <table>
+      <tr><th>上轨突破</th><td><code>channel_overshoot_up</code>。价格收在上轨之外，偏顺势扩张或趋势重新加速；若前面已经连续贴上轨，要重点检查推进是否不足。</td></tr>
+      <tr><th>下轨跌破</th><td><code>channel_break_down</code>。价格收在下轨之外，偏下行扩张或多头通道失守；若下方空间不足，空单的 2R 目标可能不现实。</td></tr>
+      <tr><th>斜率同向突破</th><td>通道斜率与突破方向一致时，信号更接近顺势延续；斜率反向时，更像旧通道破坏或反向转势，需要降低仓位或等待后续确认。</td></tr>
+      <tr><th>低 R² 突破</th><td>回归解释度低时，说明最近 40 根 K 不像稳定通道。信号可以存在，但更容易是噪声突破，应结合通道宽度和影线质量判断。</td></tr>
+    </table>
+    <h3>或然情况</h3>
+    <table>
+      <tr><th>盘中穿越但收回通道</th><td>不算通道突破；它更像失败突破或区间边缘测试，应交给区间或反转模块，不应由通道策略强行开仓。</td></tr>
+      <tr><th>跳空越过挂单价</th><td>按真实开盘价成交，实际风险和盈亏比重新计算。跳空过大时，组合或单策略撮合层可按风险约束拒单。</td></tr>
+      <tr><th>突破后下一根未触发</th><td>订单保持未成交，不追市。通道策略需要“收盘突破 + 下一根继续穿越信号K极值”的确认。</td></tr>
+      <tr><th>通道过宽</th><td>对侧止损会很远，2R 目标也会被推远。此时信号方向可能对，但交易性差，应优先看实际风险比例。</td></tr>
+      <tr><th>末端假突破</th><td>同向运行很久、反复贴边、突破幅度小、影线明显时，开启末端假突破过滤；它只拒绝开仓，不改通道 detector。</td></tr>
+    </table>
+  </section>
+  <section id="space">
+    <h2>策略空间</h2>
+    <div class="space-grid">
+      <div class="space-card"><b>适用空间</b><span>价格沿通道运行后发生边界外扩，或旧通道被收盘价明确打穿。它适合交易“通道失衡”，不是交易通道内部均值回归。</span></div>
+      <div class="space-card"><b>参数空间</b><span>通道方法、回看 K 数、sigma 倍数、突破缓冲、摆动点左右确认数，决定边界敏感度和信号数量。</span></div>
+      <div class="space-card"><b>过滤空间</b><span>通道宽度、R²、斜率方向、末端假突破、最大结构风险、交易方向和大周期趋势，都可以作为开仓前过滤。</span></div>
+      <div class="space-card"><b>退出空间</b><span>对侧通道止损、2R 固定目标、最大持有 K 数、盈利通道回撤止盈互相独立；不要把出场逻辑写进 detector。</span></div>
+      <div class="space-card"><b>失效空间</b><span>低 R² 宽通道、区间中部噪声、连续贴边后的衰竭突破、消息跳空后的异常波动，都会削弱通道突破质量。</span></div>
+      <div class="space-card"><b>执行边界</b><span>通道策略只输出上轨突破和下轨跌破订单；组合层才处理资金分配、持仓互斥、策略优先级和行业限制。</span></div>
+    </div>
+  </section>
   <div id="cases">
 <section class="case-block">
   <div class="case-head">
