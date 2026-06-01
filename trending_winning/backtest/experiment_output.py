@@ -10,6 +10,7 @@ from trending_winning.backtest.experiment_cases import json_dump, json_ready, sw
 from trending_winning.backtest.drawdown import drawdown_curve, drawdown_episodes, price_path_drawdown_inputs
 from trending_winning.backtest.experiment_diagnostics import (
     case_diagnostic_statistics,
+    diagnostic_action_plan,
     experiment_diagnostic_report,
 )
 from trending_winning.backtest.experiment_models import (
@@ -43,7 +44,9 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     (output_dir / "config.json").write_text(json_dump(json_ready(asdict(result.config))))
     stats = _experiment_stats_payload(result)
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
-    _experiment_diagnostic_report(result, stats).to_csv(output_dir / "experiment_diagnostics.csv", index=False)
+    diagnostics = _experiment_diagnostic_report(result, stats)
+    diagnostics.to_csv(output_dir / "experiment_diagnostics.csv", index=False)
+    diagnostic_action_plan(diagnostics).to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -69,7 +72,9 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     (output_dir / "config.json").write_text(json_dump(json_ready(asdict(result.config))))
     stats = _experiment_stats_payload(result)
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
-    _experiment_diagnostic_report(result, stats).to_csv(output_dir / "experiment_diagnostics.csv", index=False)
+    diagnostics = _experiment_diagnostic_report(result, stats)
+    diagnostics.to_csv(output_dir / "experiment_diagnostics.csv", index=False)
+    diagnostic_action_plan(diagnostics).to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -243,6 +248,13 @@ def _experiment_artifact_rows() -> list[tuple[str, str, int, str, str]]:
             1,
             "优先检查数据、信号、风控还是仓位？",
             "把回测质量问题汇总成可复核诊断。",
+        ),
+        (
+            "diagnostic_action_plan.csv",
+            "核心统计",
+            1,
+            "诊断问题应该按什么顺序处理？",
+            "按失败和关注项排序，给出处理动作和对应证据文件。",
         ),
         ("trades.csv", "成交明细", 1, "每笔交易怎样开仓和平仓？", "逐笔成交、退出原因和盈亏明细。"),
         ("equity_curve.csv", "净值与回撤", 1, "组合资产净值如何逐 K 线变化？", "净值曲线原始序列。"),

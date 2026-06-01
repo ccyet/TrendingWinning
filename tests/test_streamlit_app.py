@@ -912,6 +912,14 @@ def test_streamlit_backtest_result_renders_core_performance_overview() -> None:
     assert "_performance_summary_frame" in source
 
 
+def test_streamlit_experiment_breakdowns_render_diagnostic_action_plan_first() -> None:
+    source = getsource(streamlit_app._render_experiment_breakdowns)
+
+    assert "诊断处理顺序" in source
+    assert "diagnostic_action_plan(" in source
+    assert source.index('"诊断处理顺序"') < source.index('"实验诊断摘要"')
+
+
 def test_streamlit_backtest_result_prioritizes_kline_before_statistics() -> None:
     source = getsource(streamlit_app._render_backtest_result)
 

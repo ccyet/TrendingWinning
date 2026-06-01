@@ -563,3 +563,7 @@ def test_save_single_strategy_experiment_writes_experiment_diagnostics(tmp_path)
     saved = pd.read_csv(output_dir / "experiment_diagnostics.csv")
     assert {"section", "check", "status", "detail"}.issubset(saved.columns)
     assert saved.loc[saved["check"].eq("交易样本"), "status"].iloc[0] == "失败"
+    action_plan = pd.read_csv(output_dir / "diagnostic_action_plan.csv")
+    assert action_plan["priority"].tolist()[0] == 1
+    assert action_plan.loc[0, "check"] == "交易样本"
+    assert action_plan.loc[0, "evidence_file"] == "strategy_space.csv; order_decisions.csv"

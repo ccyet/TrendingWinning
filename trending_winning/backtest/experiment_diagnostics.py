@@ -11,6 +11,9 @@ from trending_winning.backtest.reason_labels import exit_reason_label, reason_la
 EXPERIMENT_DIAGNOSTIC_COLUMNS = pd.Index(
     ["section", "check", "status", "severity", "metric", "value", "threshold", "detail"]
 )
+DIAGNOSTIC_ACTION_PLAN_COLUMNS = pd.Index(
+    ["priority", "section", "check", "status", "action", "evidence_file", "detail"]
+)
 CASE_DIAGNOSTIC_COLUMNS = pd.Index(
     [
         "sweep_rank",
@@ -67,6 +70,40 @@ def diagnostic_summary_fields(stats: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def diagnostic_action_plan(report: pd.DataFrame) -> pd.DataFrame:
+    """把诊断明细压成处理顺序，减少用户在多个 CSV 间来回查找。"""
+    if report.empty:
+        return pd.DataFrame(columns=DIAGNOSTIC_ACTION_PLAN_COLUMNS)
+    missing = set(EXPERIMENT_DIAGNOSTIC_COLUMNS).difference(report.columns)
+    if missing:
+        raise ValueError(f"diagnostic report 缺少字段：{', '.join(sorted(missing))}")
+
+    data = report.copy()
+    data["severity"] = pd.to_numeric(data["severity"], errors="coerce").fillna(0).astype(int)
+    data["status"] = data["status"].fillna("").astype(str)
+    actionable = data.loc[data["severity"].gt(0) | data["status"].isin(["失败", "关注"])].copy()
+    if actionable.empty:
+        return pd.DataFrame(columns=DIAGNOSTIC_ACTION_PLAN_COLUMNS)
+
+    actionable["_original_order"] = range(len(actionable))
+    actionable = actionable.sort_values(["severity", "_original_order"], ascending=[False, True], kind="mergesort")
+    rows: list[dict[str, object]] = []
+    for priority, row in enumerate(actionable.itertuples(index=False), start=1):
+        check = str(row.check)
+        rows.append(
+            {
+                "priority": priority,
+                "section": str(row.section),
+                "check": check,
+                "status": str(row.status),
+                "action": _diagnostic_action(check),
+                "evidence_file": _diagnostic_evidence_file(check),
+                "detail": str(row.detail),
+            }
+        )
+    return pd.DataFrame(rows, columns=DIAGNOSTIC_ACTION_PLAN_COLUMNS)
+
+
 def case_diagnostic_statistics(table: pd.DataFrame) -> pd.DataFrame:
     """按参数遍历 case 输出完整诊断明细，保留排名和配置指纹。"""
     if table.empty:
@@ -86,6 +123,42 @@ def case_diagnostic_statistics(table: pd.DataFrame) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows, columns=CASE_DIAGNOSTIC_COLUMNS)
+
+
+def _diagnostic_action(check: str) -> str:
+    actions = {
+        "数据覆盖": "先补齐或剔除低覆盖数据，再重新运行回测。",
+        "交易样本": "先确认策略空间和信号生成是否合理，样本不足时扩大标的或时间窗。",
+        "订单接受率": "先看拒单和未成交原因，区分信号问题、风险参数问题和撮合问题。",
+        "策略过滤": "先复核过滤器命中原因，确认过滤参数是否过严。",
+        "回撤压力": "先定位最大回撤区间，再复核该区间的持仓方向、仓位和退出。",
+        "收益质量": "先看逐笔收益和交易路径分布，确认亏损是否集中在少数形态。",
+        "胜率边际": "先比较实际胜率和盈亏平衡胜率，确认赔率结构是否支持当前入场。",
+        "正期望概率": "先看平均收益置信区间，样本不支持正期望时不要只看单次收益。",
+        "退出结构": "先看退出原因占比，止损或持有到期过高时复核入场和退出参数。",
+        "月度稳定性": "先下钻最差月度，确认是否由极端行情、样本尾部或单一标的造成。",
+        "路径风险": "先看 MAE/MFE 和 R 倍数分布，判断止损距离和入场点是否匹配。",
+        "资金暴露": "先检查组合仓位、保证金和现金比例，确认是否超出资金约束。",
+    }
+    return actions.get(check, "先查看对应诊断明细和产物索引，再定位参数或数据问题。")
+
+
+def _diagnostic_evidence_file(check: str) -> str:
+    files = {
+        "数据覆盖": "data_coverage.csv; data_gap_episodes.csv",
+        "交易样本": "strategy_space.csv; order_decisions.csv",
+        "订单接受率": "order_decisions.csv; order_decision_stats.csv",
+        "策略过滤": "strategy_filter_decisions.csv; strategy_filter_stats.csv",
+        "回撤压力": "drawdown_episodes.csv; drawdown_curve.csv",
+        "收益质量": "trades.csv; trade_path_distribution.csv",
+        "胜率边际": "trades.csv; strategy_stats.csv",
+        "正期望概率": "stats.json; trades.csv",
+        "退出结构": "exit_reason_stats.csv; trades.csv",
+        "月度稳定性": "monthly_returns.csv",
+        "路径风险": "trade_path_distribution.csv; trades.csv",
+        "资金暴露": "equity_curve.csv; order_decisions.csv",
+    }
+    return files.get(check, "experiment_diagnostics.csv; artifact_manifest.csv")
 
 
 def _empty_diagnostic_summary_fields() -> dict[str, object]:

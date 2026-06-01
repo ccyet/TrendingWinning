@@ -17,6 +17,7 @@ from trending_winning.backtest.experiment import (
     run_portfolio_experiment,
     run_single_strategy_experiment,
 )
+from trending_winning.backtest.experiment_diagnostics import diagnostic_action_plan
 from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
 from trending_winning.backtest.reason_labels import (
     DATA_ISSUE_LABELS,
@@ -3737,6 +3738,7 @@ def _render_backtest_result(
 def _render_experiment_breakdowns(experiment, *, stock_names: Mapping[str, str] | None = None) -> None:
     """展示实验拆分统计；单策略和组合回测复用同一组产物。"""
     if not experiment.diagnostic_report.empty:
+        _render_display_table("诊断处理顺序", diagnostic_action_plan(experiment.diagnostic_report), stock_names=stock_names)
         st.markdown("##### 实验诊断摘要")
         _render_diagnostic_status_chart(experiment.diagnostic_report)
         _render_display_table("实验诊断摘要", experiment.diagnostic_report, stock_names=stock_names)

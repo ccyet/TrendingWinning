@@ -4,8 +4,10 @@ import pandas as pd
 
 from trending_winning.backtest.experiment_diagnostics import (
     CASE_DIAGNOSTIC_COLUMNS,
+    DIAGNOSTIC_ACTION_PLAN_COLUMNS,
     EXPERIMENT_DIAGNOSTIC_COLUMNS,
     case_diagnostic_statistics,
+    diagnostic_action_plan,
     diagnostic_summary_fields,
     experiment_diagnostic_report,
 )
@@ -65,6 +67,33 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert "止损 7 笔，占退出 58.3%" in by_check.loc["退出结构", "detail"]
     assert by_check.loc["路径风险", "status"] == "关注"
     assert by_check.loc["资金暴露", "status"] == "关注"
+
+
+def test_diagnostic_action_plan_prioritizes_failed_checks_and_artifacts() -> None:
+    report = pd.DataFrame(
+        {
+            "section": ["数据质量", "收益", "风险", "交易质量"],
+            "check": ["数据覆盖", "收益质量", "回撤压力", "订单接受率"],
+            "status": ["失败", "失败", "关注", "通过"],
+            "severity": [2, 2, 1, 0],
+            "metric": ["data_weighted_coverage_ratio", "profit_factor", "max_drawdown", "acceptance_rate"],
+            "value": [0.82, 0.9, -0.22, 0.6],
+            "threshold": [0.95, 1.0, -0.2, 0.2],
+            "detail": ["覆盖不足", "盈亏因子低", "回撤偏深", "接受率正常"],
+        }
+    )
+
+    plan = diagnostic_action_plan(report)
+
+    assert plan.columns.tolist() == DIAGNOSTIC_ACTION_PLAN_COLUMNS.tolist()
+    assert plan["priority"].tolist() == [1, 2, 3]
+    assert plan["check"].tolist() == ["数据覆盖", "收益质量", "回撤压力"]
+    assert plan["evidence_file"].tolist() == [
+        "data_coverage.csv; data_gap_episodes.csv",
+        "trades.csv; trade_path_distribution.csv",
+        "drawdown_episodes.csv; drawdown_curve.csv",
+    ]
+    assert "先补齐或剔除低覆盖数据" in plan.loc[0, "action"]
 
 
 def test_experiment_diagnostic_report_marks_zero_trade_as_failed() -> None:
