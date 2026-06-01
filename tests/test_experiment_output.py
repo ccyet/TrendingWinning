@@ -658,7 +658,7 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
         config=config,
         backtest=BacktestResult(
             trades=pd.DataFrame(),
-            equity_curve=pd.DataFrame({"trade_no": [0, 1], "net_value": [1.0, 1.08]}),
+            equity_curve=pd.DataFrame({"trade_no": [0, 1, 2], "net_value": [1.0, 1.08, 1.03]}),
             stats={
                 "trade_count": 12.0,
                 "order_count": 20.0,
@@ -707,6 +707,13 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "诊断处理顺序" in html
     assert "复盘路径" in html
     assert "风险画像" in html
+    assert "净值与回撤" in html
+    assert "净值曲线以 1.0 为基准" in html
+    assert 'class="equity-chart"' in html
+    assert 'aria-label="净值曲线"' in html
+    assert 'aria-label="回撤曲线"' in html
+    assert "1.00 基准线" in html
+    assert "-4.63%" in html
     assert "订单漏斗" in html
     assert "退出结构" in html
     assert "重点证据文件" in html

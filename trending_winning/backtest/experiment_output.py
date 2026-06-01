@@ -490,6 +490,7 @@ def _experiment_report_html(
             ("策略过滤率", "strategy_filter_rejection_rate", "策略层提前拒绝开仓的比例。"),
         )
     )
+    equity_drawdown_panel = _equity_drawdown_panel(result.backtest.equity_curve)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -518,6 +519,18 @@ def _experiment_report_html(
     .metric b {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
     .metric span {{ font-size:22px; font-weight:760; }}
     .metric small {{ display:block; margin-top:6px; color:var(--muted); font-size:12px; }}
+    .chart-grid {{ display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; }}
+    .chart-card {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .chart-card strong {{ display:block; margin-bottom:4px; color:#24364d; }}
+    .chart-note {{ margin:0 0 10px; color:var(--muted); font-size:13px; }}
+    .equity-chart {{ display:block; width:100%; height:auto; }}
+    .chart-axis {{ stroke:#d8e1eb; stroke-width:1; }}
+    .chart-baseline {{ stroke:#7b8794; stroke-width:1.2; stroke-dasharray:5 5; }}
+    .chart-equity-line {{ fill:none; stroke:#1769aa; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }}
+    .chart-drawdown-line {{ fill:none; stroke:#b42318; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }}
+    .chart-drawdown-area {{ fill:#fde8e4; opacity:.85; }}
+    .chart-label {{ fill:#5f6f84; font-size:12px; }}
+    .chart-value {{ fill:#24364d; font-size:13px; font-weight:700; }}
     .review-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
     .review-card {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
     .review-card strong {{ display:block; margin-bottom:6px; color:#24364d; }}
@@ -532,13 +545,14 @@ def _experiment_report_html(
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}
-    @media (max-width: 920px) {{ .metrics,.review-grid,.two-col {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+    @media (max-width: 920px) {{ .metrics,.review-grid,.two-col,.chart-grid {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
   </style>
 </head>
 <body>
 <header><div class="wrap"><h1>{escape(title)} 回测总览</h1><p class="lead">{escape(_experiment_scope_text(result))}</p>{_diagnostic_status_badges(diagnostics)}</div></header>
 <main class="wrap">
   <section><h2>核心绩效</h2><div class="metrics">{metric_cards}</div></section>
+  <section><h2>净值与回撤</h2><p class="section-note">净值曲线以 1.0 为基准，回撤按组合资产净值路径计算。</p>{equity_drawdown_panel}</section>
   <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
   <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
   <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div><div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
@@ -551,6 +565,111 @@ def _experiment_report_html(
 </body>
 </html>
 """
+
+
+def _equity_drawdown_panel(equity_curve: pd.DataFrame) -> str:
+    if equity_curve.empty or "net_value" not in equity_curve.columns:
+        return '<p class="empty">暂无净值曲线。</p>'
+    values = pd.to_numeric(equity_curve["net_value"], errors="coerce").dropna().reset_index(drop=True)
+    if values.empty:
+        return '<p class="empty">暂无有效净值点。</p>'
+
+    running_peak = values.cummax()
+    drawdown = values / running_peak - 1.0
+    equity_svg = _line_chart_svg(
+        values,
+        aria_label="净值曲线",
+        css_class="chart-equity-line",
+        baseline=1.0,
+        baseline_label="1.00 基准线",
+    )
+    drawdown_svg = _line_chart_svg(
+        drawdown,
+        aria_label="回撤曲线",
+        css_class="chart-drawdown-line",
+        baseline=0.0,
+        baseline_label="0.00%",
+        fill_to_baseline=True,
+        value_key="drawdown",
+    )
+    latest_equity = _format_report_value("net_value", values.iloc[-1])
+    latest_drawdown = _format_report_value("current_drawdown", drawdown.iloc[-1])
+    max_drawdown = _format_report_value("max_drawdown", drawdown.min())
+    return (
+        '<div class="chart-grid">'
+        '<div class="chart-card">'
+        "<strong>净值曲线</strong>"
+        f'<p class="chart-note">期末净值 {escape(latest_equity)}，1.00 基准线用于确认收益尺度。</p>'
+        f"{equity_svg}"
+        "</div>"
+        '<div class="chart-card">'
+        "<strong>回撤曲线</strong>"
+        f'<p class="chart-note">当前回撤 {escape(latest_drawdown)}，最大回撤 {escape(max_drawdown)}。</p>'
+        f"{drawdown_svg}"
+        "</div>"
+        "</div>"
+    )
+
+
+def _line_chart_svg(
+    values: pd.Series,
+    *,
+    aria_label: str,
+    css_class: str,
+    baseline: float,
+    baseline_label: str,
+    fill_to_baseline: bool = False,
+    value_key: str = "net_value",
+) -> str:
+    clean = pd.to_numeric(values, errors="coerce").dropna().astype(float).reset_index(drop=True)
+    if clean.empty:
+        return '<p class="empty">暂无有效曲线。</p>'
+    width = 720.0
+    height = 220.0
+    pad_left = 46.0
+    pad_right = 18.0
+    pad_top = 18.0
+    pad_bottom = 34.0
+    y_min = float(min(clean.min(), baseline))
+    y_max = float(max(clean.max(), baseline))
+    if abs(y_max - y_min) < 1e-12:
+        y_min -= 0.01
+        y_max += 0.01
+
+    def x_at(pos: int) -> float:
+        if len(clean) == 1:
+            return pad_left
+        return pad_left + (width - pad_left - pad_right) * pos / (len(clean) - 1)
+
+    def y_at(value: float) -> float:
+        return pad_top + (y_max - value) / (y_max - y_min) * (height - pad_top - pad_bottom)
+
+    points = [(x_at(pos), y_at(float(value))) for pos, value in enumerate(clean)]
+    point_text = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
+    baseline_y = y_at(float(baseline))
+    y_max_label = _format_report_value(value_key, y_max)
+    y_min_label = _format_report_value(value_key, y_min)
+    fill_path = ""
+    if fill_to_baseline and len(points) >= 2:
+        first_x = points[0][0]
+        last_x = points[-1][0]
+        fill_path = (
+            f'<polygon class="chart-drawdown-area" points="{first_x:.2f},{baseline_y:.2f} '
+            f'{point_text} {last_x:.2f},{baseline_y:.2f}" />'
+        )
+    return (
+        f'<svg class="equity-chart" viewBox="0 0 {int(width)} {int(height)}" role="img" '
+        f'aria-label="{escape(aria_label, quote=True)}">'
+        f'<line class="chart-axis" x1="{pad_left:.2f}" y1="{pad_top:.2f}" x2="{pad_left:.2f}" y2="{height - pad_bottom:.2f}" />'
+        f'<line class="chart-axis" x1="{pad_left:.2f}" y1="{height - pad_bottom:.2f}" x2="{width - pad_right:.2f}" y2="{height - pad_bottom:.2f}" />'
+        f'<line class="chart-baseline" x1="{pad_left:.2f}" y1="{baseline_y:.2f}" x2="{width - pad_right:.2f}" y2="{baseline_y:.2f}" />'
+        f"{fill_path}"
+        f'<polyline class="{escape(css_class, quote=True)}" points="{point_text}" />'
+        f'<text class="chart-label" x="8" y="{pad_top + 4:.2f}">{escape(y_max_label)}</text>'
+        f'<text class="chart-label" x="8" y="{height - pad_bottom + 4:.2f}">{escape(y_min_label)}</text>'
+        f'<text class="chart-value" x="{pad_left + 4:.2f}" y="{baseline_y - 6:.2f}">{escape(baseline_label)}</text>'
+        "</svg>"
+    )
 
 
 def _experiment_scope_text(result: SingleStrategyExperimentResult | PortfolioExperimentResult) -> str:
