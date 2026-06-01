@@ -7,6 +7,9 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
+from trending_winning.backtest.strategy_space import strategy_space_summary
+
 import streamlit_app
 from streamlit_app import (
     BacktestDataQualityInputs,
@@ -373,6 +376,152 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     assert "组合净值" in joined
     assert "策略绩效" in joined
     assert "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出" in joined
+
+
+def test_single_strategy_space_preview_matches_saved_summary_generator() -> None:
+    scope = BacktestScopeInputs(["000001.SZ"], "30m", "2026-01-01", "2026-01-31", "单策略回测")
+    risk = BacktestRiskInputs(0.06, 0.03, 12, 0.0003, 1.0, 1.0, "conservative", True, 0.04, 0.015, 20)
+    quality = BacktestDataQualityInputs(strict_data_quality=True, min_coverage_ratio=0.95)
+    higher = HigherTimeframeInputs(higher_timeframe="60m", higher_timeframe_max_age_minutes=240)
+    terminal = TerminalFalseBreakoutInputs(True, ("trend", "channel"), 40, 14, 18, 2.0, 8, 0.9, 3, 0.35, 0.35, 3)
+    single = SingleStrategyInputs(
+        detector="trend",
+        experiment_name="single-trend",
+        risk_reward=2.0,
+        side_mode="long_only",
+        trend_lookback=20,
+        trend_min_score=1.0,
+        trend_h2_min_pullback_legs=2,
+        range_lookback=20,
+        channel_lookback=40,
+        channel_method="regression",
+        channel_sigma=2.0,
+        max_actual_risk_pct=0.05,
+        max_chase_pct=0.02,
+        reversal_lookback=20,
+        reversal_old_extreme_tolerance_pct=0.01,
+        reversal_require_old_extreme_test=True,
+        reversal_require_structure_confirmation=True,
+        advanced_detector={},
+        terminal_false_breakout=terminal,
+    )
+
+    expected = strategy_space_summary(
+        SingleStrategyExperimentConfig(
+            name="single-trend",
+            data_root="",
+            symbols=("000001.SZ",),
+            timeframe="30m",
+            start="2026-01-01",
+            end="2026-01-31",
+            detector="trend",
+            higher_timeframe="60m",
+            higher_timeframe_max_age_minutes=240,
+            risk_reward=2.0,
+            max_holding_bars=12,
+            max_actual_risk_pct=0.05,
+            max_chase_pct=0.02,
+            side_mode="long_only",
+            intrabar_exit_policy="conservative",
+            trailing_take_profit_activation_pct=0.04,
+            trailing_take_profit_drawdown_pct=0.015,
+            trailing_take_profit_ma_period=20,
+            strict_data_quality=True,
+            min_coverage_ratio=0.95,
+            terminal_false_breakout_enabled=True,
+            terminal_false_breakout_detectors=("trend", "channel"),
+            terminal_false_breakout_lookback=40,
+            terminal_false_breakout_atr_period=14,
+            terminal_false_breakout_min_regime_bars=18,
+            terminal_false_breakout_extension_atr_multiple=2.0,
+            terminal_false_breakout_edge_lookback=8,
+            terminal_false_breakout_edge_pos=0.9,
+            terminal_false_breakout_edge_min_count=3,
+            terminal_false_breakout_weak_progress_atr=0.35,
+            terminal_false_breakout_wick_ratio=0.35,
+            terminal_false_breakout_min_score=3,
+        )
+    )
+
+    pd.testing.assert_frame_equal(_single_strategy_space_summary_frame(scope, risk, quality, higher, single), expected)
+
+
+def test_portfolio_strategy_space_preview_matches_saved_summary_generator() -> None:
+    scope = BacktestScopeInputs(["000001.SZ", "300750.SZ"], "15m", "2026-01-01", "2026-01-31", "组合策略回测")
+    risk = BacktestRiskInputs(0.06, 0.03, 16, 0.0003, 1.0, 1.0, "optimistic", False, 0.0, 0.0, 0)
+    quality = BacktestDataQualityInputs(strict_data_quality=True, min_coverage_ratio=0.9)
+    higher = HigherTimeframeInputs(higher_timeframe="60m", higher_timeframe_max_age_minutes=None)
+    allocation = PortfolioAllocationInputs(
+        detectors=("trend", "channel"),
+        experiment_name="portfolio-15m",
+        risk_reward=2.5,
+        side_mode="both",
+        max_open_positions=3,
+        risk_per_trade=0.01,
+        short_margin_rate=2.0,
+        capital_per_trade=0.3,
+        max_capital_per_trade=0.5,
+        reserve_cash=0.1,
+        allow_same_symbol_overlap=False,
+        strategy_priority_text="trend_signal_bar=1,channel_signal_bar=2",
+        strategy_capital_limit_text="trend_signal_bar=0.6",
+        sector_capital_limit_text="新能源=0.4",
+        symbol_sector_map_text="300750.SZ=新能源",
+        max_actual_risk_pct=0.05,
+        max_chase_pct=0.02,
+    )
+    terminal = TerminalFalseBreakoutInputs(False, ("trend", "channel"), 40, 14, 18, 2.0, 8, 0.9, 3, 0.35, 0.35, 3)
+    detector = PortfolioDetectorInputs(
+        trend_lookback=20,
+        channel_lookback=40,
+        trend_min_score=1.0,
+        channel_sigma=2.0,
+        range_lookback=20,
+        reversal_lookback=20,
+        trend_h2_min_pullback_legs=2,
+        channel_method="regression",
+        reversal_old_extreme_tolerance_pct=0.01,
+        reversal_require_old_extreme_test=True,
+        reversal_require_structure_confirmation=True,
+        advanced_detector={},
+        terminal_false_breakout=terminal,
+    )
+    expected = strategy_space_summary(
+        PortfolioExperimentConfig(
+            name="portfolio-15m",
+            data_root="",
+            symbols=("000001.SZ", "300750.SZ"),
+            timeframe="15m",
+            start="2026-01-01",
+            end="2026-01-31",
+            higher_timeframe="60m",
+            detectors=("trend", "channel"),
+            risk_reward=2.5,
+            max_holding_bars=16,
+            max_actual_risk_pct=0.05,
+            max_chase_pct=0.02,
+            side_mode="both",
+            max_open_positions=3,
+            capital_per_trade=0.3,
+            risk_per_trade=0.01,
+            max_capital_per_trade=0.5,
+            short_margin_rate=2.0,
+            reserve_cash=0.1,
+            allow_same_symbol_overlap=False,
+            strategy_priority={"trend_signal_bar": 1, "channel_signal_bar": 2},
+            strategy_capital_limit={"trend_signal_bar": 0.6},
+            sector_capital_limit={"新能源": 0.4},
+            symbol_sector_map={"300750.SZ": "新能源"},
+            intrabar_exit_policy="optimistic",
+            strict_data_quality=True,
+            min_coverage_ratio=0.9,
+        )
+    )
+
+    pd.testing.assert_frame_equal(
+        _portfolio_strategy_space_summary_frame(scope, risk, quality, higher, allocation, detector),
+        expected,
+    )
 
 
 def test_streamlit_legacy_backtest_keeps_fixed_percent_exit_controls() -> None:

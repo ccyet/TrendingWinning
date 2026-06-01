@@ -18,6 +18,7 @@ from trending_winning.backtest.experiment import (
     run_single_strategy_experiment,
 )
 from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
+from trending_winning.backtest.strategy_space import strategy_space_summary
 from trending_winning.data.repository import BacktestDataBundle, MarketDataRepository, available_symbols
 from trending_winning.data.schema import normalize_bars, normalize_symbol
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE
@@ -2543,74 +2544,8 @@ def _single_strategy_space_summary_frame(
     higher: HigherTimeframeInputs,
     single: SingleStrategyInputs,
 ) -> pd.DataFrame:
-    """把单策略当前参数翻译成交易员能快速复核的策略空间。"""
-    detector_label = _detector_label(single.detector)
-    rows = [
-        _strategy_space_row(
-            "样本",
-            f"{len(scope.symbols)} 只标的，{scope.timeframe}，{scope.start} 至 {scope.end}",
-            "只使用当前周期 K 线生成信号；日 K 只负责涨停开盘过滤。",
-            _data_quality_summary(quality),
-            "样本不过关会写入 data_coverage.csv 和 limit_filter_audit.csv，相关标的不进入有效信号统计。",
-        ),
-        _strategy_space_row(
-            "识别形态",
-            f"只运行一个识别模块：{detector_label}",
-            _detector_trigger_summary((single.detector,)),
-            "单策略不混用其他形态；没有启用的趋势、通道、区间、反转参数不会参与信号，也不会参与过滤。",
-            "用于单独评估一个形态的胜率、R倍数、退出结构、持仓时间和信号生命周期。",
-        ),
-        _strategy_space_row(
-            "信号条件",
-            "信号K是已收完的确认 K，不使用未来 K 线。",
-            _signal_condition_summary(),
-            "可能出现顺势突破、回调后二次突破、失败突破反向、二次反转或无有效信号。",
-            "信号不等于成交；信号只给出方向、挂单价、结构止损价和信号类型。",
-        ),
-        _strategy_space_row(
-            "触发成交",
-            f"{_side_mode_label(single.side_mode)}；盈亏比 {single.risk_reward:.2f}R",
-            "信号K完成后，多头在信号K高点上方挂单，空头在信号K低点下方挂单；触发后按实际入场价、滑点和费用入账。",
-            "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录。",
-            "盈亏比只决定固定目标价：目标距离 = 入场风险距离 x risk_reward。",
-        ),
-        _strategy_space_row(
-            "开仓过滤",
-            _single_filter_summary(single, higher),
-            _higher_timeframe_summary(higher),
-            _terminal_false_breakout_summary(single.terminal_false_breakout),
-            "过滤只拒绝开仓订单，并写入 strategy_filter_decisions.csv 或 order_decisions.csv。",
-        ),
-        _strategy_space_row(
-            "退出条件",
-            f"最多持有 {risk.max_holding} 根 K；{_intrabar_policy_label(risk.intrabar_exit_policy)}",
-            _exit_trigger_summary(risk, single.risk_reward),
-            _exit_possibility_summary(risk),
-            "退出原因进入逐笔交易、退出原因绩效和开平仓路径绩效。",
-        ),
-        _strategy_space_row(
-            "仓位规则",
-            "满仓进出",
-            "一笔持仓未关闭前，不允许第二笔、第三笔开仓。",
-            "同向或反向新信号都会先经过单仓位检测，冲突订单记为已有持仓未平仓。",
-            "适合验证单一形态本身，不处理组合资金分配。",
-        ),
-        _strategy_space_row(
-            "或然分支",
-            "本次回测会把每个候选信号归入清晰路径。",
-            "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出",
-            "通过成交、过滤拒单、未触发、方向禁用、追价/风险拒单、已有持仓拒单、止损/目标/回撤止盈/到期退出。",
-            "先用决策表定位分支，再用 K 线和交易明细复核具体价格。",
-        ),
-        _strategy_space_row(
-            "复盘输出",
-            "先看策略K线运行区间，再看核心绩效和决策分布。",
-            "K 线标注开多、开空、平仓、止损和回撤止盈。",
-            "订单决策概览解释未成交、追价、止损风险过大和过滤拒单。",
-            "输出 K线运行区间、净值、回撤、逐笔交易、策略过滤和信号形态统计。",
-        ),
-    ]
-    return pd.DataFrame(rows, columns=_STRATEGY_SPACE_COLUMNS)
+    """复用后端策略空间生成器，避免 Web 预览和保存产物口径漂移。"""
+    return strategy_space_summary(_single_strategy_space_config(scope, risk, quality, higher, single))
 
 
 def _portfolio_strategy_space_summary_frame(
@@ -2621,238 +2556,136 @@ def _portfolio_strategy_space_summary_frame(
     allocation: PortfolioAllocationInputs,
     detector: PortfolioDetectorInputs,
 ) -> pd.DataFrame:
-    """把组合策略当前参数翻译成资金和形态边界，减少参数误用。"""
-    rows = [
-        _strategy_space_row(
-            "样本",
-            f"{len(scope.symbols)} 只标的，{scope.timeframe}，{scope.start} 至 {scope.end}",
-            "每个形态先独立生成订单，再进入组合层排序和分配。",
-            _data_quality_summary(quality),
-            "组合净值按全市场时间轴逐 K 重估，回撤使用持仓方向不利价格。",
-        ),
-        _strategy_space_row(
-            "识别形态",
-            f"组合策略启用识别模块：{_detector_list_label(allocation.detectors)}",
-            _detector_trigger_summary(allocation.detectors),
-            "组合策略可以同时比较趋势、通道、区间、反转；未选择的形态不生成订单，也不占组合容量。",
-            "策略绩效、识别模块绩效和信号形态绩效会分开输出。",
-        ),
-        _strategy_space_row(
-            "信号条件",
-            "每个识别模块独立输出信号K、方向、挂单价和结构止损价。",
-            _signal_condition_summary(),
-            "可能出现多个形态同 K 发信号、同一股票多信号、方向相反信号或无有效信号。",
-            "信号不等于成交；组合层只处理冲突和仓位，不重写 detector 的信号。",
-        ),
-        _strategy_space_row(
-            "触发成交",
-            f"{_side_mode_label(allocation.side_mode)}；盈亏比 {allocation.risk_reward:.2f}R",
-            "各 detector 仍按信号K上方/下方挂单入场；同 K 多个信号先按策略优先级进入组合检查。",
-            "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录。",
-            "被资金或容量拒绝的订单仍保留实际触发价、止损风险、追价距离和拒绝原因。",
-        ),
-        _strategy_space_row(
-            "开仓过滤",
-            _portfolio_filter_summary(allocation, detector, higher),
-            _higher_timeframe_summary(higher),
-            _terminal_false_breakout_summary(detector.terminal_false_breakout),
-            "过滤只处理是否允许开仓，不改变 detector 事件和持仓结算。",
-        ),
-        _strategy_space_row(
-            "退出条件",
-            f"最多持有 {risk.max_holding} 根 K；{_intrabar_policy_label(risk.intrabar_exit_policy)}",
-            _exit_trigger_summary(risk, allocation.risk_reward),
-            _exit_possibility_summary(risk),
-            "退出原因会进入组合层开平仓路径绩效和退出原因绩效。",
-        ),
-        _strategy_space_row(
-            "仓位规则",
-            _portfolio_allocation_summary(allocation),
-            "组合层只做资金分配、保证金、预留现金、策略/行业上限和持仓互斥。",
-            "单策略信号之间不互相修改；组合层负责冲突取舍和仓位大小。",
-            "输出现金比例、净暴露、总暴露、保证金暴露和持仓数。",
-        ),
-        _strategy_space_row(
-            "或然分支",
-            "组合回测会把候选信号和组合分配结果分开。",
-            "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出",
-            "通过成交、过滤拒单、未触发、资金不足、容量已满、同票冲突、止损/目标/回撤止盈/到期退出。",
-            "先看 order_decisions.csv 的组合拒绝原因，再看策略/股票/行业分组绩效。",
-        ),
-        _strategy_space_row(
-            "复盘输出",
-            "先看策略K线运行区间，再看组合净值、回撤和分组绩效。",
-            "K 线标注各笔开仓、平仓、止损和回撤止盈。",
-            "订单决策统计解释未成交、资金不足、达到最大持仓数、同票冲突和过滤拒单。",
-            "输出策略绩效、识别模块绩效、信号形态绩效、股票绩效和月度收益。",
-        ),
-    ]
-    return pd.DataFrame(rows, columns=_STRATEGY_SPACE_COLUMNS)
+    """复用后端策略空间生成器，组合层边界只维护一份文案。"""
+    return strategy_space_summary(_portfolio_strategy_space_config(scope, risk, quality, higher, allocation, detector))
 
 
-_STRATEGY_SPACE_COLUMNS = ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
+def _single_strategy_space_config(
+    scope: BacktestScopeInputs,
+    risk: BacktestRiskInputs,
+    quality: BacktestDataQualityInputs,
+    higher: HigherTimeframeInputs,
+    single: SingleStrategyInputs,
+) -> SingleStrategyExperimentConfig:
+    terminal = single.terminal_false_breakout
+    return SingleStrategyExperimentConfig(
+        name=single.experiment_name,
+        data_root="",
+        symbols=tuple(scope.symbols),
+        timeframe=scope.timeframe,
+        start=scope.start,
+        end=scope.end,
+        detector=single.detector,
+        higher_timeframe=higher.higher_timeframe,
+        higher_timeframe_max_age_minutes=higher.higher_timeframe_max_age_minutes,
+        risk_reward=single.risk_reward,
+        max_holding_bars=risk.max_holding,
+        max_actual_risk_pct=single.max_actual_risk_pct,
+        max_chase_pct=single.max_chase_pct,
+        side_mode=single.side_mode,
+        intrabar_exit_policy=risk.intrabar_exit_policy,
+        trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
+        trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
+        trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
+        strict_data_quality=quality.strict_data_quality,
+        min_coverage_ratio=quality.min_coverage_ratio,
+        trend_lookback=single.trend_lookback,
+        trend_min_score=single.trend_min_score,
+        trend_h2_min_pullback_legs=single.trend_h2_min_pullback_legs,
+        range_lookback=single.range_lookback,
+        channel_method=single.channel_method,
+        channel_lookback=single.channel_lookback,
+        channel_sigma_multiple=single.channel_sigma,
+        terminal_false_breakout_enabled=terminal.enabled,
+        terminal_false_breakout_detectors=terminal.detectors,
+        terminal_false_breakout_lookback=terminal.lookback,
+        terminal_false_breakout_atr_period=terminal.atr_period,
+        terminal_false_breakout_min_regime_bars=terminal.min_regime_bars,
+        terminal_false_breakout_extension_atr_multiple=terminal.extension_atr_multiple,
+        terminal_false_breakout_edge_lookback=terminal.edge_lookback,
+        terminal_false_breakout_edge_pos=terminal.edge_pos,
+        terminal_false_breakout_edge_min_count=terminal.edge_min_count,
+        terminal_false_breakout_weak_progress_atr=terminal.weak_progress_atr,
+        terminal_false_breakout_wick_ratio=terminal.wick_ratio,
+        terminal_false_breakout_min_score=terminal.min_score,
+        reversal_lookback=single.reversal_lookback,
+        reversal_old_extreme_tolerance_pct=single.reversal_old_extreme_tolerance_pct,
+        reversal_require_old_extreme_test=single.reversal_require_old_extreme_test,
+        reversal_require_structure_confirmation=single.reversal_require_structure_confirmation,
+    )
 
 
-def _strategy_space_row(
-    space: str,
-    current: str,
-    trigger: str,
-    scenarios: str,
-    boundary: str,
-) -> dict[str, str]:
-    return {
-        "策略空间": space,
-        "当前设置": current,
-        "触发与信号": trigger,
-        "可能性分类": scenarios,
-        "边界/输出": boundary,
-    }
+def _portfolio_strategy_space_config(
+    scope: BacktestScopeInputs,
+    risk: BacktestRiskInputs,
+    quality: BacktestDataQualityInputs,
+    higher: HigherTimeframeInputs,
+    allocation: PortfolioAllocationInputs,
+    detector: PortfolioDetectorInputs,
+) -> PortfolioExperimentConfig:
+    terminal = detector.terminal_false_breakout
+    return PortfolioExperimentConfig(
+        name=allocation.experiment_name,
+        data_root="",
+        symbols=tuple(scope.symbols),
+        timeframe=scope.timeframe,
+        start=scope.start,
+        end=scope.end,
+        higher_timeframe=higher.higher_timeframe,
+        higher_timeframe_max_age_minutes=higher.higher_timeframe_max_age_minutes,
+        detectors=allocation.detectors,
+        risk_reward=allocation.risk_reward,
+        max_holding_bars=risk.max_holding,
+        max_actual_risk_pct=allocation.max_actual_risk_pct,
+        max_chase_pct=allocation.max_chase_pct,
+        side_mode=allocation.side_mode,
+        max_open_positions=allocation.max_open_positions,
+        capital_per_trade=allocation.capital_per_trade,
+        risk_per_trade=allocation.risk_per_trade,
+        max_capital_per_trade=allocation.max_capital_per_trade,
+        short_margin_rate=allocation.short_margin_rate,
+        reserve_cash=allocation.reserve_cash,
+        allow_same_symbol_overlap=allocation.allow_same_symbol_overlap,
+        strategy_priority=_parse_int_mapping(allocation.strategy_priority_text),
+        strategy_capital_limit=_parse_float_mapping(allocation.strategy_capital_limit_text),
+        sector_capital_limit=_parse_float_mapping(allocation.sector_capital_limit_text),
+        symbol_sector_map=_parse_text_mapping(allocation.symbol_sector_map_text),
+        intrabar_exit_policy=risk.intrabar_exit_policy,
+        trailing_take_profit_activation_pct=risk.trailing_take_profit_activation_pct,
+        trailing_take_profit_drawdown_pct=risk.trailing_take_profit_drawdown_pct,
+        trailing_take_profit_ma_period=risk.trailing_take_profit_ma_period,
+        strict_data_quality=quality.strict_data_quality,
+        min_coverage_ratio=quality.min_coverage_ratio,
+        trend_lookback=detector.trend_lookback,
+        trend_min_score=detector.trend_min_score,
+        trend_h2_min_pullback_legs=detector.trend_h2_min_pullback_legs,
+        range_lookback=detector.range_lookback,
+        channel_method=detector.channel_method,
+        channel_lookback=detector.channel_lookback,
+        channel_sigma_multiple=detector.channel_sigma,
+        terminal_false_breakout_enabled=terminal.enabled,
+        terminal_false_breakout_detectors=terminal.detectors,
+        terminal_false_breakout_lookback=terminal.lookback,
+        terminal_false_breakout_atr_period=terminal.atr_period,
+        terminal_false_breakout_min_regime_bars=terminal.min_regime_bars,
+        terminal_false_breakout_extension_atr_multiple=terminal.extension_atr_multiple,
+        terminal_false_breakout_edge_lookback=terminal.edge_lookback,
+        terminal_false_breakout_edge_pos=terminal.edge_pos,
+        terminal_false_breakout_edge_min_count=terminal.edge_min_count,
+        terminal_false_breakout_weak_progress_atr=terminal.weak_progress_atr,
+        terminal_false_breakout_wick_ratio=terminal.wick_ratio,
+        terminal_false_breakout_min_score=terminal.min_score,
+        reversal_lookback=detector.reversal_lookback,
+        reversal_old_extreme_tolerance_pct=detector.reversal_old_extreme_tolerance_pct,
+        reversal_require_old_extreme_test=detector.reversal_require_old_extreme_test,
+        reversal_require_structure_confirmation=detector.reversal_require_structure_confirmation,
+    )
 
 
 def _render_strategy_space_summary(frame: pd.DataFrame) -> None:
     if frame.empty:
         return
     _render_display_table("策略执行空间", frame)
-
-
-def _detector_label(detector: object) -> str:
-    return DISPLAY_VALUE_MAP["detector_name"].get(str(detector), str(detector))
-
-
-def _detector_list_label(detectors: tuple[str, ...]) -> str:
-    if not detectors:
-        return "未选择形态"
-    return "、".join(_detector_label(detector) for detector in detectors)
-
-
-def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
-    parts: list[str] = []
-    selected = set(detectors)
-    if "trend" in selected:
-        parts.append("趋势：趋势评分达标后，识别 H1/H2/L1/L2；H1/H2 偏多头，L1/L2 偏空头，H2/L2 要满足最少回调腿数。")
-    if "channel" in selected:
-        parts.append("通道：先用回归或摆动点确认中轴和上下轨，价格收盘越过上一根已完成边界后才生成突破信号。")
-    if "range" in selected:
-        parts.append("区间：先确认上下沿和中部，只在上沿或下沿做失败突破，中部不交易。")
-    if "reversal" in selected:
-        parts.append("反转：第一次反转默认观察，旧极端测试失败并完成结构确认后，第二次信号才允许交易。")
-    return " ".join(parts) if parts else "未启用形态识别。"
-
-
-def _signal_condition_summary() -> str:
-    return (
-        "多头信号K要给出向上突破或下沿失败测试，挂单价在信号K高点上方；"
-        "空头信号K要给出向下突破或上沿失败测试，挂单价在信号K低点下方；"
-        "结构止损取信号K相反端或识别模块给出的保护价。"
-    )
-
-
-def _data_quality_summary(quality: BacktestDataQualityInputs) -> str:
-    mode = "严格数据质量检查" if quality.strict_data_quality else "宽松数据质量检查"
-    coverage = (
-        "不设最低覆盖率"
-        if quality.min_coverage_ratio is None or float(quality.min_coverage_ratio) <= 0
-        else f"最低覆盖率 {quality.min_coverage_ratio:.0%}"
-    )
-    return f"{mode}；{coverage}"
-
-
-def _higher_timeframe_summary(higher: HigherTimeframeInputs) -> str:
-    if not higher.higher_timeframe:
-        return "未启用大周期方向过滤。"
-    age = "不限信号年龄" if higher.higher_timeframe_max_age_minutes is None else f"信号有效 {higher.higher_timeframe_max_age_minutes} 分钟"
-    return f"大周期方向过滤：{higher.higher_timeframe}，{age}。"
-
-
-def _terminal_false_breakout_summary(config: TerminalFalseBreakoutInputs) -> str:
-    if not config.enabled:
-        return "末端假突破过滤关闭。"
-    detectors = _detector_list_label(config.detectors)
-    return (
-        f"末端假突破过滤开启，作用于{detectors}；"
-        f"持续 {config.min_regime_bars} 根、远离中轴 {config.extension_atr_multiple:.1f}ATR、"
-        f"贴边 {config.edge_min_count} 次、弱突破 {config.weak_progress_atr:.2f}ATR、"
-        f"影线 {config.wick_ratio:.0%}，命中 {config.min_score} 分拒单。"
-    )
-
-
-def _single_filter_summary(single: SingleStrategyInputs, higher: HigherTimeframeInputs) -> str:
-    pieces = [
-        _risk_limit_summary(single.max_actual_risk_pct, single.max_chase_pct),
-        "交易方向：" + _side_mode_label(single.side_mode),
-    ]
-    if higher.higher_timeframe:
-        pieces.append("大周期方向过滤开启")
-    if single.terminal_false_breakout.enabled:
-        pieces.append("末端假突破过滤开启")
-    return "；".join(pieces)
-
-
-def _portfolio_filter_summary(
-    allocation: PortfolioAllocationInputs,
-    detector: PortfolioDetectorInputs,
-    higher: HigherTimeframeInputs,
-) -> str:
-    pieces = [
-        _risk_limit_summary(allocation.max_actual_risk_pct, allocation.max_chase_pct),
-        "交易方向：" + _side_mode_label(allocation.side_mode),
-    ]
-    if higher.higher_timeframe:
-        pieces.append("大周期方向过滤开启")
-    if detector.terminal_false_breakout.enabled:
-        pieces.append("末端假突破过滤开启")
-    return "；".join(pieces)
-
-
-def _risk_limit_summary(max_actual_risk_pct: float | None, max_chase_pct: float | None) -> str:
-    risk = "不限制结构止损风险" if max_actual_risk_pct is None else f"结构止损最大风险 {max_actual_risk_pct:.1%}"
-    chase = "不限制追价" if max_chase_pct is None else f"最大追价距离 {max_chase_pct:.1%}"
-    return f"{risk}；{chase}"
-
-
-def _trailing_take_profit_summary(risk: BacktestRiskInputs) -> str:
-    if not risk.trailing_take_profit_enabled:
-        return "盈利通道回撤止盈关闭。"
-    return (
-        f"盈利通道回撤止盈开启：启动浮盈 {risk.trailing_take_profit_activation_pct:.1%}，"
-        f"最大盈利回撤 {risk.trailing_take_profit_drawdown_pct:.1%}，"
-        f"当前周期均线 {risk.trailing_take_profit_ma_period} 根。"
-    )
-
-
-def _exit_trigger_summary(risk: BacktestRiskInputs, risk_reward: float) -> str:
-    return (
-        "入场后同时监控结构止损、固定目标、盈利通道回撤止盈、最大持有K数和样本结束；"
-        f"固定目标距离按 {risk_reward:.2f}R 计算。"
-    )
-
-
-def _exit_possibility_summary(risk: BacktestRiskInputs) -> str:
-    trailing = _trailing_take_profit_summary(risk)
-    return f"先触止损、先触固定目标、同K冲突、持有到期、样本结束都单独归因；{trailing}"
-
-
-def _intrabar_policy_label(value: str) -> str:
-    return "同K冲突止损优先" if value == "conservative" else "同K冲突止盈优先"
-
-
-def _portfolio_allocation_summary(allocation: PortfolioAllocationInputs) -> str:
-    overlap = "允许同票重叠" if allocation.allow_same_symbol_overlap else "不允许同票重叠"
-    capital = "自动分配仓位" if allocation.capital_per_trade is None else f"固定单笔仓位 {allocation.capital_per_trade:.0%}"
-    risk = "不使用风险预算" if allocation.risk_per_trade is None else f"单笔风险预算 {allocation.risk_per_trade:.1%}"
-    limits: list[str] = []
-    if allocation.strategy_priority_text.strip():
-        limits.append("策略优先级")
-    if allocation.strategy_capital_limit_text.strip():
-        limits.append("策略资金上限")
-    if allocation.sector_capital_limit_text.strip():
-        limits.append("行业资金上限")
-    limit_text = "，".join(limits) if limits else "无额外策略/行业上限"
-    return (
-        f"最大持仓 {allocation.max_open_positions}；{capital}；最大单笔仓位 {allocation.max_capital_per_trade:.0%}；"
-        f"{risk}；预留现金 {allocation.reserve_cash:.0%}；空头保证金 {allocation.short_margin_rate:.1f} 倍；"
-        f"{overlap}；{limit_text}"
-    )
 
 
 def _backtest_panel(data_root: Path, adjust: str) -> None:
