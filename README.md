@@ -57,14 +57,14 @@ Parallels 默认配置：
 
 Web 回测页里的“单策略回测”和“组合策略回测”与 CLI 复用同一套实验运行器。
 Web 页面所有文件夹路径都通过“选择文件夹”按钮弹出系统选择框；若本机窗口环境不可用，页面会明确提示并保留站内目录浏览器。
-单策略和组合策略参数区会在运行前展示“策略执行空间”，把当前样本、形态、触发、过滤、退出、仓位和复盘输出翻译成一张表，方便先确认哪些模块会生效、哪些参数只属于组合层、哪些订单会进入过滤或撮合。
+单策略和组合策略参数区会在运行前展示“策略执行空间”，把当前样本、识别形态、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出翻译成一张表，方便先确认哪些模块会生效、哪些参数只属于组合层、哪些订单会进入过滤或撮合。
 单策略只绑定一种形态识别模块，不进入组合仓位分配层；组合策略才启用策略优先级、资金上限、行业上限和持仓互斥。
 单策略和组合策略都支持交易方向：`both` 表示多/空都做，`long_only` 表示仅多，`short_only` 表示仅空；被方向模式过滤的信号会写入 `strategy_filter_decisions.csv`。
 回测结果页会先展示“策略K线运行区间”，按股票切换完整样本 K 线，横轴按连续 K 序号压缩，横轴和价格轴都支持缩放；长样本不会受 5000 行默认渲染限制，并使用 SVG 矢量渲染保持放大后的清晰度。图上标注开多、开空、平仓、止损和盈利通道回撤止盈，悬停只显示价格、具体开仓/平仓时间和开仓/平仓原因，方便先检查信号和风控是否落在正确 K 线上；随后展示“核心绩效概览”、净值曲线、回撤曲线、回撤曲线明细、回撤区间明细、实验诊断摘要、交易路径分布、数据覆盖率检查、订单决策概览、拒绝原因分布、逐笔交易、净值明细、策略绩效、识别模块绩效、信号形态绩效、订单决策统计和策略过滤统计。
 需要 60m 判主方向、15m/5m 触发时，可用 `HigherTimeframeAlignmentStrategy` 包装任一基础策略；它按订单 `signal_date` 向前匹配大周期上下文，拒绝方向不一致或上下文过旧的订单，基础形态识别仍保持独立，拒绝原因会单独写入策略层过滤日志。
 “末端假突破过滤（可选）”只出现在单策略和组合策略参数区，不出现在旧突破回测。它只过滤开仓订单，交易方向沿用现有 `both / long_only / short_only`，拒绝原因写入 `strategy_filter_decisions.csv` 的 `terminal_false_breakout_risk`。
 “高级形态识别参数”在 Web 里按单策略和组合策略分开配置，可单独调整趋势、区间、通道、反转识别阈值。
-勾选“保存实验产物”后会把 `config.json`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`signal_lifecycle_stats.csv`、`trade_path_distribution.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv` 和数据审计文件写入页面指定的输出目录。
+勾选“保存实验产物”后会把 `config.json`、`strategy_space.csv`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`signal_lifecycle_stats.csv`、`trade_path_distribution.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv` 和数据审计文件写入页面指定的输出目录。
 “TDX K线”页支持“查看本地缓存库存”和“审计并补齐TDX数据”：先确认本地 parquet 已有哪些周期和标的，再只对缺失、质量错误或覆盖率低于门槛的标的周期请求 TDX。
 
 ## CLI
@@ -216,7 +216,7 @@ python -m trending_winning.cli single-backtest \
   --output-dir runs/single-trend-001
 ```
 
-保存目录只包含单策略产物：`config.json`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
+保存目录只包含单策略产物：`config.json`、`strategy_space.csv`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`signal_lifecycle_stats.csv`、`trade_path_distribution.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内基于 `drawdown_net_value` 的最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，避免参数对比时再手工汇总月度收益、最差月份和连续亏损风险。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动；退出原因同步给出 `take_profit_exit_count / take_profit_exit_rate / trailing_take_profit_exit_count / trailing_take_profit_exit_rate / stop_loss_exit_count / stop_loss_exit_rate / max_holding_exit_count / max_holding_exit_rate`，方便直接比较止盈、回撤止盈、止损和持有到期占比。
@@ -279,7 +279,7 @@ python -m trending_winning.cli portfolio-backtest \
   --benchmark
 ```
 
-保存目录会包含 `config.json`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
+保存目录会包含 `config.json`、`strategy_space.csv`、`stats.json`、`experiment_diagnostics.csv`、`trades.csv`、`order_decisions.csv`、`order_decision_stats.csv`、`setup_order_decision_stats.csv`、`strategy_filter_decisions.csv`、`strategy_filter_stats.csv`、`setup_strategy_filter_stats.csv`、`equity_curve.csv`、`drawdown_curve.csv`、`drawdown_episodes.csv`、`data_inventory.csv`、`symbol_metadata.csv`、`data_coverage.csv`、`limit_filter_audit.csv`、
 `strategy_stats.csv`、`detector_stats.csv`、`setup_stats.csv`、`signal_lifecycle_stats.csv`、`trade_path_distribution.csv`、`symbol_stats.csv`、`side_stats.csv`、`exit_reason_stats.csv`、`event_type_stats.csv`、`monthly_returns.csv` 和可选 `benchmark.json`。
 `monthly_returns.csv` 的周期收益以上一条净值作为本期起点，避免漏掉月初第一笔净值变化；同时包含周期内基于 `drawdown_net_value` 的最大回撤和净值样本数。
 `stats.json` 会同步写入周期稳定性摘要，例如 `monthly_count / monthly_win_rate / monthly_worst_return / monthly_worst_return_period / monthly_best_return_period / monthly_return_std / monthly_worst_drawdown / monthly_worst_drawdown_period / monthly_max_consecutive_losses / monthly_max_recovery_periods / monthly_current_underwater_periods`，用于比较不同形态、仓位参数和大周期方向过滤下的月度稳定性。逐笔交易统计还包含 `win_rate_ci_lower / win_rate_ci_upper / avg_return_standard_error / avg_return_ci_lower / avg_return_ci_upper / positive_expectancy_probability`，用于判断胜率和平均收益是否只是小样本波动；退出原因同步给出 `take_profit_exit_count / take_profit_exit_rate / trailing_take_profit_exit_count / trailing_take_profit_exit_rate / stop_loss_exit_count / stop_loss_exit_rate / max_holding_exit_count / max_holding_exit_rate`，方便直接比较止盈、回撤止盈、止损和持有到期占比。

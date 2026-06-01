@@ -641,7 +641,7 @@
         <thead><tr><th>步骤</th><th>操作</th><th>判断标准</th></tr></thead>
         <tbody>
           <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略形态</code> 和 <code>单策略交易方向</code>。</td><td>只出现一种形态识别结果；方向可在多/空、仅多、仅空之间切换。</td></tr>
-          <tr><td>2</td><td>先看 <code>策略执行空间</code>。</td><td>确认页面写明只运行一个形态、信号K挂单、结构止损、满仓进出和复盘输出。</td></tr>
+          <tr><td>2</td><td>先看 <code>策略执行空间</code>。</td><td>确认页面写明只运行一个识别模块、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出。</td></tr>
           <tr><td>3</td><td>先关闭大周期方向过滤。</td><td>确认基础信号数量、成交数量和拒单原因。</td></tr>
           <tr><td>4</td><td>开启大周期方向过滤和有效分钟。</td><td>看 <code>strategy_filter_decisions.csv</code> 中方向过滤是否合理。</td></tr>
           <tr><td>5</td><td>开启末端假突破过滤。</td><td>看被过滤信号是否集中在趋势/通道末端，而不是趋势早期。</td></tr>
@@ -688,6 +688,7 @@ min_coverage_ratio = 0.95</code></pre>
         <tbody>
           <tr><td>为什么没有成交？</td><td>订单决策概览、拒绝原因分布、<code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
+          <tr><td>本次到底启用了哪些策略边界？</td><td><code>strategy_space.csv</code></td><td>按样本、识别形态、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出复核运行前设置</td></tr>
           <tr><td>末端假突破过滤了什么？</td><td><code>strategy_filter_decisions.csv</code>、策略 K 线运行区间</td><td><code>terminal_false_breakout_filter / terminal_false_breakout_risk / context_state</code></td></tr>
           <tr><td>哪类信号形态有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code>；只有信号但没有成交的 setup 也保留零值行。</td></tr>
           <tr><td>同一类开仓信号最后怎么平仓？</td><td><code>signal_lifecycle_stats.csv</code>、开平仓路径绩效</td><td><code>detector_name / event_type / side / exit_reason / trade_count / total_return / win_rate</code></td></tr>

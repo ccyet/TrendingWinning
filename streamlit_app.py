@@ -2551,45 +2551,59 @@ def _single_strategy_space_summary_frame(
             f"{len(scope.symbols)} 只标的，{scope.timeframe}，{scope.start} 至 {scope.end}",
             "只使用当前周期 K 线生成信号；日 K 只负责涨停开盘过滤。",
             _data_quality_summary(quality),
-            "输出数据覆盖率、日K过滤审计和样本内完整 K 线。",
+            "样本不过关会写入 data_coverage.csv 和 limit_filter_audit.csv，相关标的不进入有效信号统计。",
         ),
         _strategy_space_row(
-            "形态",
-            f"只运行一个形态：{detector_label}",
+            "识别形态",
+            f"只运行一个识别模块：{detector_label}",
             _detector_trigger_summary((single.detector,)),
-            "单策略不混用其他形态；没有启用的趋势、通道、区间、反转参数不会参与信号。",
-            "用于单独评估一个形态的胜率、R倍数、退出结构和持仓时间。",
+            "单策略不混用其他形态；没有启用的趋势、通道、区间、反转参数不会参与信号，也不会参与过滤。",
+            "用于单独评估一个形态的胜率、R倍数、退出结构、持仓时间和信号生命周期。",
         ),
         _strategy_space_row(
-            "触发",
+            "信号条件",
+            "信号K是已收完的确认 K，不使用未来 K 线。",
+            _signal_condition_summary(),
+            "可能出现顺势突破、回调后二次突破、失败突破反向、二次反转或无有效信号。",
+            "信号不等于成交；信号只给出方向、挂单价、结构止损价和信号类型。",
+        ),
+        _strategy_space_row(
+            "触发成交",
             f"{_side_mode_label(single.side_mode)}；盈亏比 {single.risk_reward:.2f}R",
-            "信号K完成后，多头在信号K高点上方挂单，空头在信号K低点下方挂单。",
-            "H1/H2/L1/L2、失败突破、通道突破和二次反转按各自 detector 输出；未触发挂单记为未成交。",
-            "开仓信号只决定入场价和结构止损价；目标平仓价由结构风险距离乘以盈亏比得到。",
+            "信号K完成后，多头在信号K高点上方挂单，空头在信号K低点下方挂单；触发后按实际入场价、滑点和费用入账。",
+            "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录。",
+            "盈亏比只决定固定目标价：目标距离 = 入场风险距离 x risk_reward。",
         ),
         _strategy_space_row(
-            "过滤",
+            "开仓过滤",
             _single_filter_summary(single, higher),
             _higher_timeframe_summary(higher),
             _terminal_false_breakout_summary(single.terminal_false_breakout),
             "过滤只拒绝开仓订单，并写入 strategy_filter_decisions.csv 或 order_decisions.csv。",
         ),
         _strategy_space_row(
-            "退出",
+            "退出条件",
             f"最多持有 {risk.max_holding} 根 K；{_intrabar_policy_label(risk.intrabar_exit_policy)}",
-            "结构止损先确定；固定目标、止损、持有到期和样本结束都属于平仓信号。",
-            _trailing_take_profit_summary(risk),
+            _exit_trigger_summary(risk, single.risk_reward),
+            _exit_possibility_summary(risk),
             "退出原因进入逐笔交易、退出原因绩效和开平仓路径绩效。",
         ),
         _strategy_space_row(
-            "仓位",
+            "仓位规则",
             "满仓进出",
             "一笔持仓未关闭前，不允许第二笔、第三笔开仓。",
             "同向或反向新信号都会先经过单仓位检测，冲突订单记为已有持仓未平仓。",
             "适合验证单一形态本身，不处理组合资金分配。",
         ),
         _strategy_space_row(
-            "复盘",
+            "或然分支",
+            "本次回测会把每个候选信号归入清晰路径。",
+            "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出",
+            "通过成交、过滤拒单、未触发、方向禁用、追价/风险拒单、已有持仓拒单、止损/目标/回撤止盈/到期退出。",
+            "先用决策表定位分支，再用 K 线和交易明细复核具体价格。",
+        ),
+        _strategy_space_row(
+            "复盘输出",
             "先看策略K线运行区间，再看核心绩效和决策分布。",
             "K 线标注开多、开空、平仓、止损和回撤止盈。",
             "订单决策概览解释未成交、追价、止损风险过大和过滤拒单。",
@@ -2617,42 +2631,56 @@ def _portfolio_strategy_space_summary_frame(
             "组合净值按全市场时间轴逐 K 重估，回撤使用持仓方向不利价格。",
         ),
         _strategy_space_row(
-            "形态",
-            _detector_list_label(allocation.detectors),
+            "识别形态",
+            f"组合策略启用识别模块：{_detector_list_label(allocation.detectors)}",
             _detector_trigger_summary(allocation.detectors),
-            "组合策略可以同时比较趋势、通道、区间、反转；未选择的形态不生成订单。",
+            "组合策略可以同时比较趋势、通道、区间、反转；未选择的形态不生成订单，也不占组合容量。",
             "策略绩效、识别模块绩效和信号形态绩效会分开输出。",
         ),
         _strategy_space_row(
-            "触发",
-            f"{_side_mode_label(allocation.side_mode)}；盈亏比 {allocation.risk_reward:.2f}R",
-            "各 detector 仍按信号K上方/下方挂单入场，组合层不改开仓信号。",
-            "同 K 多个信号按策略优先级、容量、资金和同票约束依次检查。",
-            "被资金或容量拒绝的订单仍保留实际触发价、止损风险和追价距离。",
+            "信号条件",
+            "每个识别模块独立输出信号K、方向、挂单价和结构止损价。",
+            _signal_condition_summary(),
+            "可能出现多个形态同 K 发信号、同一股票多信号、方向相反信号或无有效信号。",
+            "信号不等于成交；组合层只处理冲突和仓位，不重写 detector 的信号。",
         ),
         _strategy_space_row(
-            "过滤",
+            "触发成交",
+            f"{_side_mode_label(allocation.side_mode)}；盈亏比 {allocation.risk_reward:.2f}R",
+            "各 detector 仍按信号K上方/下方挂单入场；同 K 多个信号先按策略优先级进入组合检查。",
+            "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录。",
+            "被资金或容量拒绝的订单仍保留实际触发价、止损风险、追价距离和拒绝原因。",
+        ),
+        _strategy_space_row(
+            "开仓过滤",
             _portfolio_filter_summary(allocation, detector, higher),
             _higher_timeframe_summary(higher),
             _terminal_false_breakout_summary(detector.terminal_false_breakout),
             "过滤只处理是否允许开仓，不改变 detector 事件和持仓结算。",
         ),
         _strategy_space_row(
-            "退出",
+            "退出条件",
             f"最多持有 {risk.max_holding} 根 K；{_intrabar_policy_label(risk.intrabar_exit_policy)}",
-            "每笔订单独立使用结构止损、目标平仓价、持有到期和样本结束退出。",
-            _trailing_take_profit_summary(risk),
+            _exit_trigger_summary(risk, allocation.risk_reward),
+            _exit_possibility_summary(risk),
             "退出原因会进入组合层开平仓路径绩效和退出原因绩效。",
         ),
         _strategy_space_row(
-            "仓位",
+            "仓位规则",
             _portfolio_allocation_summary(allocation),
             "组合层只做资金分配、保证金、预留现金、策略/行业上限和持仓互斥。",
             "单策略信号之间不互相修改；组合层负责冲突取舍和仓位大小。",
             "输出现金比例、净暴露、总暴露、保证金暴露和持仓数。",
         ),
         _strategy_space_row(
-            "复盘",
+            "或然分支",
+            "组合回测会把候选信号和组合分配结果分开。",
+            "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出",
+            "通过成交、过滤拒单、未触发、资金不足、容量已满、同票冲突、止损/目标/回撤止盈/到期退出。",
+            "先看 order_decisions.csv 的组合拒绝原因，再看策略/股票/行业分组绩效。",
+        ),
+        _strategy_space_row(
+            "复盘输出",
             "先看策略K线运行区间，再看组合净值、回撤和分组绩效。",
             "K 线标注各笔开仓、平仓、止损和回撤止盈。",
             "订单决策统计解释未成交、资金不足、达到最大持仓数、同票冲突和过滤拒单。",
@@ -2701,14 +2729,22 @@ def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
     parts: list[str] = []
     selected = set(detectors)
     if "trend" in selected:
-        parts.append("趋势：趋势评分达标后，H1/H2 或 L1/L2 信号K突破触发。")
+        parts.append("趋势：趋势评分达标后，识别 H1/H2/L1/L2；H1/H2 偏多头，L1/L2 偏空头，H2/L2 要满足最少回调腿数。")
     if "channel" in selected:
-        parts.append("通道：价格收盘越过上一根已完成通道边界后，按边界外侧挂单。")
+        parts.append("通道：先用回归或摆动点确认中轴和上下轨，价格收盘越过上一根已完成边界后才生成突破信号。")
     if "range" in selected:
-        parts.append("区间：只在上下沿做失败突破，中部不交易。")
+        parts.append("区间：先确认上下沿和中部，只在上沿或下沿做失败突破，中部不交易。")
     if "reversal" in selected:
-        parts.append("反转：第一次反转默认观察，二次测试失败并结构确认后才交易。")
+        parts.append("反转：第一次反转默认观察，旧极端测试失败并完成结构确认后，第二次信号才允许交易。")
     return " ".join(parts) if parts else "未启用形态识别。"
+
+
+def _signal_condition_summary() -> str:
+    return (
+        "多头信号K要给出向上突破或下沿失败测试，挂单价在信号K高点上方；"
+        "空头信号K要给出向下突破或上沿失败测试，挂单价在信号K低点下方；"
+        "结构止损取信号K相反端或识别模块给出的保护价。"
+    )
 
 
 def _data_quality_summary(quality: BacktestDataQualityInputs) -> str:
@@ -2782,6 +2818,18 @@ def _trailing_take_profit_summary(risk: BacktestRiskInputs) -> str:
         f"最大盈利回撤 {risk.trailing_take_profit_drawdown_pct:.1%}，"
         f"当前周期均线 {risk.trailing_take_profit_ma_period} 根。"
     )
+
+
+def _exit_trigger_summary(risk: BacktestRiskInputs, risk_reward: float) -> str:
+    return (
+        "入场后同时监控结构止损、固定目标、盈利通道回撤止盈、最大持有K数和样本结束；"
+        f"固定目标距离按 {risk_reward:.2f}R 计算。"
+    )
+
+
+def _exit_possibility_summary(risk: BacktestRiskInputs) -> str:
+    trailing = _trailing_take_profit_summary(risk)
+    return f"先触止损、先触固定目标、同K冲突、持有到期、样本结束都单独归因；{trailing}"
 
 
 def _intrabar_policy_label(value: str) -> str:

@@ -245,19 +245,33 @@ def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explici
     )
 
     assert frame.columns.tolist() == ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
-    assert frame["策略空间"].tolist() == ["样本", "形态", "触发", "过滤", "退出", "仓位", "复盘"]
+    assert frame["策略空间"].tolist() == [
+        "样本",
+        "识别形态",
+        "信号条件",
+        "触发成交",
+        "开仓过滤",
+        "退出条件",
+        "仓位规则",
+        "或然分支",
+        "复盘输出",
+    ]
     joined = " ".join(frame.astype(str).to_numpy().ravel())
     assert "趋势" in joined
-    assert "只运行一个形态" in joined
+    assert "只运行一个识别模块" in joined
     assert "信号K" in joined
+    assert "信号不等于成交" in joined
     assert "挂单" in joined
+    assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
     assert "H1/H2/L1/L2" in joined
     assert "仅多" in joined
     assert "大周期方向过滤" in joined
     assert "末端假突破" in joined
     assert "结构止损" in joined
+    assert "固定目标" in joined
     assert "最大盈利回撤" in joined
     assert "满仓进出" in joined
+    assert "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出" in joined
     assert "K线运行区间" in joined
 
 
@@ -335,8 +349,20 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     )
 
     joined = " ".join(frame.astype(str).to_numpy().ravel())
+    assert frame["策略空间"].tolist() == [
+        "样本",
+        "识别形态",
+        "信号条件",
+        "触发成交",
+        "开仓过滤",
+        "退出条件",
+        "仓位规则",
+        "或然分支",
+        "复盘输出",
+    ]
     assert "趋势、通道" in joined
     assert "多/空" in joined
+    assert "信号不等于成交" in joined
     assert "组合层" in joined
     assert "资金分配" in joined
     assert "最大持仓 3" in joined
@@ -346,6 +372,7 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     assert "不允许同票重叠" in joined
     assert "组合净值" in joined
     assert "策略绩效" in joined
+    assert "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出" in joined
 
 
 def test_streamlit_legacy_backtest_keeps_fixed_percent_exit_controls() -> None:
@@ -1154,9 +1181,11 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
+    assert "strategy_space.csv" in html
+    assert "保存运行前的策略执行空间" in html
     assert "数据覆盖率概览" in html
     assert "策略执行空间" in html
-    assert "运行前会把当前样本、形态、触发、过滤、退出、仓位和复盘输出整理成一张表" in html
+    assert "运行前会把当前样本、识别形态、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出整理成一张表" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html
     assert "识别模块绩效" in html
@@ -1194,6 +1223,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
 
     assert "docs/backtest_kline_guide.html" in readme
     assert "盈利通道回撤止盈" in readme
+    assert "strategy_space.csv" in readme
     assert "avg_accepted_actual_risk_pct" in readme
     assert "参数遍历成交质量" in readme
     assert "识别模块绩效" in readme
@@ -1225,7 +1255,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "主要反转：第二次信号才切换" in html
     assert "旧突破显示固定止盈止损" in html
     assert "策略执行空间" in html
-    assert "确认页面写明只运行一个形态、信号K挂单、结构止损、满仓进出和复盘输出" in html
+    assert "strategy_space.csv" in html
+    assert "确认页面写明只运行一个识别模块、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出" in html
     assert "单策略和组合策略使用信号 K 结构止损价" in html
     assert "结构止损价说明" in html
     assert "结构止损最大风险" in html
@@ -1276,6 +1307,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "monthly_worst_return" in guide
     assert "symbol_metadata.csv" in readme
     assert "symbol_metadata.csv" in guide
+    assert "strategy_space.csv" in readme
+    assert "strategy_space.csv" in guide
     assert "monthly_max_consecutive_losses" in readme
     assert "monthly_max_consecutive_losses" in guide
     assert "monthly_max_recovery_periods" in readme

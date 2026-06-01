@@ -10,6 +10,7 @@ from trending_winning.backtest.models import BacktestResult
 from trending_winning.backtest.experiment_models import (
     PortfolioBenchmarkReport,
     PortfolioExperimentConfig,
+    PortfolioExperimentResult,
     SingleStrategyExperimentConfig,
     SingleStrategyExperimentResult,
     SingleStrategySweepResult,
@@ -183,6 +184,135 @@ def test_save_single_strategy_experiment_writes_drawdown_episodes(tmp_path) -> N
     assert saved.loc[0, "depth"] == pytest.approx(0.9 / 1.2 - 1.0)
     assert saved.loc[0, "start_at"] == "2026-05-26 00:00:00"
     assert saved.loc[0, "trough_at"] == "2026-05-28 00:00:00"
+
+
+def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-strategy-space",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-strategy-space"),
+        symbols=("000001.SZ", "600519.SH"),
+        timeframe="30m",
+        start="2026-05-01",
+        end="2026-05-25",
+        detector="trend",
+        higher_timeframe="60m",
+        higher_timeframe_max_age_minutes=240,
+        side_mode="long_only",
+        max_actual_risk_pct=0.05,
+        max_chase_pct=0.02,
+        trailing_take_profit_drawdown_pct=0.015,
+        trailing_take_profit_ma_period=20,
+        terminal_false_breakout_enabled=True,
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(trades=pd.DataFrame(), equity_curve=pd.DataFrame(), stats={"trade_count": 0.0}),
+        input_bar_count=0,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    saved = pd.read_csv(output_dir / "strategy_space.csv")
+    assert saved.columns.tolist() == ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
+    assert saved["策略空间"].tolist() == [
+        "样本",
+        "识别形态",
+        "信号条件",
+        "触发成交",
+        "开仓过滤",
+        "退出条件",
+        "仓位规则",
+        "或然分支",
+        "复盘输出",
+    ]
+    joined = " ".join(saved.astype(str).to_numpy().ravel())
+    assert "单策略" in joined
+    assert "趋势" in joined
+    assert "只运行一个识别模块" in joined
+    assert "信号K" in joined
+    assert "信号不等于成交" in joined
+    assert "挂单" in joined
+    assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
+    assert "仅多" in joined
+    assert "大周期方向过滤" in joined
+    assert "末端假突破" in joined
+    assert "满仓进出" in joined
+    assert "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出" in joined
+
+
+def test_save_portfolio_experiment_writes_strategy_space_summary(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_portfolio_experiment
+
+    config = PortfolioExperimentConfig(
+        name="portfolio-strategy-space",
+        data_root="/data",
+        output_dir=str(tmp_path / "portfolio-strategy-space"),
+        symbols=("000001.SZ", "600519.SH", "300750.SZ"),
+        timeframe="15m",
+        start="2026-05-01",
+        end="2026-05-25",
+        detectors=("trend", "channel"),
+        side_mode="both",
+        max_open_positions=3,
+        capital_per_trade=0.3,
+        risk_per_trade=0.01,
+        reserve_cash=0.1,
+        short_margin_rate=2.0,
+        strategy_priority={"trend_signal_bar": 1, "channel_signal_bar": 2},
+        strategy_capital_limit={"trend_signal_bar": 0.6},
+        sector_capital_limit={"新能源": 0.4},
+        symbol_sector_map={"300750.SZ": "新能源"},
+    )
+    result = PortfolioExperimentResult(
+        config=config,
+        backtest=BacktestResult(trades=pd.DataFrame(), equity_curve=pd.DataFrame(), stats={"trade_count": 0.0}),
+        input_bar_count=0,
+        filtered_limit_open_count=0,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+        elapsed_seconds=0.1,
+    )
+
+    output_dir = save_portfolio_experiment(result)
+
+    saved = pd.read_csv(output_dir / "strategy_space.csv")
+    assert saved["策略空间"].tolist() == [
+        "样本",
+        "识别形态",
+        "信号条件",
+        "触发成交",
+        "开仓过滤",
+        "退出条件",
+        "仓位规则",
+        "或然分支",
+        "复盘输出",
+    ]
+    joined = " ".join(saved.astype(str).to_numpy().ravel())
+    assert "组合策略" in joined
+    assert "趋势、通道" in joined
+    assert "信号不等于成交" in joined
+    assert "资金分配" in joined
+    assert "最大持仓 3" in joined
+    assert "策略优先级" in joined
+    assert "策略资金上限" in joined
+    assert "行业资金上限" in joined
+    assert "组合净值" in joined
+    assert "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出" in joined
 
 
 def test_save_single_strategy_experiment_writes_drawdown_curve(tmp_path) -> None:

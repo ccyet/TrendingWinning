@@ -28,6 +28,7 @@ from trending_winning.backtest.sweep_analysis import (
     pareto_sweep_table as _build_pareto_sweep_table,
 )
 from trending_winning.backtest.sweep_summary import sweep_summary_statistics as _build_sweep_summary_statistics
+from trending_winning.backtest.strategy_space import strategy_space_summary
 from trending_winning.data.schema import unique_symbols
 from trending_winning.data.summary import summarize_data_management
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
@@ -157,6 +158,7 @@ def _write_common_experiment_outputs(
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
+    strategy_space_summary(result.config).to_csv(output_dir / "strategy_space.csv", index=False)
 
 
 def _experiment_drawdown_episodes(equity_curve: pd.DataFrame) -> pd.DataFrame:
