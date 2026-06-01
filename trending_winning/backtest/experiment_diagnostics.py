@@ -19,6 +19,45 @@ CASE_DIAGNOSTIC_COLUMNS = pd.Index(
         *EXPERIMENT_DIAGNOSTIC_COLUMNS,
     ]
 )
+REASON_LABELS = {
+    "data_coverage_below_min": "覆盖率低于门槛",
+    "data_audit_missing_file": "审计缺文件",
+    "data_audit_missing_columns": "审计缺字段",
+    "data_audit_no_window_data": "窗口无数据",
+    "data_audit_quality_error": "数据质量异常",
+    "data_audit_read_error": "审计读取失败",
+    "data_inventory_missing_file": "缓存缺文件",
+    "data_inventory_read_error": "缓存读取失败",
+    "data_inventory_missing_columns": "缓存缺字段",
+    "data_inventory_no_valid_rows": "缓存无有效K线",
+    "limit_filter_daily_missing": "日K缺失",
+    "limit_filter_daily_read_error": "日K读取失败",
+    "limit_filter_daily_missing_columns": "日K缺字段",
+    "limit_filter_daily_quality_error": "日K质量异常",
+    "no_fill": "未成交",
+    "no_bars": "无K线数据",
+    "no_liquidity": "无有效成交区间",
+    "invalid_order": "订单字段无效",
+    "duplicate_order_id": "订单ID重复",
+    "already_open": "已有持仓未平仓",
+    "actual_risk_too_high": "止损风险过大",
+    "risk_too_large": "止损风险过大",
+    "chase_too_far": "追价过远",
+    "chase_too_large": "追价过远",
+    "target_not_favorable": "目标价无效",
+    "same_symbol_overlap": "同票已有持仓",
+    "max_open_positions": "达到最大持仓数",
+    "no_capital": "资金不足",
+    "capital_limit": "资金上限",
+    "sector_limit": "行业上限",
+    "side_mode_filtered": "交易方向过滤",
+    "signal_bar_no_liquidity": "信号K无流动性",
+    "higher_timeframe_mismatch": "大周期方向不一致",
+    "higher_timeframe_missing": "无可用大周期上下文",
+    "higher_timeframe_stale": "大周期信号过旧",
+    "same_timeframe_middle": "同级别中部不交易",
+    "terminal_false_breakout_risk": "末端假突破风险",
+}
 
 
 def experiment_diagnostic_report(
@@ -478,7 +517,7 @@ def _primary_reason_detail(
     rate = _number(stats.get(rate_key), default=0.0) or 0.0
     if not reason or count <= 0:
         return ""
-    return f"主要原因：{reason} {_format_count(count)} {unit}，{rate_label} {rate:.1%}。"
+    return f"主要原因：{_reason_label(reason)} {_format_count(count)} {unit}，{rate_label} {rate:.1%}。"
 
 
 def _exit_reason_detail(stats: Mapping[str, object]) -> str:
@@ -515,6 +554,13 @@ def _exit_reason_label(reason: str) -> str:
         "end_of_data": "样本结束",
         "other": "其他",
     }.get(reason, reason)
+
+
+def _reason_label(reason: str) -> str:
+    label = REASON_LABELS.get(reason, reason)
+    if label == reason:
+        return reason
+    return f"{label}（{reason}）"
 
 
 def _append_detail(base: str, extra: str) -> str:

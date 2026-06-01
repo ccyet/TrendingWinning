@@ -49,12 +49,12 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert report.columns.tolist() == EXPERIMENT_DIAGNOSTIC_COLUMNS.tolist()
     by_check = report.set_index("check")
     assert by_check.loc["数据覆盖", "status"] == "失败"
-    assert "data_coverage_below_min 2 项，占数据问题 40.0%" in by_check.loc["数据覆盖", "detail"]
+    assert "覆盖率低于门槛（data_coverage_below_min） 2 项，占数据问题 40.0%" in by_check.loc["数据覆盖", "detail"]
     assert by_check.loc["交易样本", "status"] == "关注"
     assert by_check.loc["订单接受率", "status"] == "关注"
-    assert "actual_risk_too_high 24 笔，占拒单 50.0%" in by_check.loc["订单接受率", "detail"]
+    assert "止损风险过大（actual_risk_too_high） 24 笔，占拒单 50.0%" in by_check.loc["订单接受率", "detail"]
     assert by_check.loc["策略过滤", "status"] == "关注"
-    assert "terminal_false_breakout_risk 18 条，占过滤拒绝 42.0%" in by_check.loc["策略过滤", "detail"]
+    assert "末端假突破风险（terminal_false_breakout_risk） 18 条，占过滤拒绝 42.0%" in by_check.loc["策略过滤", "detail"]
     assert by_check.loc["回撤压力", "status"] == "关注"
     assert by_check.loc["收益质量", "status"] == "失败"
     assert by_check.loc["胜率边际", "status"] == "失败"
@@ -145,6 +145,23 @@ def test_experiment_diagnostic_report_flags_low_positive_expectancy_probability(
     assert row["metric"] == "positive_expectancy_probability"
     assert row["threshold"] == 0.75
     assert "平均收益95%区间 -0.5% 至 1.8%" in row["detail"]
+
+
+def test_experiment_diagnostic_report_keeps_unknown_reason_code_visible() -> None:
+    report = experiment_diagnostic_report(
+        {
+            "trade_count": 40.0,
+            "order_count": 50.0,
+            "acceptance_rate": 0.1,
+            "primary_rejected_reason": "custom_reason",
+            "primary_rejected_reason_count": 9.0,
+            "primary_rejected_reason_rate": 0.18,
+        }
+    )
+
+    detail = report.set_index("check").loc["订单接受率", "detail"]
+
+    assert "custom_reason 9 笔，占拒单 18.0%" in detail
 
 
 def test_case_diagnostic_statistics_preserves_sweep_rank_context() -> None:
