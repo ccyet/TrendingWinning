@@ -44,6 +44,8 @@ from trending_winning.backtest.trade_path import (
 STAT_KEYS = [
     "trade_count",
     "win_rate",
+    "breakeven_win_rate",
+    "win_rate_edge",
     "win_rate_ci_lower",
     "win_rate_ci_upper",
     "total_return",
@@ -181,6 +183,8 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
     gross_loss = _round_float(abs(losses.sum()))
     avg_win = _mean_or_zero(wins)
     avg_loss = _mean_or_zero(losses)
+    win_rate = _round_float((returns > 0).mean())
+    breakeven_win_rate = _breakeven_win_rate(avg_win, avg_loss)
     total_return = _round_float(equity.iloc[-1] - 1.0)
     max_drawdown = _round_float(drawdown.min())
     return_std = return_stats["return_std"]
@@ -192,7 +196,9 @@ def compute_trade_statistics(trades: pd.DataFrame) -> dict[str, float]:
 
     return {
         "trade_count": float(len(returns)),
-        "win_rate": _round_float((returns > 0).mean()),
+        "win_rate": win_rate,
+        "breakeven_win_rate": breakeven_win_rate,
+        "win_rate_edge": _round_float(win_rate - breakeven_win_rate),
         "win_rate_ci_lower": confidence_stats["win_rate_ci_lower"],
         "win_rate_ci_upper": confidence_stats["win_rate_ci_upper"],
         "total_return": total_return,
@@ -378,6 +384,16 @@ def _ratio_or_zero(numerator: float, denominator: float) -> float:
     if denominator > 0:
         return _round_float(numerator / denominator)
     return 0.0
+
+
+def _breakeven_win_rate(avg_win: float, avg_loss: float) -> float:
+    win = max(float(avg_win), 0.0)
+    loss = abs(min(float(avg_loss), 0.0))
+    if loss <= 0:
+        return 0.0
+    if win <= 0:
+        return 1.0
+    return _round_float(loss / (win + loss))
 
 
 def _empty_equity_statistics() -> dict[str, object]:

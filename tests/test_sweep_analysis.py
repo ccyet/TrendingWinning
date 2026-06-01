@@ -119,6 +119,8 @@ def test_sweep_analysis_parameter_summary_groups_values_and_formats_structured_v
                 "monthly_worst_return": [-0.02, -0.04, -0.03],
                 "monthly_return_std": [0.01, 0.03, 0.02],
                 "trade_count": [5, 3, 4],
+                "breakeven_win_rate": [0.35, 0.5, 0.4],
+                "win_rate_edge": [0.15, -0.1, 0.05],
                 "take_profit_exit_rate": [0.6, 0.2, 0.5],
             }
         )
@@ -130,6 +132,8 @@ def test_sweep_analysis_parameter_summary_groups_values_and_formats_structured_v
     assert risk_reward["case_count"] == 2
     assert risk_reward["positive_return_case_count"] == 1.0
     assert risk_reward["positive_return_rate"] == pytest.approx(0.5)
+    assert risk_reward["avg_breakeven_win_rate"] == pytest.approx(0.425)
+    assert risk_reward["avg_win_rate_edge"] == pytest.approx(0.025)
     assert risk_reward["avg_take_profit_exit_rate"] == pytest.approx(0.4)
     assert "avg_risk_adjusted_score" in summary.columns
     assert '{"trend":1}' in set(summary.loc[summary["parameter"].eq("strategy_priority"), "value"])

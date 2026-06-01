@@ -96,6 +96,8 @@ def test_compute_trade_statistics_reports_risk_adjusted_and_streak_metrics() -> 
     assert stats["gross_profit"] == 0.09
     assert stats["gross_loss"] == 0.06
     assert stats["profit_factor"] == 1.5
+    assert stats["breakeven_win_rate"] == pytest.approx(0.02 / (0.045 + 0.02))
+    assert stats["win_rate_edge"] == pytest.approx(0.4 - (0.02 / (0.045 + 0.02)))
     assert stats["max_consecutive_losses"] == 2.0
     assert stats["max_consecutive_wins"] == 1.0
     assert stats["avg_holding_bars"] == 3.2
@@ -242,6 +244,8 @@ def test_compute_grouped_trade_statistics_includes_sample_confidence_metrics() -
 
     assert "win_rate_ci_lower" in grouped.columns
     assert "avg_return_ci_upper" in grouped.columns
+    assert "breakeven_win_rate" in grouped.columns
+    assert "win_rate_edge" in grouped.columns
     assert grouped.set_index("strategy_name").loc["trend", "avg_return_standard_error"] > 0
 
 

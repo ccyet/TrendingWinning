@@ -28,6 +28,8 @@ PARAMETER_SUMMARY_METRICS = (
     ("monthly_max_consecutive_losses", "avg_monthly_max_consecutive_losses", "mean"),
     ("monthly_max_recovery_periods", "avg_monthly_max_recovery_periods", "mean"),
     ("trade_count", "avg_trade_count", "mean"),
+    ("breakeven_win_rate", "avg_breakeven_win_rate", "mean"),
+    ("win_rate_edge", "avg_win_rate_edge", "mean"),
     ("return_per_exposure_bar", "avg_return_per_exposure_bar", "mean"),
     ("return_per_capital_exposure_bar", "avg_return_per_capital_exposure_bar", "mean"),
     ("return_per_margin_exposure_bar", "avg_return_per_margin_exposure_bar", "mean"),

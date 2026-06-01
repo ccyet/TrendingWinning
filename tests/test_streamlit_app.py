@@ -999,6 +999,8 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
             "worst_total_return": [-0.1, 0.2],
             "trade_count": [3, 4],
             "win_rate": [0.096, 1.0],
+            "breakeven_win_rate": [0.35, 0.0],
+            "win_rate_edge": [-0.254, 1.0],
             "total_return": [0.096, 1.0],
             "return_pct": [9.6, -0.5],
             "positive_expectancy_probability": [0.096, 1.0],
@@ -1042,6 +1044,8 @@ def test_backtest_display_tables_are_localized_and_formatted() -> None:
     assert display["最差总收益"].tolist() == ["-10.00%", "20.00%"]
     assert display["交易次数"].tolist() == ["3", "4"]
     assert display["胜率"].tolist() == ["9.60%", "100.00%"]
+    assert display["盈亏平衡胜率"].tolist() == ["35.00%", "0.00%"]
+    assert display["胜率边际"].tolist() == ["-25.40%", "100.00%"]
     assert display["总收益"].tolist() == ["9.60%", "100.00%"]
     assert display["收益率"].tolist() == ["9.60%", "-0.50%"]
     assert display["正期望概率"].tolist() == ["9.60%", "100.00%"]
@@ -1368,6 +1372,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "primary_rejected_reason" in html
     assert "primary_data_issue" in html
     assert "primary_exit_reason" in html
+    assert "breakeven_win_rate" in html
+    assert "win_rate_edge" in html
     assert "退出结构" in html
     assert "主要数据问题、数量和占比" in html
     assert "主要退出原因、数量和占比" in html
@@ -1402,6 +1408,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "primary_strategy_rejected_reason" in readme
     assert "primary_data_issue" in readme
     assert "primary_exit_reason" in readme
+    assert "breakeven_win_rate" in readme
+    assert "win_rate_edge" in readme
     assert "退出结构" in readme
     assert "参数遍历成交质量" in readme
     assert "识别模块绩效" in readme
@@ -1453,6 +1461,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "主要拒绝原因、数量和占比" in html
     assert "主要数据问题、数量和占比" in html
     assert "主要退出原因、数量和占比" in html
+    assert "盈亏平衡胜率" in html
+    assert "胜率边际" in html
     assert "退出结构" in html
     assert "回撤曲线" in html
     assert "开平仓路径绩效" in html
