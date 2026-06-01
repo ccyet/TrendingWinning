@@ -731,6 +731,11 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "核心绩效" in html
     assert "诊断处理顺序" in html
     assert "复盘路径" in html
+    assert "策略空间复核" in html
+    assert "先确认本次启用的策略边界" in html
+    assert "单策略只运行一个识别模块：趋势" in html
+    assert "信号K是已收完的确认 K" in html
+    assert "满仓进出" in html
     assert "风险画像" in html
     assert "净值与回撤" in html
     assert "净值曲线以 1.0 为基准" in html

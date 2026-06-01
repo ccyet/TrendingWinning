@@ -498,6 +498,7 @@ def _experiment_report_html(
     order_funnel_panel = _order_funnel_panel(stats)
     equity_drawdown_panel = _equity_drawdown_panel(result.backtest.equity_curve)
     data_quality_panel = _data_quality_panel(result, stats)
+    strategy_space_panel = _strategy_space_panel(result)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -571,6 +572,7 @@ def _experiment_report_html(
   <section><h2>净值与回撤</h2><p class="section-note">净值曲线以 1.0 为基准，回撤按组合资产净值路径计算。</p>{equity_drawdown_panel}</section>
   <section><h2>数据质量概览</h2><p class="section-note">先确认本次实际 K 线覆盖、缺口和涨跌停开盘过滤影响，再判断策略表现是否可信。</p>{data_quality_panel}</section>
   <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
+  <section><h2>策略空间复核</h2><p class="section-note">先确认本次启用的策略边界、信号条件、过滤和退出口径，再解释绩效。</p>{strategy_space_panel}</section>
   <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
   <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div>{order_funnel_panel}<div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
   <section><h2>退出结构</h2>{_compact_report_table(result.exit_reason_stats, ["exit_reason", "trade_count", "win_rate", "total_return"])}</section>
@@ -658,6 +660,17 @@ def _data_quality_panel(
         f'<div class="review-card"><strong>覆盖明细</strong>{coverage_table}</div>'
         "</div>"
     )
+
+
+def _strategy_space_panel(result: SingleStrategyExperimentResult | PortfolioExperimentResult) -> str:
+    frame = strategy_space_summary(result.config)
+    if frame.empty:
+        return '<p class="empty">暂无策略空间摘要。</p>'
+    preferred_spaces = ["识别形态", "信号条件", "触发成交", "开仓过滤", "退出条件", "仓位规则"]
+    compact = frame.loc[frame["策略空间"].isin(preferred_spaces)].copy()
+    if compact.empty:
+        compact = frame.head(6).copy()
+    return _html_table(compact.loc[:, ["策略空间", "当前设置", "触发与信号", "边界/输出"]])
 
 
 def _order_funnel_panel(stats: Mapping[str, object]) -> str:
