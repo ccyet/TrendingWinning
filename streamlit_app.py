@@ -2311,12 +2311,55 @@ def _terminal_false_breakout_controls(prefix: str, label_prefix: str = "") -> Te
 def _show_saved_experiment_path(output_dir: str, name: str) -> None:
     saved_path = Path(output_dir or f"runs/{name}").expanduser()
     st.caption(f"实验产物已保存：{saved_path}")
+    html_reports = _saved_html_report_frame(output_dir, name)
+    if not html_reports.empty:
+        st.markdown("##### HTML 总览报告")
+        st.caption("先打开总览报告快速判断收益、回撤、诊断和参数候选，再按产物索引下钻明细。")
+        for report in html_reports.to_dict("records"):
+            st.markdown(
+                f"- [{report['报告']}]({report['浏览器链接']})：{report['先回答的问题']}  \n"
+                f"  `{report['本机路径']}`"
+            )
     manifest = _saved_artifact_manifest_frame(output_dir, name)
     if manifest.empty:
         st.warning("未找到 artifact_manifest.csv，无法展示实验产物索引。")
         return
     st.markdown("##### 实验产物索引")
     st.dataframe(_style_display_frame(manifest), use_container_width=True, hide_index=True)
+
+
+def _saved_html_report_frame(output_dir: str, name: str) -> pd.DataFrame:
+    """读取总览 HTML 报告入口，让用户先看一页式复盘，再下钻 CSV。"""
+    saved_path = Path(output_dir or f"runs/{name}").expanduser()
+    manifest_path = saved_path / "artifact_manifest.csv"
+    columns = ["报告", "先回答的问题", "说明", "本机路径", "浏览器链接"]
+    if not manifest_path.exists():
+        return pd.DataFrame(columns=columns)
+    manifest = pd.read_csv(manifest_path)
+    required = ["file_name", "priority", "question", "description"]
+    missing = [column for column in required if column not in manifest.columns]
+    if missing:
+        raise ValueError(f"artifact_manifest.csv 缺少字段：{', '.join(missing)}")
+    data = manifest.loc[manifest["file_name"].fillna("").astype(str).str.endswith("_report.html"), required].copy()
+    if data.empty:
+        return pd.DataFrame(columns=columns)
+    data["priority"] = pd.to_numeric(data["priority"], errors="coerce").fillna(99).astype(int)
+    data = data.sort_values(["priority", "file_name"], kind="stable").reset_index(drop=True)
+    rows: list[dict[str, str]] = []
+    for row in data.to_dict("records"):
+        report_path = saved_path / str(row["file_name"])
+        if not report_path.exists():
+            continue
+        rows.append(
+            {
+                "报告": str(row["file_name"]),
+                "先回答的问题": str(row["question"]),
+                "说明": str(row["description"]),
+                "本机路径": str(report_path),
+                "浏览器链接": report_path.resolve().as_uri(),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _saved_artifact_manifest_frame(output_dir: str, name: str) -> pd.DataFrame:

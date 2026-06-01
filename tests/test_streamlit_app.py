@@ -51,6 +51,7 @@ from streamlit_app import (
     _resolve_native_directory_choice,
     _portfolio_strategy_space_summary_frame,
     _saved_artifact_manifest_frame,
+    _saved_html_report_frame,
     _single_strategy_space_summary_frame,
     _style_display_frame,
     _strategy_holding_interval_frame,
@@ -1066,9 +1067,42 @@ def test_saved_artifact_manifest_frame_localizes_and_adds_paths(tmp_path: Path) 
     assert frame.loc[0, "本机路径"] == str(output_dir / "strategy_space.csv")
 
 
+def test_saved_html_report_frame_uses_manifest_priority_and_file_links(tmp_path: Path) -> None:
+    output_dir = tmp_path / "run-001"
+    output_dir.mkdir()
+    (output_dir / "sweep_report.html").write_text("<!doctype html>", encoding="utf-8")
+    pd.DataFrame(
+        [
+            {
+                "file_name": "artifact_manifest.csv",
+                "category": "阅读入口",
+                "priority": 1,
+                "question": "这个目录里的文件先看什么？",
+                "description": "产物索引。",
+            },
+            {
+                "file_name": "sweep_report.html",
+                "category": "阅读入口",
+                "priority": 0,
+                "question": "能否先用一个页面看懂参数遍历？",
+                "description": "静态 HTML 总览。",
+            },
+        ]
+    ).to_csv(output_dir / "artifact_manifest.csv", index=False)
+
+    frame = _saved_html_report_frame(str(output_dir), "ignored-name")
+
+    assert frame.columns.tolist() == ["报告", "先回答的问题", "说明", "本机路径", "浏览器链接"]
+    assert frame["报告"].tolist() == ["sweep_report.html"]
+    assert frame.loc[0, "本机路径"] == str(output_dir / "sweep_report.html")
+    assert frame.loc[0, "浏览器链接"].startswith("file://")
+
+
 def test_saved_experiment_path_renders_artifact_manifest() -> None:
     source = getsource(streamlit_app._show_saved_experiment_path)
 
+    assert "HTML 总览报告" in source
+    assert "_saved_html_report_frame" in source
     assert "实验产物索引" in source
     assert "_saved_artifact_manifest_frame" in source
 
