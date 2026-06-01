@@ -9,6 +9,14 @@ from streamlit.testing.v1 import AppTest
 
 import streamlit_app
 from streamlit_app import (
+    BacktestDataQualityInputs,
+    BacktestRiskInputs,
+    BacktestScopeInputs,
+    HigherTimeframeInputs,
+    PortfolioAllocationInputs,
+    PortfolioDetectorInputs,
+    SingleStrategyInputs,
+    TerminalFalseBreakoutInputs,
     _build_strategy_kline_altair_chart,
     _data_coverage_chart_frame,
     _equity_chart_frame,
@@ -26,6 +34,8 @@ from streamlit_app import (
     _parse_text_mapping,
     _prepare_display_frame,
     _resolve_native_directory_choice,
+    _portfolio_strategy_space_summary_frame,
+    _single_strategy_space_summary_frame,
     _style_display_frame,
     _strategy_holding_interval_frame,
     _strategy_kline_chart_frame,
@@ -174,6 +184,170 @@ def test_streamlit_app_exposes_single_strategy_backtest_controls() -> None:
     assert any(button.label == "运行单策略回测" for button in app.button)
 
 
+def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explicit() -> None:
+    frame = _single_strategy_space_summary_frame(
+        BacktestScopeInputs(
+            symbols=["000001.SZ", "600519.SH"],
+            timeframe="30m",
+            start="2026-01-01",
+            end="2026-02-01",
+            mode="单策略回测",
+        ),
+        BacktestRiskInputs(
+            take_profit=0.06,
+            stop_loss=0.03,
+            max_holding=12,
+            fee_rate=0.0003,
+            slippage_bps=1.0,
+            initial_equity=1.0,
+            intrabar_exit_policy="conservative",
+            trailing_take_profit_enabled=True,
+            trailing_take_profit_activation_pct=0.04,
+            trailing_take_profit_drawdown_pct=0.015,
+            trailing_take_profit_ma_period=20,
+        ),
+        BacktestDataQualityInputs(strict_data_quality=True, min_coverage_ratio=0.95),
+        HigherTimeframeInputs(higher_timeframe="60m", higher_timeframe_max_age_minutes=240),
+        SingleStrategyInputs(
+            detector="trend",
+            experiment_name="single-trend-30m",
+            risk_reward=2.0,
+            side_mode="long_only",
+            trend_lookback=20,
+            trend_min_score=1.0,
+            trend_h2_min_pullback_legs=2,
+            range_lookback=20,
+            channel_lookback=40,
+            channel_method="regression",
+            channel_sigma=2.0,
+            max_actual_risk_pct=0.05,
+            max_chase_pct=0.02,
+            reversal_lookback=20,
+            reversal_old_extreme_tolerance_pct=0.01,
+            reversal_require_old_extreme_test=True,
+            reversal_require_structure_confirmation=True,
+            advanced_detector={},
+            terminal_false_breakout=TerminalFalseBreakoutInputs(
+                enabled=True,
+                detectors=("trend", "channel"),
+                lookback=40,
+                atr_period=14,
+                min_regime_bars=18,
+                extension_atr_multiple=2.0,
+                edge_lookback=8,
+                edge_pos=0.9,
+                edge_min_count=3,
+                weak_progress_atr=0.35,
+                wick_ratio=0.35,
+                min_score=3,
+            ),
+        ),
+    )
+
+    assert frame.columns.tolist() == ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
+    assert frame["策略空间"].tolist() == ["样本", "形态", "触发", "过滤", "退出", "仓位", "复盘"]
+    joined = " ".join(frame.astype(str).to_numpy().ravel())
+    assert "趋势" in joined
+    assert "只运行一个形态" in joined
+    assert "信号K" in joined
+    assert "挂单" in joined
+    assert "H1/H2/L1/L2" in joined
+    assert "仅多" in joined
+    assert "大周期方向过滤" in joined
+    assert "末端假突破" in joined
+    assert "结构止损" in joined
+    assert "最大盈利回撤" in joined
+    assert "满仓进出" in joined
+    assert "K线运行区间" in joined
+
+
+def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boundaries() -> None:
+    frame = _portfolio_strategy_space_summary_frame(
+        BacktestScopeInputs(
+            symbols=["000001.SZ", "600519.SH", "300750.SZ"],
+            timeframe="15m",
+            start="2026-01-01",
+            end="2026-02-01",
+            mode="组合策略回测",
+        ),
+        BacktestRiskInputs(
+            take_profit=0.06,
+            stop_loss=0.03,
+            max_holding=16,
+            fee_rate=0.0003,
+            slippage_bps=1.0,
+            initial_equity=1.0,
+            intrabar_exit_policy="optimistic",
+            trailing_take_profit_enabled=False,
+            trailing_take_profit_activation_pct=0.0,
+            trailing_take_profit_drawdown_pct=0.0,
+            trailing_take_profit_ma_period=0,
+        ),
+        BacktestDataQualityInputs(strict_data_quality=True, min_coverage_ratio=0.9),
+        HigherTimeframeInputs(higher_timeframe="60m", higher_timeframe_max_age_minutes=None),
+        PortfolioAllocationInputs(
+            detectors=("trend", "channel"),
+            experiment_name="portfolio-15m",
+            risk_reward=2.5,
+            side_mode="both",
+            max_open_positions=3,
+            risk_per_trade=0.01,
+            short_margin_rate=2.0,
+            capital_per_trade=0.3,
+            max_capital_per_trade=0.5,
+            reserve_cash=0.1,
+            allow_same_symbol_overlap=False,
+            strategy_priority_text="trend_signal_bar=1,channel_signal_bar=2",
+            strategy_capital_limit_text="trend_signal_bar=0.6",
+            sector_capital_limit_text="新能源=0.4",
+            symbol_sector_map_text="300750.SZ=新能源",
+            max_actual_risk_pct=0.05,
+            max_chase_pct=0.02,
+        ),
+        PortfolioDetectorInputs(
+            trend_lookback=20,
+            channel_lookback=40,
+            trend_min_score=1.0,
+            channel_sigma=2.0,
+            range_lookback=20,
+            reversal_lookback=20,
+            trend_h2_min_pullback_legs=2,
+            channel_method="regression",
+            reversal_old_extreme_tolerance_pct=0.01,
+            reversal_require_old_extreme_test=True,
+            reversal_require_structure_confirmation=True,
+            advanced_detector={},
+            terminal_false_breakout=TerminalFalseBreakoutInputs(
+                enabled=False,
+                detectors=("trend", "channel"),
+                lookback=40,
+                atr_period=14,
+                min_regime_bars=18,
+                extension_atr_multiple=2.0,
+                edge_lookback=8,
+                edge_pos=0.9,
+                edge_min_count=3,
+                weak_progress_atr=0.35,
+                wick_ratio=0.35,
+                min_score=3,
+            ),
+        ),
+    )
+
+    joined = " ".join(frame.astype(str).to_numpy().ravel())
+    assert "趋势、通道" in joined
+    assert "多/空" in joined
+    assert "组合层" in joined
+    assert "资金分配" in joined
+    assert "最大持仓 3" in joined
+    assert "策略优先级" in joined
+    assert "策略资金上限" in joined
+    assert "行业资金上限" in joined
+    assert "不允许同票重叠" in joined
+    assert "组合净值" in joined
+    assert "策略绩效" in joined
+
+
 def test_streamlit_legacy_backtest_keeps_fixed_percent_exit_controls() -> None:
     root = Path(__file__).resolve().parents[1]
     app = AppTest.from_file(str(root / "streamlit_app.py"))
@@ -259,6 +433,7 @@ def test_streamlit_backtest_interface_is_split_into_functional_modules() -> None
         "4. 大周期方向过滤",
         "5. 单策略参数",
         "5. 组合仓位与资金",
+        "策略执行空间",
         "6. 保存与运行",
     ]:
         assert title in source
@@ -980,6 +1155,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "data_inventory.csv" in html
     assert "symbol_metadata.csv" in html
     assert "数据覆盖率概览" in html
+    assert "策略执行空间" in html
+    assert "运行前会把当前样本、形态、触发、过滤、退出、仓位和复盘输出整理成一张表" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html
     assert "识别模块绩效" in html
@@ -1047,6 +1224,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "通道突破：顺势延续" in html
     assert "主要反转：第二次信号才切换" in html
     assert "旧突破显示固定止盈止损" in html
+    assert "策略执行空间" in html
+    assert "确认页面写明只运行一个形态、信号K挂单、结构止损、满仓进出和复盘输出" in html
     assert "单策略和组合策略使用信号 K 结构止损价" in html
     assert "结构止损价说明" in html
     assert "结构止损最大风险" in html
