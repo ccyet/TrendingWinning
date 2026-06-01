@@ -224,6 +224,11 @@ def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
 
 def _signal_condition_summary() -> str:
     return (
+        "触发条件拆成背景条件、信号K条件、订单条件、风控条件；"
+        "背景条件 = detector 已确认趋势/通道/区间/反转所处的可交易状态；"
+        "信号K条件 = 已完成 K 线的方向、实体、收盘位置、突破或回撤腿数达标；"
+        "订单条件 = 只在信号K极值外侧挂 stop entry，等待后续 K 穿越；"
+        "风控条件 = 结构止损有效、风险距离可接受、目标价方向正确。"
         "信号成立条件 = 形态成立 + 已完成信号K + 方向明确 + 结构止损有效 + 价格字段完整；"
         "多头有效信号 = 识别方向为多头，入场触发价 = 信号K高点 + tick，结构止损必须低于入场触发价；"
         "空头有效信号 = 识别方向为空头，入场触发价 = 信号K低点 - tick，结构止损必须高于入场触发价；"
@@ -235,12 +240,18 @@ def _entry_trigger_summary() -> str:
     return (
         "信号K完成后，多头在信号K高点上方挂突破触发单，空头在信号K低点下方挂突破触发单；"
         "下一根及之后 K 穿越触发价才成交。触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价；"
-        "跳空越过触发价按实际开盘价成交，触发后再按实际入场价、滑点和费用重算风险。"
+        "未穿越就是有效但未触发，不补市价单；跳空越过触发价按实际开盘价成交，"
+        "触发后再按实际入场价、滑点和费用重算风险。"
     )
 
 
 def _signal_possibility_summary(*, is_portfolio: bool) -> str:
     base = (
+        "或然情况按识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段分类："
+        "识别阶段 = 无信号/观察信号/有效信号；触发阶段 = 有效但未触发/正常触发/跳空触发；"
+        "过滤阶段 = 方向禁用/大周期不符/末端假突破/流动性不足；"
+        "撮合阶段 = 追价超限/结构止损风险超限/目标价无效；"
+        "持仓阶段 = 已有持仓或组合容量资金冲突；退出阶段 = 止损/固定目标/回撤止盈/到期/样本结束。"
         "可能出现无信号、观察信号、顺势突破、回调后二次突破、失败突破反向、二次反转、"
         "有效但未触发、触发后风险拒单或完整成交。"
     )
@@ -252,6 +263,7 @@ def _signal_possibility_summary(*, is_portfolio: bool) -> str:
 def _single_entry_possibility_summary() -> str:
     return (
         "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录；"
+        "触发分支包括未穿越挂单价、正常穿越、跳空穿越、穿越后风险拒单和已有持仓冲突；"
         "触发后可能正常成交、跳空成交后重算风险、触发后拒单或已有持仓冲突；"
         "跳空跨过挂单价时按实际开盘价重算风险。"
     )
@@ -260,6 +272,7 @@ def _single_entry_possibility_summary() -> str:
 def _portfolio_entry_possibility_summary() -> str:
     return (
         "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录；"
+        "触发分支包括未穿越挂单价、正常穿越、跳空穿越、穿越后风险拒单、组合容量拒单和资金拒单；"
         "触发后可能正常成交、跳空成交后重算风险、触发后拒单、组合容量拒单或资金拒单。"
     )
 
@@ -274,6 +287,7 @@ def _portfolio_signal_lifecycle_summary() -> str:
 
 def _single_signal_branch_summary() -> str:
     return (
+        "或然情况分层：识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段；"
         "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
         "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成是完整检查顺序。"
     )
@@ -281,6 +295,7 @@ def _single_signal_branch_summary() -> str:
 
 def _portfolio_signal_branch_summary() -> str:
     return (
+        "或然情况分层：识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段；"
         "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单、同票冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
         "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成是完整检查顺序。"
     )
@@ -290,6 +305,8 @@ def _single_strategy_space_scope(config: SingleStrategyExperimentConfig) -> str:
     return (
         f"{_detector_label(config.detector)}单策略；参数空间包括识别窗口、强收盘/实体阈值、"
         f"回撤腿数、结构止损最大风险、追价限制、盈亏比 {config.risk_reward:.2f}R 和最长持有 {config.max_holding_bars} 根 K。"
+        "策略空间清单 = 可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间；"
+        "单策略只验证一个 detector 的独立效果。"
     )
 
 
@@ -298,6 +315,8 @@ def _portfolio_strategy_space_scope(config: PortfolioExperimentConfig) -> str:
         f"适合比较多个形态在同一批 K 线里的机会质量：{_detector_list_label(config.detectors)}；"
         f"参数空间包括各 detector 阈值、交易方向、触发风控、盈亏比 {config.risk_reward:.2f}R、"
         f"最长持有 {config.max_holding_bars} 根 K、组合容量和资金上限。"
+        "策略空间清单 = 可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间；"
+        "组合策略额外引入资金空间、优先级空间和约束空间。"
     )
 
 
@@ -308,8 +327,9 @@ def _detector_space_summary(detectors: tuple[str, ...]) -> str:
 
 def _single_strategy_space_scenarios(config: SingleStrategyExperimentConfig) -> str:
     return (
-        f"适用盘面才评估{_detector_label(config.detector)}信号；失效空间包括中部震荡、第一次反转、"
-        "末端假突破、流动性不足、结构止损过远和跳空后风险失真。"
+        f"适用盘面才评估{_detector_label(config.detector)}信号；可交易空间 = detector 状态清晰、"
+        "信号K质量达标、挂单触发后仍有合理风险收益；不交易空间 = 中部震荡、第一次反转、观察信号；"
+        "失效空间包括末端假突破、流动性不足、结构止损过远、低质量影线和跳空后风险失真。"
     )
 
 
@@ -322,7 +342,7 @@ def _portfolio_strategy_space_scenarios(config: PortfolioExperimentConfig) -> st
     )
     return (
         f"每个形态先独立判断自身适用空间，再由组合层处理优先级、资金和同票冲突；"
-        f"{disabled_text}"
+        f"组合策略空间 = 信号空间 + 资金空间 + 约束空间 + 归因空间；{disabled_text}"
     )
 
 

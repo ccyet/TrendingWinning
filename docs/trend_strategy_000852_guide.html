@@ -76,6 +76,13 @@
   <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>趋势评分</b><code>TrendScore = slope_z + structure + 0.5*ma_align + close_quality + follow</code></div><div class="formula-card"><b>多头信号</b><code>TrendScore &gt;= 1.0 AND close_pos &gt;= 0.65 AND body_ratio &gt;= 0.45 AND close &gt; open</code></div><div class="formula-card"><b>空头信号</b><code>TrendScore &lt;= -1.0 AND close_pos &lt;= 0.35 AND body_ratio &gt;= 0.45 AND close &lt; open</code></div></div></section>
   <section id="triggers">
     <h2>触发条件拆解</h2>
+    <p>趋势策略的触发条件不是单根强 K，而是“背景条件 + 信号K条件 + 订单条件 + 风控条件”同时成立。任何一层不满足，都只进入观察或拒单分支。</p>
+    <table>
+      <tr><th>背景条件</th><td>20 根 K 趋势评分进入 bull 或 bear 状态，均线和结构方向一致；多头只找 H1/H2，空头只找 L1/L2。</td></tr>
+      <tr><th>信号K条件</th><td>信号K必须已经收完，方向、实体占比、收盘位置和回撤腿数达标；H2/L2 代表第二次顺势入场，优先级高于第一次追突破。</td></tr>
+      <tr><th>订单条件</th><td>多头在信号K高点上方 1 tick 挂单，空头在信号K低点下方 1 tick 挂单；只有后续 K 穿越挂单价才进入撮合。</td></tr>
+      <tr><th>风控条件</th><td>结构止损必须在入场价反方向，实际成交后重算结构风险、追价距离和 2R 目标；风险超限就是拒单，不临时改止损。</td></tr>
+    </table>
     <div class="logic-grid">
       <div class="logic-card"><b>1. 背景先行</b><p>多头只在 <code>TrendScore &gt;= 1.0</code> 且状态为 bull 时找 H1/H2；空头只在 <code>TrendScore &lt;= -1.0</code> 且状态为 bear 时找 L1/L2。趋势不成立时，强 K 只算观察，不直接开仓。</p></div>
       <div class="logic-card"><b>2. 信号K必须有质量</b><p>多头要求收盘靠近高位、实体占比足够且阳线；空头要求收盘靠近低位、实体占比足够且阴线。影线过长、实体过小、收盘回到中部，按失败推进处理。</p></div>
@@ -105,6 +112,14 @@
       <tr><th>触发后拒单</th><td>挂单价被穿越，但真实成交价导致追价过远、结构风险过大或目标价无效。拒单属于执行质量问题，不应回头修改信号。</td></tr>
       <tr><th>退出完成</th><td>成交后只按结构止损、固定目标、回撤止盈、最大持有 K 数或样本结束退出；退出原因要回写到交易路径。</td></tr>
     </table>
+    <h3>或然情况分层</h3>
+    <table>
+      <tr><th>识别阶段</th><td>无信号、观察信号、有效信号。观察信号包括第一次反转、趋势中部弱 K、末端衰竭 K，不参与开仓统计。</td></tr>
+      <tr><th>触发阶段</th><td>有效但未触发、正常触发、跳空触发。未触发说明市场没有给出跟随，跳空触发要按真实开盘价重算风险。</td></tr>
+      <tr><th>过滤阶段</th><td>方向禁用、大周期方向不一致、信号K无流动性、末端假突破、同级别中部不交易，都会写入策略过滤日志。</td></tr>
+      <tr><th>撮合阶段</th><td>追价超限、结构止损风险超限、目标价无效、订单字段异常属于执行质量问题，和趋势 detector 的信号质量分开复盘。</td></tr>
+      <tr><th>持仓/退出阶段</th><td>已有持仓冲突、结构止损、固定目标、最大盈利回撤止盈、均线回撤止盈、最大持有 K 数和样本结束分别归因。</td></tr>
+    </table>
     <h3>或然情况</h3>
     <table>
       <tr><th>触发后同 K 触及止损和目标</th><td>默认按保守规则处理，先算止损。盘面复盘时不要把无法确认先后顺序的 K 线当成确定盈利。</td></tr>
@@ -118,10 +133,12 @@
     <h2>策略空间</h2>
     <p>策略空间不是无限可做，而是先限定可交易盘面，再限定参数、过滤、执行、退出和统计复盘边界。</p>
     <div class="space-grid">
-      <div class="space-card"><b>适用空间</b><span>清晰单边趋势、回撤不深、均线和结构同向、信号K有实体推进。核心收益来自顺势延续，不来自预测反转。</span></div>
-      <div class="space-card"><b>参数空间</b><span>趋势窗口、趋势阈值、收盘位置、实体占比、回撤腿数、最大结构风险、盈亏比、最大持有 K 数共同决定信号密度和风险距离。</span></div>
+      <div class="space-card"><b>可交易空间</b><span>清晰单边趋势、回撤不深、均线和结构同向、信号K有实体推进。核心收益来自顺势延续，不来自预测反转。</span></div>
+      <div class="space-card"><b>参数空间</b><span>趋势窗口、趋势阈值、收盘位置、实体占比、回撤腿数、最大结构风险、追价上限、盈亏比、最大持有 K 数共同决定信号密度和风险距离。</span></div>
       <div class="space-card"><b>过滤空间</b><span>交易方向、多周期趋势一致、末端假突破、同级别中部不交易、信号K流动性，都是开仓前过滤，不改变 detector 本身。</span></div>
+      <div class="space-card"><b>执行空间</b><span>信号K只产生挂单价格和结构止损；是否成交由后续 K 是否穿越挂单价决定，跳空成交按真实入场价重算。</span></div>
       <div class="space-card"><b>退出空间</b><span>结构止损、2R 固定目标、最大持有 K 数、盈利通道回撤止盈可组合使用；退出模块独立于信号识别。</span></div>
+      <div class="space-card"><b>统计空间</b><span>逐笔交易、订单决策、策略过滤、信号形态绩效、交易路径分布和回撤区间分别记录，让有效信号、未触发和拒单都能复盘。</span></div>
       <div class="space-card"><b>失效空间</b><span>宽震荡、假突破密集、趋势末端、第一次反转、消息跳空后的无序波动，都会削弱 H/L 信号质量。</span></div>
       <div class="space-card"><b>执行边界</b><span>单策略只负责产生订单和满仓进出；组合策略才处理策略优先级、资金上限、行业约束和多持仓冲突。</span></div>
     </div>

@@ -76,6 +76,13 @@
   <section id="formula"><h2>数学定义转成盘面动作</h2><div class="formula-grid"><div class="formula-card"><b>回归中线</b><code>MidLog_t = alpha + beta*t；Mid_t = exp(MidLog_t)</code></div><div class="formula-card"><b>通道边界</b><code>Upper = exp(MidLog + 2*sigma)；Lower = exp(MidLog - 2*sigma)</code></div><div class="formula-card"><b>突破信号</b><code>Long: close_i &gt; Upper_{i-1}；Short: close_i &lt; Lower_{i-1}</code></div></div></section>
   <section id="triggers">
     <h2>触发条件拆解</h2>
+    <p>通道策略的触发条件不是盘中刺破，而是“背景条件 + 信号K条件 + 订单条件 + 风控条件”同时成立。通道 detector 只负责识别边界外扩，过滤和撮合另行归因。</p>
+    <table>
+      <tr><th>背景条件</th><td>至少有 40 根 K 形成回归通道，上一根已完成 K 已经给出中轴、上轨、下轨和通道宽度；没有完整窗口不生成信号。</td></tr>
+      <tr><th>信号K条件</th><td>信号K必须收盘越过上一根已完成边界：多头收在上轨外，空头收在下轨外；盘中刺破但收回通道内只算观察。</td></tr>
+      <tr><th>订单条件</th><td>上轨突破在信号K高点上方 1 tick 挂单，下轨跌破在信号K低点下方 1 tick 挂单；后续 K 不穿越就记为有效但未触发。</td></tr>
+      <tr><th>风控条件</th><td>多头用上一根通道下轨止损，空头用上一根通道上轨止损；实际成交后重算风险、追价和 2R 目标，风险不可接受则拒单。</td></tr>
+    </table>
     <div class="logic-grid">
       <div class="logic-card"><b>1. 通道必须先有效</b><p>默认至少需要 40 根 K 才能形成回归通道。中线来自 log(close) 回归，边界来自残差波动；没有完整窗口时不产生通道信号。</p></div>
       <div class="logic-card"><b>2. 只看上一根边界</b><p>突破判断使用 <code>Upper_{i-1}</code> 或 <code>Lower_{i-1}</code>，不用当前 K 重算后的边界。这样手工复盘和回测都不会引入未来函数。</p></div>
@@ -105,6 +112,14 @@
       <tr><th>触发后拒单</th><td>挂单被穿越，但跳空、追价、结构风险或目标价不合格。此时问题在执行质量，不在通道识别。</td></tr>
       <tr><th>退出完成</th><td>成交后只按对侧通道止损、固定目标、回撤止盈、最大持有 K 数或样本结束退出，退出原因单独统计。</td></tr>
     </table>
+    <h3>或然情况分层</h3>
+    <table>
+      <tr><th>识别阶段</th><td>无通道、通道有效但无突破、观察信号、有效突破信号。观察信号包括贴边未收出、低 R² 宽通道和末端弱推进。</td></tr>
+      <tr><th>触发阶段</th><td>有效但未触发、正常触发、跳空触发。通道策略需要“收盘突破 + 后续穿越信号K极值”两步确认。</td></tr>
+      <tr><th>过滤阶段</th><td>交易方向禁用、大周期方向不一致、信号K无流动性、末端假突破、通道过宽或同级别中部噪声，会写入策略过滤日志。</td></tr>
+      <tr><th>撮合阶段</th><td>追价超限、结构止损风险超限、目标价无效和订单字段异常由撮合层拒绝，不能倒推为通道识别错误。</td></tr>
+      <tr><th>持仓/退出阶段</th><td>已有持仓冲突、对侧通道止损、固定目标、最大盈利回撤止盈、均线回撤止盈、最大持有 K 数和样本结束分别归因。</td></tr>
+    </table>
     <h3>或然情况</h3>
     <table>
       <tr><th>盘中穿越但收回通道</th><td>不算通道突破；它更像失败突破或区间边缘测试，应交给区间或反转模块，不应由通道策略强行开仓。</td></tr>
@@ -118,10 +133,12 @@
     <h2>策略空间</h2>
     <p>策略空间不是无限可做，而是先限定通道外扩或通道破坏，再限定参数、过滤、执行、退出和统计复盘边界。</p>
     <div class="space-grid">
-      <div class="space-card"><b>适用空间</b><span>价格沿通道运行后发生边界外扩，或旧通道被收盘价明确打穿。它适合交易“通道失衡”，不是交易通道内部均值回归。</span></div>
-      <div class="space-card"><b>参数空间</b><span>通道方法、回看 K 数、sigma 倍数、突破缓冲、摆动点左右确认数，决定边界敏感度和信号数量。</span></div>
+      <div class="space-card"><b>可交易空间</b><span>价格沿通道运行后发生边界外扩，或旧通道被收盘价明确打穿。它适合交易“通道失衡”，不是交易通道内部均值回归。</span></div>
+      <div class="space-card"><b>参数空间</b><span>通道方法、回看 K 数、sigma 倍数、突破缓冲、摆动点左右确认数、最大结构风险和追价上限，决定边界敏感度、信号数量和交易性。</span></div>
       <div class="space-card"><b>过滤空间</b><span>通道宽度、R²、斜率方向、末端假突破、最大结构风险、交易方向和大周期趋势，都可以作为开仓前过滤。</span></div>
+      <div class="space-card"><b>执行空间</b><span>信号K只生成上轨突破或下轨跌破挂单；后续 K 穿越信号K极值才成交，跳空成交按真实入场价重算。</span></div>
       <div class="space-card"><b>退出空间</b><span>对侧通道止损、2R 固定目标、最大持有 K 数、盈利通道回撤止盈互相独立；不要把出场逻辑写进 detector。</span></div>
+      <div class="space-card"><b>统计空间</b><span>逐笔交易、订单决策、策略过滤、信号形态绩效、通道突破方向和回撤区间分别输出，方便区分信号问题和交易性问题。</span></div>
       <div class="space-card"><b>失效空间</b><span>低 R² 宽通道、区间中部噪声、连续贴边后的衰竭突破、消息跳空后的异常波动，都会削弱通道突破质量。</span></div>
       <div class="space-card"><b>执行边界</b><span>通道策略只输出上轨突破和下轨跌破订单；组合层才处理资金分配、持仓互斥、策略优先级和行业限制。</span></div>
     </div>

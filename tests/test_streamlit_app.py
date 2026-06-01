@@ -267,6 +267,9 @@ def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explici
     assert "信号K" in joined
     assert "信号不等于成交" in joined
     assert "入场触发价 = 信号K高点 + tick" in joined
+    assert "触发条件拆成背景条件、信号K条件、订单条件、风控条件" in joined
+    assert "识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段" in joined
+    assert "可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
@@ -376,6 +379,9 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     assert "多/空" in joined
     assert "信号不等于成交" in joined
     assert "入场触发价 = 信号K高点 + tick" in joined
+    assert "触发条件拆成背景条件、信号K条件、订单条件、风控条件" in joined
+    assert "识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段" in joined
+    assert "可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
