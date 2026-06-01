@@ -653,6 +653,7 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
         start="2026-05-25",
         end="2026-05-25",
         detector="trend",
+        min_coverage_ratio=0.95,
     )
     result = SingleStrategyExperimentResult(
         config=config,
@@ -681,9 +682,21 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
             },
         ),
         input_bar_count=100,
-        filtered_limit_open_count=0,
+        filtered_limit_open_count=2,
         elapsed_seconds=0.1,
-        data_coverage=pd.DataFrame(),
+        data_coverage=pd.DataFrame(
+            {
+                "timeframe": ["30m"],
+                "stock_code": ["000001.SZ"],
+                "status": ["ok"],
+                "expected_rows": [200],
+                "missing_rows": [5],
+                "coverage_ratio": [0.975],
+                "max_missing_gap_minutes": [60],
+                "max_missing_gap_start_at": ["2026-05-25 10:30"],
+                "max_missing_gap_end_at": ["2026-05-25 11:30"],
+            }
+        ),
         strategy_stats=pd.DataFrame(),
         symbol_stats=pd.DataFrame(),
         side_stats=pd.DataFrame(),
@@ -696,6 +709,7 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
             }
         ),
         monthly_returns=pd.DataFrame(),
+        limit_filter_audit=pd.DataFrame({"stock_code": ["000001.SZ"], "status": ["ok"], "filtered_days": [2]}),
     )
 
     output_dir = save_single_strategy_experiment(result)
@@ -714,6 +728,15 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert 'aria-label="回撤曲线"' in html
     assert "1.00 基准线" in html
     assert "-4.63%" in html
+    assert "数据质量概览" in html
+    assert "先确认本次实际 K 线覆盖、缺口和涨跌停开盘过滤影响" in html
+    assert "加权覆盖率" in html
+    assert "97.50%" in html
+    assert "缺失K数" in html
+    assert ">5<" in html
+    assert "最大连续缺口" in html
+    assert "60" in html
+    assert "涨跌停过滤" in html
     assert "订单漏斗" in html
     assert "退出结构" in html
     assert "重点证据文件" in html

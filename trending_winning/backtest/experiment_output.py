@@ -59,9 +59,12 @@ REPORT_COLUMN_LABELS: dict[str, str] = {
     "evidence_file": "证据文件",
     "exit_reason": "平仓原因",
     "file_name": "文件名",
+    "expected_rows": "应有K数",
     "is_pareto_efficient": "Pareto有效",
     "max_drawdown": "最大回撤",
+    "max_missing_gap_minutes": "最大连续缺口",
     "metric": "指标",
+    "missing_rows": "缺失K数",
     "parameter": "参数",
     "pareto_case_count": "Pareto组数",
     "pareto_hit_rate": "Pareto命中率",
@@ -73,8 +76,10 @@ REPORT_COLUMN_LABELS: dict[str, str] = {
     "risk_adjusted_rank": "风险质量排名",
     "risk_adjusted_score": "风险质量分",
     "status": "状态",
+    "stock_code": "股票代码",
     "sweep_rank": "综合排名",
     "threshold": "门槛",
+    "timeframe": "周期",
     "total_return": "总收益",
     "trade_count": "成交数",
     "value": "取值",
@@ -491,6 +496,7 @@ def _experiment_report_html(
         )
     )
     equity_drawdown_panel = _equity_drawdown_panel(result.backtest.equity_curve)
+    data_quality_panel = _data_quality_panel(result, stats)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -553,6 +559,7 @@ def _experiment_report_html(
 <main class="wrap">
   <section><h2>核心绩效</h2><div class="metrics">{metric_cards}</div></section>
   <section><h2>净值与回撤</h2><p class="section-note">净值曲线以 1.0 为基准，回撤按组合资产净值路径计算。</p>{equity_drawdown_panel}</section>
+  <section><h2>数据质量概览</h2><p class="section-note">先确认本次实际 K 线覆盖、缺口和涨跌停开盘过滤影响，再判断策略表现是否可信。</p>{data_quality_panel}</section>
   <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
   <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
   <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div><div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
@@ -607,6 +614,38 @@ def _equity_drawdown_panel(equity_curve: pd.DataFrame) -> str:
         f'<p class="chart-note">当前回撤 {escape(latest_drawdown)}，最大回撤 {escape(max_drawdown)}。</p>'
         f"{drawdown_svg}"
         "</div>"
+        "</div>"
+    )
+
+
+def _data_quality_panel(
+    result: SingleStrategyExperimentResult | PortfolioExperimentResult,
+    stats: Mapping[str, object],
+) -> str:
+    cards = "".join(
+        _metric_card(label, value, key, note)
+        for label, key, value, note in (
+            ("实际K线", "input_bar_count", result.input_bar_count, "进入本次回测窗口的 K 线数量。"),
+            ("加权覆盖率", "data_weighted_coverage_ratio", stats.get("data_weighted_coverage_ratio"), "按应有 K 数加权后的整体覆盖率。"),
+            ("缺失K数", "data_missing_rows", stats.get("data_missing_rows"), "本次样本窗口内缺失的 K 线数量。"),
+            ("低覆盖标的", "data_coverage_below_min_count", stats.get("data_coverage_below_min_count"), "低于最低覆盖率门槛的标的或周期数量。"),
+            ("最大连续缺口", "data_max_missing_gap_minutes", stats.get("data_max_missing_gap_minutes"), "单段连续缺失 K 线对应的分钟数。"),
+            ("涨跌停过滤", "filtered_limit_open_count", result.filtered_limit_open_count, "日K涨跌停开盘过滤剔除的样本数量。"),
+        )
+    )
+    coverage_table = _compact_report_table(
+        result.data_coverage,
+        ["timeframe", "stock_code", "status", "expected_rows", "missing_rows", "coverage_ratio", "max_missing_gap_minutes"],
+        max_rows=6,
+    )
+    primary_issue = reason_label_with_code(stats.get("primary_data_issue")) or "暂无"
+    issue_count = _format_report_value("primary_data_issue_count", stats.get("primary_data_issue_count"))
+    issue_rate = _format_report_value("primary_data_issue_rate", stats.get("primary_data_issue_rate"))
+    return (
+        f'<div class="metrics">{cards}</div>'
+        '<div class="two-col">'
+        f'<div class="review-card"><strong>数据主因</strong><p>{escape(primary_issue)}</p><p>数量 {escape(issue_count)} · 占比 {escape(issue_rate)}</p></div>'
+        f'<div class="review-card"><strong>覆盖明细</strong>{coverage_table}</div>'
         "</div>"
     )
 
@@ -854,6 +893,10 @@ def _format_report_value(key: str, value: object) -> str:
     ):
         return f"{numeric:.2%}"
     if abs(numeric - round(numeric)) < 1e-12 and key.endswith("_count"):
+        return f"{int(round(numeric)):,}"
+    if abs(numeric - round(numeric)) < 1e-12 and (
+        key.endswith("_rows") or key.endswith("_minutes") or key in {"input_bar_count"}
+    ):
         return f"{int(round(numeric)):,}"
     if abs(numeric - round(numeric)) < 1e-12 and (
         key.endswith("_rank") or key in {"priority", "sweep_rank", "pareto_rank"}
