@@ -281,6 +281,9 @@ DISPLAY_COLUMN_LABELS = {
     "primary_data_issue": "主要数据问题",
     "primary_data_issue_count": "主要数据问题项数",
     "primary_data_issue_rate": "主要数据问题占比",
+    "primary_exit_reason": "主要退出原因",
+    "primary_exit_reason_count": "主要退出次数",
+    "primary_exit_reason_rate": "主要退出占比",
     "executed_order_count": "触发成交候选数",
     "accepted_executed_order_count": "最终成交数",
     "avg_accepted_actual_risk_pct": "成交平均止损风险",
@@ -1144,6 +1147,8 @@ def _format_display_value(column: str, value: object, *, stock_names: Mapping[st
         return DISPLAY_VALUE_MAP["reason"].get(str(value), str(value))
     if column == "primary_data_issue":
         return DISPLAY_VALUE_MAP["data_issue"].get(str(value), str(value))
+    if column == "primary_exit_reason":
+        return DISPLAY_VALUE_MAP["exit_reason"].get(str(value), str(value))
     mapped = DISPLAY_VALUE_MAP.get(column, {}).get(str(value))
     if mapped is not None:
         return mapped

@@ -27,6 +27,9 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
             "primary_data_issue": ["data_coverage_below_min", "", ""],
             "primary_data_issue_count": [2.0, 0.0, 0.0],
             "primary_data_issue_rate": [0.4, 0.0, 0.0],
+            "primary_exit_reason": ["trailing_take_profit", "stop_loss", ""],
+            "primary_exit_reason_count": [2.0, 1.0, 0.0],
+            "primary_exit_reason_rate": [0.4, 0.2, 0.0],
         }
     )
     strategy_stats = pd.DataFrame({"strategy_name": ["trend", "range"], "trade_count": [2, 0]})
@@ -77,6 +80,9 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
     assert summary["primary_data_issue"] == "data_coverage_below_min"
     assert summary["primary_data_issue_count"] == 2.0
     assert summary["primary_data_issue_rate"] == 0.4
+    assert summary["primary_exit_reason"] == "trailing_take_profit"
+    assert summary["primary_exit_reason_count"] == 2.0
+    assert summary["primary_exit_reason_rate"] == 0.4
     assert summary["order_cache_hit_count"] == 2.0
     assert summary["order_cache_hit_rate"] == 2 / 3
     assert summary["candidate_cache_hit_rate"] == 1 / 3

@@ -26,6 +26,9 @@ def test_exit_reason_summary_reports_counts_rates_and_other_bucket() -> None:
     assert stats["take_profit_exit_rate"] == pytest.approx(1 / 6)
     assert stats["trailing_take_profit_exit_count"] == 2.0
     assert stats["trailing_take_profit_exit_rate"] == pytest.approx(2 / 6)
+    assert stats["primary_exit_reason"] == "trailing_take_profit"
+    assert stats["primary_exit_reason_count"] == 2.0
+    assert stats["primary_exit_reason_rate"] == pytest.approx(2 / 6)
     assert stats["stop_loss_exit_count"] == 1.0
     assert stats["stop_loss_exit_rate"] == pytest.approx(1 / 6)
     assert stats["other_exit_count"] == 2.0
@@ -41,3 +44,6 @@ def test_exit_reason_summary_returns_stable_empty_keys() -> None:
     assert stats["max_holding_exit_rate"] == 0.0
     assert stats["end_of_data_exit_count"] == 0.0
     assert stats["other_exit_rate"] == 0.0
+    assert stats["primary_exit_reason"] == ""
+    assert stats["primary_exit_reason_count"] == 0.0
+    assert stats["primary_exit_reason_rate"] == 0.0

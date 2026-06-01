@@ -192,6 +192,9 @@ def test_summarize_exit_reasons_reports_counts_and_rates() -> None:
     assert stats["take_profit_exit_rate"] == pytest.approx(0.2)
     assert stats["trailing_take_profit_exit_count"] == 2.0
     assert stats["trailing_take_profit_exit_rate"] == pytest.approx(0.4)
+    assert stats["primary_exit_reason"] == "trailing_take_profit"
+    assert stats["primary_exit_reason_count"] == 2.0
+    assert stats["primary_exit_reason_rate"] == pytest.approx(0.4)
     assert stats["stop_loss_exit_count"] == 1.0
     assert stats["stop_loss_exit_rate"] == pytest.approx(0.2)
     assert stats["max_holding_exit_count"] == 1.0
