@@ -95,10 +95,26 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
             "信号K因子合并",
             "执行风控合并",
             "scenario-strip",
+            "开仓决策流水线",
+            "因子核对表",
+            "计算公式",
+            "默认判定",
+            "盘面读法",
+            "失败分支",
+            "可能性矩阵",
+            "正常开仓",
+            "有效未触发",
+            "风险拒单",
+            "过滤观察",
+            "decision-pipeline",
+            "factor-audit-grid",
+            "scenario-matrix",
             "<svg",
         ):
             assert keyword in html, f"{path.name} 缺少 {keyword}"
         assert html.count("factor-kline") >= 6, f"{path.name} 因子 K 线示意不足"
+        assert html.count("factor-audit-card") >= 6, f"{path.name} 因子核对卡不足"
+        assert html.count("scenario-matrix-card") >= 4, f"{path.name} 可能性 K 线场景不足"
 
     trend_html = guide_paths[0].read_text(encoding="utf-8")
     for keyword in (

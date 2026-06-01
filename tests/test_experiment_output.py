@@ -567,3 +567,59 @@ def test_save_single_strategy_experiment_writes_experiment_diagnostics(tmp_path)
     assert action_plan["priority"].tolist()[0] == 1
     assert action_plan.loc[0, "check"] == "交易样本"
     assert action_plan.loc[0, "evidence_file"] == "strategy_space.csv; order_decisions.csv"
+
+
+def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-html-report",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-html-report"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(
+            trades=pd.DataFrame(),
+            equity_curve=pd.DataFrame({"trade_no": [0, 1], "net_value": [1.0, 1.08]}),
+            stats={
+                "trade_count": 12.0,
+                "order_count": 20.0,
+                "win_rate": 0.58,
+                "total_return": 0.08,
+                "max_drawdown": -0.05,
+                "profit_factor": float("inf"),
+                "acceptance_rate": 0.55,
+            },
+        ),
+        input_bar_count=100,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    html = (output_dir / "experiment_report.html").read_text(encoding="utf-8")
+    assert "<!doctype html>" in html
+    assert "single-html-report" in html
+    assert "核心绩效" in html
+    assert "诊断处理顺序" in html
+    assert "产物索引" in html
+    assert "总收益" in html
+    assert "8.00%" in html
+    assert "∞" in html
+    assert "experiment_diagnostics.csv" in html
+    manifest = pd.read_csv(output_dir / "artifact_manifest.csv").set_index("file_name")
+    assert manifest.loc["experiment_report.html", "category"] == "阅读入口"
+    assert manifest.loc["experiment_report.html", "priority"] == 0

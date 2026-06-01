@@ -32,10 +32,21 @@
     .entry-rule-card { padding:16px; border:1px solid #cfe0f2; border-radius:8px; background:#f7fbff; }
     .entry-rule-card b { display:block; margin-bottom:8px; }
     .entry-rule-card p { margin:0 0 10px; color:var(--muted); font-size:14px; }
+    .decision-pipeline { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .pipeline-card { padding:14px; border:1px solid #d6e2ef; border-radius:8px; background:#fbfdff; }
+    .pipeline-card b { display:block; margin-bottom:6px; color:#24364d; }
+    .pipeline-card span { display:block; color:var(--muted); font-size:13px; margin-bottom:8px; }
+    .pipeline-card code { padding:9px; font-size:12px; }
     .merged-rule-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .merged-rule-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .merged-rule-card b { display:block; margin-bottom:6px; color:#24364d; }
     .merged-rule-card span { color:var(--muted); font-size:13px; }
+    .factor-audit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .factor-audit-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .factor-audit-card b { display:block; margin-bottom:8px; color:#24364d; }
+    .factor-audit-card dl { margin:0; display:grid; grid-template-columns:86px minmax(0,1fr); gap:6px 10px; font-size:13px; }
+    .factor-audit-card dt { color:#526174; font-weight:700; }
+    .factor-audit-card dd { margin:0; color:var(--muted); }
     .factor-calc-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .factor-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .factor-card b { display:block; margin-bottom:6px; color:#24364d; }
@@ -45,6 +56,10 @@
     .scenario-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .scenario-card b { display:block; margin-bottom:8px; }
     .scenario-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
+    .scenario-matrix { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .scenario-matrix-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .scenario-matrix-card b { display:block; margin-bottom:8px; }
+    .scenario-matrix-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
     .mini-kline { width:100%; height:auto; border:1px solid #e6edf5; border-radius:7px; background:#fff; }
     .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
@@ -75,7 +90,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.merged-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.decision-pipeline,.merged-rule-grid,.factor-audit-grid,.factor-calc-grid,.scenario-strip,.scenario-matrix,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -124,10 +139,32 @@ valid_risk = risk > 0 AND risk_pct <= max_structure_risk_pct
 filled = next_high >= entry_long OR next_low <= entry_short</code>
       </div>
     </div>
+    <h3>开仓决策流水线</h3>
+    <div class="decision-pipeline">
+      <div class="pipeline-card"><b>1. 背景条件</b><span>先判断同级别是否已经是可交易趋势，只允许顺势方向进入下一步。</span><code>TrendScore >= 1.0
+OR TrendScore <= -1.0</code></div>
+      <div class="pipeline-card"><b>2. 信号K条件</b><span>信号K必须有方向、实体、收盘位置和二次顺势结构，不把第一下反转当开仓。</span><code>close_pos >= 0.65
+body_ratio >= 0.45
+pullback_legs >= 2</code></div>
+      <div class="pipeline-card"><b>3. 订单条件</b><span>信号K收完后挂 stop entry，下一根及以后穿越信号K极值才成交。</span><code>entry_long = high_signal + tick
+entry_short = low_signal - tick</code></div>
+      <div class="pipeline-card"><b>4. 风控条件</b><span>结构止损、追价距离和 2R 目标同时有效才开仓，风险不合格直接拒单。</span><code>risk = abs(entry - stop)
+target = entry +/- 2 * risk</code></div>
+    </div>
     <div class="merged-rule-grid">
       <div class="merged-rule-card"><b>背景因子合并</b><span>趋势背景：斜率、结构、均线。三项共同决定只做多、只做空，还是只观察；其中任一项明显背离，信号K不直接开仓。</span></div>
       <div class="merged-rule-card"><b>信号K因子合并</b><span>信号质量：收盘位置、实体、H/L 腿。收盘位置决定方向确认，实体决定推进强度，H/L 腿决定是否属于二次顺势。</span></div>
       <div class="merged-rule-card"><b>执行风控合并</b><span>执行边界：挂单、止损、目标。入场价、结构止损和 2R 目标在信号K收完后一次性确定，后续只判断触发与风险是否合格。</span></div>
+    </div>
+
+    <h3>因子核对表</h3>
+    <div class="factor-audit-grid">
+      <div class="factor-audit-card"><b>slope_z：趋势斜率</b><dl><dt>计算公式</dt><dd>最近 20 根收盘价做线性回归，斜率再做 z-score 标准化。</dd><dt>默认判定</dt><dd>大于 0 贡献多头分，小于 0 贡献空头分；绝对值越大，背景越强。</dd><dt>盘面读法</dt><dd>连续 K 线重心抬高或降低，均线有明确倾斜。</dd><dt>失败分支</dt><dd>斜率接近 0 时进入观察，不用单根大 K 直接开仓。</dd></dl></div>
+      <div class="factor-audit-card"><b>structure_score：高低点结构</b><dl><dt>计算公式</dt><dd>用摆动点统计 HH/HL/LH/LL，structure_score = sign(HH + HL - LH - LL)。</dd><dt>默认判定</dt><dd>HH/HL 占优给多头分，LH/LL 占优给空头分。</dd><dt>盘面读法</dt><dd>多头看回撤低点抬高，空头看反弹高点降低。</dd><dt>失败分支</dt><dd>高低点交错且重叠 K 增多，按中部震荡处理。</dd></dl></div>
+      <div class="factor-audit-card"><b>ma_alignment：均线方向</b><dl><dt>计算公式</dt><dd>ma_alignment = sign(EMA20 - EMA50)。</dd><dt>默认判定</dt><dd>EMA20 在 EMA50 上方偏多，下方偏空。</dd><dt>盘面读法</dt><dd>均线顺序和 K 线重心一致时，顺势信号可信度更高。</dd><dt>失败分支</dt><dd>均线缠绕时不把 H/L 信号当趋势延续。</dd></dl></div>
+      <div class="factor-audit-card"><b>close_pos 与 body_ratio：信号K质量</b><dl><dt>计算公式</dt><dd>close_pos = (close - low) / max(high - low, eps)；body_ratio = abs(close - open) / max(high - low, eps)。</dd><dt>默认判定</dt><dd>多头 close_pos 不低于 0.65，空头不高于 0.35；实体占比不低于 0.45。</dd><dt>盘面读法</dt><dd>强信号K应收在方向端，实体足够，影线不能主导整根 K。</dd><dt>失败分支</dt><dd>收盘回到中部或实体太小，只能作为观察信号。</dd></dl></div>
+      <div class="factor-audit-card"><b>follow_through：短线推进</b><dl><dt>计算公式</dt><dd>多头 close 高于最近 3 根短线高点，空头 close 低于最近 3 根短线低点。</dd><dt>默认判定</dt><dd>有推进才允许生成挂单，推进不足降低信号等级。</dd><dt>盘面读法</dt><dd>信号K必须把回撤后的方向重新推出来。</dd><dt>失败分支</dt><dd>新高/新低幅度太小且影线长，优先归为末端衰竭。</dd></dl></div>
+      <div class="factor-audit-card"><b>pullback_legs：H/L 腿</b><dl><dt>计算公式</dt><dd>统计最近回撤中逆趋势摆动次数，默认至少 2 段形成 H2/L2。</dd><dt>默认判定</dt><dd>H2/L2 比 H1/L1 更稳健，减少第一次反转误判。</dd><dt>盘面读法</dt><dd>趋势中回撤两次失败后，信号K重新顺势收强或收弱。</dd><dt>失败分支</dt><dd>只有第一段反向失败时，通常只观察，不急于开仓。</dd></dl></div>
     </div>
 
     <h3>因子计算方式</h3>
@@ -175,6 +212,49 @@ body_ratio = abs(close - open) / max(high - low, eps)</code><svg class="mini-kli
           <rect class="body down" x="235" y="38" width="13" height="18"/><line class="wick down" x1="241" y1="18" x2="241" y2="70"/>
         </svg>
         <p>趋势过久、远离均线、影线失败或推进不足时，优先过滤末端假突破，不把高位强 K 当新趋势起点。</p>
+      </div>
+    </div>
+    <h3>可能性矩阵</h3>
+    <div class="scenario-matrix">
+      <div class="scenario-matrix-card">
+        <b>正常开仓</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="趋势正常开仓K线示意">
+          <line class="entry-line" x1="24" y1="44" x2="218" y2="44"/><line class="stop-line" x1="24" y1="86" x2="218" y2="86"/><line class="target-line" x1="24" y1="24" x2="218" y2="24"/>
+          <polyline class="line-fast" points="30,82 62,74 94,80 126,66 158,58 190,38"/>
+          <rect class="body up" x="156" y="56" width="12" height="25"/><line class="wick up" x1="162" y1="50" x2="162" y2="86"/>
+          <circle class="mark-entry" cx="190" cy="44" r="5"/><text class="label-entry" x="32" y="38">虚线挂单触发</text>
+        </svg>
+        <p>背景、信号K、挂单、风险全部通过，后续 K 穿越挂单价，生成实际开仓。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>有效未触发</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="趋势有效未触发K线示意">
+          <line class="entry-line" x1="24" y1="38" x2="218" y2="38"/><line class="stop-line" x1="24" y1="88" x2="218" y2="88"/>
+          <polyline class="line-fast" points="30,82 62,72 94,78 126,65 158,60 190,62"/>
+          <rect class="body up" x="150" y="58" width="12" height="24"/><line class="wick up" x1="156" y1="51" x2="156" y2="88"/>
+          <text class="label-entry" x="30" y="32">挂单未被穿越</text>
+        </svg>
+        <p>信号K成立，但后续价格没有突破信号K极值；记录为 no_fill，不追市补单。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>风险拒单</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="趋势风险拒单K线示意">
+          <line class="entry-line" x1="24" y1="34" x2="218" y2="34"/><line class="stop-line" x1="24" y1="100" x2="218" y2="100"/><line class="target-line" x1="24" y1="12" x2="218" y2="12"/>
+          <polyline class="line-fast" points="30,80 62,76 94,82 126,68 158,60 190,32"/>
+          <rect class="body up" x="152" y="58" width="12" height="24"/><line class="wick up" x1="158" y1="48" x2="158" y2="100"/>
+          <text class="label-stop" x="30" y="108">止损距离过大</text>
+        </svg>
+        <p>挂单被触发，但结构止损太远或跳空追价太多；归因到撮合拒单。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>过滤观察</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="趋势过滤观察K线示意">
+          <line class="entry-line" x1="24" y1="28" x2="218" y2="28"/><line class="stop-line" x1="24" y1="78" x2="218" y2="78"/>
+          <polyline class="line-fast" points="30,88 62,60 94,42 126,34 158,32 190,34"/>
+          <rect class="body down" x="158" y="36" width="12" height="18"/><line class="wick down" x1="164" y1="14" x2="164" y2="70"/>
+          <text class="label-stop" x="30" y="104">末端衰竭</text>
+        </svg>
+        <p>趋势持续过久、推进不足或影线失败，进入过滤拒单或观察，不生成开仓。</p>
       </div>
     </div>
   </section>

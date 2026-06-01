@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict
+from html import escape
+from math import isfinite
 from pathlib import Path
 
 import pandas as pd
@@ -46,7 +48,8 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
     diagnostics = _experiment_diagnostic_report(result, stats)
     diagnostics.to_csv(output_dir / "experiment_diagnostics.csv", index=False)
-    diagnostic_action_plan(diagnostics).to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
+    action_plan = diagnostic_action_plan(diagnostics)
+    action_plan.to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -62,7 +65,9 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
-    _artifact_manifest("experiment").to_csv(output_dir / "artifact_manifest.csv", index=False)
+    manifest = _artifact_manifest("experiment")
+    manifest.to_csv(output_dir / "artifact_manifest.csv", index=False)
+    _write_experiment_report(output_dir, result, stats=stats, diagnostics=diagnostics, action_plan=action_plan, manifest=manifest)
     return output_dir
 
 
@@ -74,7 +79,8 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     (output_dir / "stats.json").write_text(json_dump(json_ready(stats)))
     diagnostics = _experiment_diagnostic_report(result, stats)
     diagnostics.to_csv(output_dir / "experiment_diagnostics.csv", index=False)
-    diagnostic_action_plan(diagnostics).to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
+    action_plan = diagnostic_action_plan(diagnostics)
+    action_plan.to_csv(output_dir / "diagnostic_action_plan.csv", index=False)
     _write_common_experiment_outputs(output_dir, result)
     result.strategy_stats.to_csv(output_dir / "strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "detector_stats.csv", index=False)
@@ -90,7 +96,9 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
-    _artifact_manifest("experiment").to_csv(output_dir / "artifact_manifest.csv", index=False)
+    manifest = _artifact_manifest("experiment")
+    manifest.to_csv(output_dir / "artifact_manifest.csv", index=False)
+    _write_experiment_report(output_dir, result, stats=stats, diagnostics=diagnostics, action_plan=action_plan, manifest=manifest)
     return output_dir
 
 
@@ -227,6 +235,13 @@ def _artifact_manifest(kind: str) -> pd.DataFrame:
 def _experiment_artifact_rows() -> list[tuple[str, str, int, str, str]]:
     return [
         (
+            "experiment_report.html",
+            "阅读入口",
+            0,
+            "能否先用一个页面看懂本次回测？",
+            "静态 HTML 总览，汇总核心绩效、诊断处理顺序和产物索引。",
+        ),
+        (
             "artifact_manifest.csv",
             "阅读入口",
             1,
@@ -354,6 +369,152 @@ def _experiment_artifact_rows() -> list[tuple[str, str, int, str, str]]:
         ),
         ("symbol_metadata.csv", "标的信息", 2, "股票代码对应什么名称？", "股票名称和来源路径。"),
     ]
+
+
+def _write_experiment_report(
+    output_dir: Path,
+    result: SingleStrategyExperimentResult | PortfolioExperimentResult,
+    *,
+    stats: Mapping[str, object],
+    diagnostics: pd.DataFrame,
+    action_plan: pd.DataFrame,
+    manifest: pd.DataFrame,
+) -> None:
+    html = _experiment_report_html(
+        result,
+        stats=stats,
+        diagnostics=diagnostics,
+        action_plan=action_plan,
+        manifest=manifest,
+    )
+    (output_dir / "experiment_report.html").write_text(html, encoding="utf-8")
+
+
+def _experiment_report_html(
+    result: SingleStrategyExperimentResult | PortfolioExperimentResult,
+    *,
+    stats: Mapping[str, object],
+    diagnostics: pd.DataFrame,
+    action_plan: pd.DataFrame,
+    manifest: pd.DataFrame,
+) -> str:
+    title = str(result.config.name)
+    metric_cards = "".join(
+        _metric_card(label, stats.get(key), key)
+        for label, key in (
+            ("交易数", "trade_count"),
+            ("总收益", "total_return"),
+            ("最大回撤", "max_drawdown"),
+            ("胜率", "win_rate"),
+            ("盈亏因子", "profit_factor"),
+            ("订单接受率", "acceptance_rate"),
+        )
+    )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(title)} 回测总览</title>
+  <style>
+    :root {{ --bg:#f5f7fb; --panel:#fff; --ink:#102033; --muted:#5f6f84; --line:#dce4ee; --blue:#1769aa; --red:#b42318; --green:#0f7a55; --radius:8px; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.58; }}
+    .wrap {{ width:min(1180px, calc(100vw - 40px)); margin:0 auto; }}
+    header {{ padding:34px 0 24px; background:#fff; border-bottom:1px solid var(--line); }}
+    h1 {{ margin:0 0 8px; font-size:34px; line-height:1.18; letter-spacing:0; }}
+    .lead {{ margin:0; color:var(--muted); }}
+    main {{ padding:22px 0 52px; }}
+    section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); }}
+    h2 {{ margin:0 0 12px; font-size:22px; }}
+    .metrics {{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }}
+    .metric {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .metric b {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
+    .metric span {{ font-size:22px; font-weight:760; }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
+    th {{ background:#f8fafc; color:#24364d; }}
+    a {{ color:var(--blue); text-decoration:none; }}
+    .empty {{ color:var(--muted); }}
+    @media (max-width: 920px) {{ .metrics {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+  </style>
+</head>
+<body>
+<header><div class="wrap"><h1>{escape(title)} 回测总览</h1><p class="lead">{escape(_experiment_scope_text(result))}</p></div></header>
+<main class="wrap">
+  <section><h2>核心绩效</h2><div class="metrics">{metric_cards}</div></section>
+  <section><h2>诊断处理顺序</h2>{_html_table(action_plan, link_files=True)}</section>
+  <section><h2>实验诊断摘要</h2>{_html_table(diagnostics)}</section>
+  <section><h2>产物索引</h2>{_html_table(manifest, link_files=True)}</section>
+</main>
+</body>
+</html>
+"""
+
+
+def _experiment_scope_text(result: SingleStrategyExperimentResult | PortfolioExperimentResult) -> str:
+    config = result.config
+    symbols = "、".join(str(symbol) for symbol in config.symbols[:5])
+    if len(config.symbols) > 5:
+        symbols += f" 等 {len(config.symbols)} 个标的"
+    return f"{config.timeframe} | {config.start} 至 {config.end} | {symbols}"
+
+
+def _metric_card(label: str, value: object, key: str) -> str:
+    return f'<div class="metric"><b>{escape(label)}</b><span>{escape(_format_report_value(key, value))}</span></div>'
+
+
+def _html_table(frame: pd.DataFrame, *, link_files: bool = False) -> str:
+    if frame.empty:
+        return '<p class="empty">暂无记录。</p>'
+    data = frame.copy()
+    if link_files and "file_name" in data.columns:
+        data["file_name"] = data["file_name"].map(_file_link)
+    if link_files and "evidence_file" in data.columns:
+        data["evidence_file"] = data["evidence_file"].map(_evidence_links)
+    headers = "".join(f"<th>{escape(str(column))}</th>" for column in data.columns)
+    rows = []
+    for record in data.to_dict("records"):
+        cells = "".join(f"<td>{_html_cell(value)}</td>" for value in record.values())
+        rows.append(f"<tr>{cells}</tr>")
+    return f"<table><thead><tr>{headers}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def _file_link(value: object) -> str:
+    text = str(value)
+    return f'<a href="{escape(text, quote=True)}">{escape(text)}</a>'
+
+
+def _evidence_links(value: object) -> str:
+    files = [item.strip() for item in str(value).split(";") if item.strip()]
+    return "; ".join(_file_link(file_name) for file_name in files)
+
+
+def _html_cell(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value) if str(value).startswith("<a ") else escape(str(value))
+
+
+def _format_report_value(key: str, value: object) -> str:
+    if value is None or pd.isna(value):
+        return "-"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not isfinite(numeric):
+        return "∞" if numeric > 0 else "-∞"
+    if (
+        key.endswith("_rate")
+        or key.endswith("_return")
+        or key.endswith("_drawdown")
+        or key in {"win_rate", "max_drawdown"}
+    ):
+        return f"{numeric:.2%}"
+    if abs(numeric - round(numeric)) < 1e-12 and key.endswith("_count"):
+        return f"{int(round(numeric)):,}"
+    return f"{numeric:.2f}"
 
 
 def _sweep_artifact_rows() -> list[tuple[str, str, int, str, str]]:

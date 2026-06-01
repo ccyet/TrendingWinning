@@ -32,10 +32,21 @@
     .entry-rule-card { padding:16px; border:1px solid #cfe0f2; border-radius:8px; background:#f7fbff; }
     .entry-rule-card b { display:block; margin-bottom:8px; }
     .entry-rule-card p { margin:0 0 10px; color:var(--muted); font-size:14px; }
+    .decision-pipeline { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .pipeline-card { padding:14px; border:1px solid #d6e2ef; border-radius:8px; background:#fbfdff; }
+    .pipeline-card b { display:block; margin-bottom:6px; color:#24364d; }
+    .pipeline-card span { display:block; color:var(--muted); font-size:13px; margin-bottom:8px; }
+    .pipeline-card code { padding:9px; font-size:12px; }
     .merged-rule-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .merged-rule-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .merged-rule-card b { display:block; margin-bottom:6px; color:#24364d; }
     .merged-rule-card span { color:var(--muted); font-size:13px; }
+    .factor-audit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .factor-audit-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .factor-audit-card b { display:block; margin-bottom:8px; color:#24364d; }
+    .factor-audit-card dl { margin:0; display:grid; grid-template-columns:86px minmax(0,1fr); gap:6px 10px; font-size:13px; }
+    .factor-audit-card dt { color:#526174; font-weight:700; }
+    .factor-audit-card dd { margin:0; color:var(--muted); }
     .factor-calc-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .factor-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .factor-card b { display:block; margin-bottom:6px; color:#24364d; }
@@ -45,6 +56,10 @@
     .scenario-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .scenario-card b { display:block; margin-bottom:8px; }
     .scenario-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
+    .scenario-matrix { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .scenario-matrix-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .scenario-matrix-card b { display:block; margin-bottom:8px; }
+    .scenario-matrix-card p { margin:8px 0 0; color:var(--muted); font-size:13px; }
     .mini-kline { width:100%; height:auto; border:1px solid #e6edf5; border-radius:7px; background:#fff; }
     .logic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
     .logic-card { padding:16px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
@@ -75,7 +90,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.merged-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.decision-pipeline,.merged-rule-grid,.factor-audit-grid,.factor-calc-grid,.scenario-strip,.scenario-matrix,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -131,10 +146,31 @@ risk_short = stop_short - entry_short
 valid_risk = risk > 0 AND risk_pct <= max_structure_risk_pct</code>
       </div>
     </div>
+    <h3>开仓决策流水线</h3>
+    <div class="decision-pipeline">
+      <div class="pipeline-card"><b>1. 背景条件</b><span>先确认 40 根 K 回归通道已经完整，通道边界来自上一根已完成 K。</span><code>channel_ready = bars >= 40
+use prior_channel</code></div>
+      <div class="pipeline-card"><b>2. 信号K条件</b><span>信号K必须收盘在边界外，盘中刺破又收回不算突破。</span><code>close > prior_upper
+OR close < prior_lower</code></div>
+      <div class="pipeline-card"><b>3. 订单条件</b><span>突破只生成 stop entry，后续 K 穿越信号K极值才进入撮合。</span><code>entry_long = high_signal + tick
+entry_short = low_signal - tick</code></div>
+      <div class="pipeline-card"><b>4. 风控条件</b><span>对侧通道边界给结构止损，风险距离和 2R 目标不合格就拒单。</span><code>stop = prior_opposite_band
+target = entry +/- 2 * risk</code></div>
+    </div>
     <div class="merged-rule-grid">
       <div class="merged-rule-card"><b>背景因子合并</b><span>通道背景：中线、宽度、R²。先确认通道足够稳定，再判断边界是否有交易意义；宽通道和低 R² 先降权。</span></div>
       <div class="merged-rule-card"><b>信号K因子合并</b><span>突破质量：通道位置、突破距离、收盘确认。只认收盘越过上一根边界，不认盘中刺破后收回。</span></div>
       <div class="merged-rule-card"><b>执行风控合并</b><span>执行边界：挂单、对侧止损、2R。信号K极值外侧挂单，对侧通道做结构止损，目标按实际风险展开。</span></div>
+    </div>
+
+    <h3>因子核对表</h3>
+    <div class="factor-audit-grid">
+      <div class="factor-audit-card"><b>channel_mid：通道中线</b><dl><dt>计算公式</dt><dd>channel_mid = rolling_regression(log(close), lookback=40)。</dd><dt>默认判定</dt><dd>至少 40 根 K 后才有效，后续边界都基于这条中线。</dd><dt>盘面读法</dt><dd>中线代表当前通道的重心，不是均线，而是回归后的轨道中心。</dd><dt>失败分支</dt><dd>样本不足或中线被频繁穿越时，不生成通道突破信号。</dd></dl></div>
+      <div class="factor-audit-card"><b>channel_width：通道宽度</b><dl><dt>计算公式</dt><dd>residual_std = std(log(close) - channel_mid)，上下轨 = 中线 ± 2 倍残差波动。</dd><dt>默认判定</dt><dd>残差越大，通道越宽，突破后的止损距离也越大。</dd><dt>盘面读法</dt><dd>窄而稳定的通道更适合边界突破，过宽通道容易变成噪声。</dd><dt>失败分支</dt><dd>宽度导致结构风险超限时，触发后也要拒单。</dd></dl></div>
+      <div class="factor-audit-card"><b>channel_pos：价格位置</b><dl><dt>计算公式</dt><dd>channel_pos = (close - channel_mid) / max(channel_upper - channel_mid, eps)。</dd><dt>默认判定</dt><dd>大于 1 表示上轨外，小于 -1 表示下轨外，0 附近是中部。</dd><dt>盘面读法</dt><dd>通道策略只关心边界外扩，中部震荡不交易。</dd><dt>失败分支</dt><dd>channel_pos 在 -1 到 1 之间，只能观察，不开仓。</dd></dl></div>
+      <div class="factor-audit-card"><b>break_distance：突破距离</b><dl><dt>计算公式</dt><dd>多头 close - prior_channel_upper；空头 prior_channel_lower - close。</dd><dt>默认判定</dt><dd>收盘必须越过上一根边界，默认缓冲为 0。</dd><dt>盘面读法</dt><dd>突破距离显示信号K有没有真正离开通道。</dd><dt>失败分支</dt><dd>盘中刺破但收盘回到通道内，归为观察信号。</dd></dl></div>
+      <div class="factor-audit-card"><b>regression_quality：通道质量</b><dl><dt>计算公式</dt><dd>r2 = explained_variance(channel_mid, log(close))，衡量回归轨道解释力。</dd><dt>默认判定</dt><dd>R² 越高，通道越稳定；低 R² 只降低交易可信度，不改 detector 事件。</dd><dt>盘面读法</dt><dd>高 R² 像沿轨道运行，低 R² 像宽幅乱震。</dd><dt>失败分支</dt><dd>低 R² 加宽通道时，更容易触发风险拒单或过滤观察。</dd></dl></div>
+      <div class="factor-audit-card"><b>terminal_score：末端假突破</b><dl><dt>计算公式</dt><dd>持续 K 数、远离中轴、贴边次数、弱突破幅度、影线比例命中后累加。</dd><dt>默认判定</dt><dd>terminal_score >= min_score 时拒绝开仓；默认过滤关闭，用户可启用。</dd><dt>盘面读法</dt><dd>连续贴边后再冲一下但收不住，常见于通道末端。</dd><dt>失败分支</dt><dd>只拒绝本次开仓，不改变通道识别结果。</dd></dl></div>
     </div>
 
     <h3>因子计算方式</h3>
@@ -182,6 +218,51 @@ channel_upper = channel_mid + sigma_multiple * residual_std</code><svg class="mi
           <rect class="body down" x="235" y="45" width="13" height="16"/><line class="wick down" x1="241" y1="20" x2="241" y2="78"/>
         </svg>
         <p>连续贴上轨、推进变弱、上影线较长时，先看末端假突破过滤；拒绝的是开仓，不改通道 detector。</p>
+      </div>
+    </div>
+    <h3>可能性矩阵</h3>
+    <div class="scenario-matrix">
+      <div class="scenario-matrix-card">
+        <b>正常开仓</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="通道正常开仓K线示意">
+          <path class="line-channel" d="M24 58 L218 48"/><path class="line-mid" d="M24 78 L218 68"/><path class="line-channel" d="M24 98 L218 88"/>
+          <line class="entry-line" x1="24" y1="40" x2="218" y2="40"/><line class="stop-line" x1="24" y1="92" x2="218" y2="92"/><line class="target-line" x1="24" y1="18" x2="218" y2="18"/>
+          <polyline class="line-fast" points="30,90 62,82 94,75 126,64 158,50 190,36"/>
+          <circle class="mark-entry" cx="190" cy="40" r="5"/><text class="label-entry" x="30" y="34">虚线挂单触发</text>
+        </svg>
+        <p>收盘在上一根通道上轨外，后续 K 穿越信号K高点，风险合格后开仓。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>有效未触发</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="通道有效未触发K线示意">
+          <path class="line-channel" d="M24 56 L218 50"/><path class="line-mid" d="M24 78 L218 72"/><path class="line-channel" d="M24 100 L218 94"/>
+          <line class="entry-line" x1="24" y1="38" x2="218" y2="38"/>
+          <polyline class="line-fast" points="30,92 62,84 94,72 126,58 158,44 190,52"/>
+          <rect class="body up" x="150" y="42" width="12" height="22"/><line class="wick up" x1="156" y1="34" x2="156" y2="70"/>
+          <text class="label-entry" x="30" y="32">突破后未跟随</text>
+        </svg>
+        <p>收盘突破成立，但后续 K 没有继续穿越信号K极值，订单保持未成交。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>风险拒单</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="通道风险拒单K线示意">
+          <path class="line-channel" d="M24 38 L218 30"/><path class="line-mid" d="M24 72 L218 68"/><path class="line-channel" d="M24 108 L218 104"/>
+          <line class="entry-line" x1="24" y1="28" x2="218" y2="28"/><line class="stop-line" x1="24" y1="104" x2="218" y2="104"/>
+          <polyline class="line-fast" points="30,96 62,82 94,68 126,54 158,42 190,26"/>
+          <text class="label-stop" x="30" y="112">对侧止损太远</text>
+        </svg>
+        <p>突破方向存在，但通道太宽导致风险距离过大，撮合层拒绝本次开仓。</p>
+      </div>
+      <div class="scenario-matrix-card">
+        <b>过滤观察</b>
+        <svg class="mini-kline" viewBox="0 0 240 116" role="img" aria-label="通道过滤观察K线示意">
+          <path class="line-channel" d="M24 44 L218 34"/><path class="line-mid" d="M24 74 L218 66"/><path class="line-channel" d="M24 104 L218 98"/>
+          <line class="entry-line" x1="24" y1="30" x2="218" y2="30"/>
+          <polyline class="line-fast" points="30,96 62,68 94,50 126,42 158,38 190,39"/>
+          <rect class="body down" x="158" y="43" width="12" height="17"/><line class="wick down" x1="164" y1="20" x2="164" y2="76"/>
+          <text class="label-stop" x="30" y="112">贴边弱突破</text>
+        </svg>
+        <p>连续贴近通道边缘、突破推进不足且影线失败时，末端假突破过滤只拒绝开仓。</p>
       </div>
     </div>
   </section>
