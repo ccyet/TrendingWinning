@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import asdict
 from html import escape
 from math import isfinite
+from numbers import Real
 from pathlib import Path
 
 import pandas as pd
@@ -205,12 +206,17 @@ def _experiment_diagnostic_report(
 def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | SingleStrategySweepResult) -> None:
     config_payload = json_ready(asdict(result.config))
     config_payload["sweep_grid"] = json_ready(result.grid)
+    case_diagnostics = _case_diagnostics(result)
+    summary = _sweep_summary_statistics(result, case_diagnostics=case_diagnostics)
+    pareto = _pareto_sweep_table(result.table)
+    parameter_summary = _parameter_summary_table(result)
+    manifest = _artifact_manifest("sweep")
     (output_dir / "config.json").write_text(json_dump(config_payload))
-    (output_dir / "summary.json").write_text(json_dump(json_ready(_sweep_summary_statistics(result))))
+    (output_dir / "summary.json").write_text(json_dump(json_ready(summary)))
     result.table.to_csv(output_dir / "sweep.csv", index=False)
-    _pareto_sweep_table(result.table).to_csv(output_dir / "pareto.csv", index=False)
-    _parameter_summary_table(result).to_csv(output_dir / "parameter_summary.csv", index=False)
-    _case_diagnostics(result).to_csv(output_dir / "case_diagnostics.csv", index=False)
+    pareto.to_csv(output_dir / "pareto.csv", index=False)
+    parameter_summary.to_csv(output_dir / "parameter_summary.csv", index=False)
+    case_diagnostics.to_csv(output_dir / "case_diagnostics.csv", index=False)
     result.strategy_stats.to_csv(output_dir / "case_strategy_stats.csv", index=False)
     result.detector_stats.to_csv(output_dir / "case_detector_stats.csv", index=False)
     result.setup_stats.to_csv(output_dir / "case_setup_stats.csv", index=False)
@@ -223,7 +229,16 @@ def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | Single
     result.data_gap_episodes.to_csv(output_dir / "data_gap_episodes.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
-    _artifact_manifest("sweep").to_csv(output_dir / "artifact_manifest.csv", index=False)
+    manifest.to_csv(output_dir / "artifact_manifest.csv", index=False)
+    _write_sweep_report(
+        output_dir,
+        result,
+        summary=summary,
+        pareto=pareto,
+        parameter_summary=parameter_summary,
+        case_diagnostics=case_diagnostics,
+        manifest=manifest,
+    )
 
 
 def _artifact_manifest(kind: str) -> pd.DataFrame:
@@ -596,7 +611,7 @@ def _html_table(frame: pd.DataFrame, *, link_files: bool = False) -> str:
     headers = "".join(f"<th>{escape(str(column))}</th>" for column in data.columns)
     rows = []
     for record in data.to_dict("records"):
-        cells = "".join(f"<td>{_html_cell(value)}</td>" for value in record.values())
+        cells = "".join(f"<td>{_html_cell(column, value)}</td>" for column, value in record.items())
         rows.append(f"<tr>{cells}</tr>")
     return f"<table><thead><tr>{headers}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
@@ -611,10 +626,17 @@ def _evidence_links(value: object) -> str:
     return "; ".join(_file_link(file_name) for file_name in files)
 
 
-def _html_cell(value: object) -> str:
+def _html_cell(column: str, value: object) -> str:
     if pd.isna(value):
         return ""
-    return str(value) if str(value).startswith("<a ") else escape(str(value))
+    text = str(value)
+    if text.startswith("<a "):
+        return text
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if isinstance(value, Real):
+        return escape(_format_report_value(str(column), value))
+    return escape(text)
 
 
 def _format_report_value(key: str, value: object) -> str:
@@ -637,11 +659,22 @@ def _format_report_value(key: str, value: object) -> str:
         return f"{numeric:.2%}"
     if abs(numeric - round(numeric)) < 1e-12 and key.endswith("_count"):
         return f"{int(round(numeric)):,}"
+    if abs(numeric - round(numeric)) < 1e-12 and (
+        key.endswith("_rank") or key in {"priority", "sweep_rank", "pareto_rank"}
+    ):
+        return f"{int(round(numeric)):,}"
     return f"{numeric:.2f}"
 
 
 def _sweep_artifact_rows() -> list[tuple[str, str, int, str, str]]:
     return [
+        (
+            "sweep_report.html",
+            "阅读入口",
+            0,
+            "能否先用一个页面看懂参数遍历？",
+            "静态 HTML 总览，汇总最优参数组、风险质量候选、Pareto 候选、参数影响和诊断概览。",
+        ),
         (
             "artifact_manifest.csv",
             "阅读入口",
@@ -724,7 +757,198 @@ def _sweep_artifact_rows() -> list[tuple[str, str, int, str, str]]:
     ]
 
 
-def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweepResult) -> dict[str, object]:
+def _write_sweep_report(
+    output_dir: Path,
+    result: PortfolioSweepResult | SingleStrategySweepResult,
+    *,
+    summary: Mapping[str, object],
+    pareto: pd.DataFrame,
+    parameter_summary: pd.DataFrame,
+    case_diagnostics: pd.DataFrame,
+    manifest: pd.DataFrame,
+) -> None:
+    html = _sweep_report_html(
+        result,
+        summary=summary,
+        pareto=pareto,
+        parameter_summary=parameter_summary,
+        case_diagnostics=case_diagnostics,
+        manifest=manifest,
+    )
+    (output_dir / "sweep_report.html").write_text(html, encoding="utf-8")
+
+
+def _sweep_report_html(
+    result: PortfolioSweepResult | SingleStrategySweepResult,
+    *,
+    summary: Mapping[str, object],
+    pareto: pd.DataFrame,
+    parameter_summary: pd.DataFrame,
+    case_diagnostics: pd.DataFrame,
+    manifest: pd.DataFrame,
+) -> str:
+    title = str(result.config.name)
+    metric_cards = "".join(
+        _metric_card(label, summary.get(key), key, note)
+        for label, key, note in (
+            ("实际运行组", "case_count", "去重后真实执行的参数组数量。"),
+            ("原始组合数", "grid_case_count", "用户输入 grid 展开后的组合数。"),
+            ("Pareto候选", "pareto_case_count", "收益和风险非支配的第一层候选。"),
+            ("最高风险质量", "best_risk_adjusted_score", "风险质量评分越高，综合稳健性越好。"),
+            ("耗时", "elapsed_seconds", "本次参数遍历运行耗时，单位秒。"),
+            ("订单缓存命中", "order_cache_hit_rate", "复用订单流减少重复计算的比例。"),
+        )
+    )
+    top_cases = _compact_report_table(
+        result.table,
+        [
+            "sweep_rank",
+            "risk_adjusted_rank",
+            "pareto_rank",
+            "case_name",
+            "total_return",
+            "max_drawdown",
+            "trade_count",
+            "win_rate",
+            "acceptance_rate",
+            "diagnostic_primary_issue",
+        ],
+        max_rows=8,
+    )
+    risk_cases = _compact_report_table(
+        _sort_frame(result.table, ["risk_adjusted_rank", "sweep_rank"]),
+        [
+            "risk_adjusted_rank",
+            "risk_adjusted_score",
+            "sweep_rank",
+            "case_name",
+            "total_return",
+            "max_drawdown",
+            "trade_count",
+            "diagnostic_primary_issue",
+        ],
+        max_rows=8,
+    )
+    pareto_cases = _compact_report_table(
+        pareto,
+        [
+            "pareto_rank",
+            "sweep_rank",
+            "risk_adjusted_rank",
+            "case_name",
+            "total_return",
+            "max_drawdown",
+            "trade_count",
+            "risk_adjusted_score",
+        ],
+        max_rows=8,
+    )
+    parameter_impact = _compact_report_table(
+        parameter_summary,
+        [
+            "parameter",
+            "value",
+            "case_count",
+            "pareto_case_count",
+            "pareto_hit_rate",
+            "positive_return_rate",
+            "best_total_return",
+            "worst_total_return",
+            "avg_risk_adjusted_score",
+            "best_case_name",
+        ],
+        max_rows=12,
+    )
+    diagnostics = _compact_report_table(
+        _sort_frame(case_diagnostics, ["status", "sweep_rank"]),
+        ["sweep_rank", "case_name", "check", "status", "metric", "value", "threshold", "detail"],
+        max_rows=12,
+    )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(title)} 参数遍历总览</title>
+  <style>
+    :root {{ --bg:#f5f7fb; --panel:#fff; --ink:#102033; --muted:#5f6f84; --line:#dce4ee; --blue:#1769aa; --radius:8px; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.58; }}
+    .wrap {{ width:min(1180px, calc(100vw - 40px)); margin:0 auto; }}
+    header {{ padding:34px 0 24px; background:#fff; border-bottom:1px solid var(--line); }}
+    h1 {{ margin:0 0 8px; font-size:34px; line-height:1.18; letter-spacing:0; }}
+    .lead {{ margin:0; color:var(--muted); }}
+    main {{ padding:22px 0 52px; }}
+    section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); }}
+    h2 {{ margin:0 0 12px; font-size:22px; }}
+    .section-note {{ margin:0 0 14px; color:var(--muted); font-size:14px; }}
+    .metrics {{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }}
+    .metric {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .metric b {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
+    .metric span {{ font-size:22px; font-weight:760; }}
+    .metric small {{ display:block; margin-top:6px; color:var(--muted); font-size:12px; }}
+    .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
+    .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
+    .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; color:var(--blue); text-decoration:none; }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
+    th {{ background:#f8fafc; color:#24364d; }}
+    a {{ color:var(--blue); text-decoration:none; }}
+    .empty {{ color:var(--muted); }}
+    @media (max-width: 920px) {{ .metrics,.two-col {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+  </style>
+</head>
+<body>
+<header><div class="wrap"><h1>{escape(title)} 参数遍历总览</h1><p class="lead">{escape(_sweep_scope_text(result))}</p></div></header>
+<main class="wrap">
+  <section><h2>参数遍历总览</h2><div class="metrics">{metric_cards}</div></section>
+  <section><h2>最优参数组</h2><p class="section-note">按 sweep_rank 排序，先看收益、回撤、交易数和诊断主问题。</p>{top_cases}</section>
+  <section><h2>风险质量候选</h2><p class="section-note">按 risk_adjusted_rank 排序，优先找收益、回撤、样本量更均衡的参数组。</p>{risk_cases}</section>
+  <section><h2>Pareto候选</h2>{pareto_cases}</section>
+  <section><h2>参数影响</h2>{parameter_impact}</section>
+  <section><h2>诊断概览</h2>{diagnostics}</section>
+  <section><h2>重点产物</h2>{_sweep_evidence_file_panel()}</section>
+  <section><h2>产物索引</h2>{_html_table(manifest, link_files=True)}</section>
+</main>
+</body>
+</html>
+"""
+
+
+def _sweep_scope_text(result: PortfolioSweepResult | SingleStrategySweepResult) -> str:
+    config = result.config
+    fields = "、".join(str(field) for field in result.grid)
+    if not fields:
+        fields = "无参数字段"
+    return f"{config.timeframe} | {config.start} 至 {config.end} | 参数：{fields}"
+
+
+def _sweep_evidence_file_panel() -> str:
+    files = [
+        "sweep.csv",
+        "pareto.csv",
+        "parameter_summary.csv",
+        "case_diagnostics.csv",
+        "case_configs.jsonl",
+        "artifact_manifest.csv",
+    ]
+    return f'<div class="evidence-list">{"".join(_file_link(file_name) for file_name in files)}</div>'
+
+
+def _sort_frame(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    available = [column for column in columns if column in frame.columns]
+    if not available:
+        return frame
+    return frame.sort_values(available, ascending=True, kind="mergesort").reset_index(drop=True)
+
+
+def _sweep_summary_statistics(
+    result: PortfolioSweepResult | SingleStrategySweepResult,
+    *,
+    case_diagnostics: pd.DataFrame | None = None,
+) -> dict[str, object]:
     return _build_sweep_summary_statistics(
         table=result.table,
         grid=result.grid,
@@ -737,7 +961,7 @@ def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweep
         symbol_stats=result.symbol_stats,
         setup_order_decision_stats=result.setup_order_decision_stats,
         setup_strategy_filter_stats=result.setup_strategy_filter_stats,
-        case_diagnostics=_case_diagnostics(result),
+        case_diagnostics=case_diagnostics if case_diagnostics is not None else _case_diagnostics(result),
     )
 
 

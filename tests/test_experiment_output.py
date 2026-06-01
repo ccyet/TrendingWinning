@@ -101,6 +101,72 @@ def test_save_single_strategy_sweep_writes_case_diagnostics(tmp_path) -> None:
     assert saved.loc[saved["check"].eq("交易样本"), "status"].iloc[0] == "失败"
 
 
+def test_save_single_strategy_sweep_writes_html_overview_report(tmp_path) -> None:
+    from trending_winning.backtest.experiment_cases import case_config_hash, sweep_variants
+    from trending_winning.backtest.experiment_output import save_single_strategy_sweep
+
+    config = SingleStrategyExperimentConfig(
+        name="single-sweep-html",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-sweep-html"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    grid = {"risk_reward": [1.5, 2.0], "trend_min_score": [0.8]}
+    variants = sweep_variants(config, grid)
+    result = SingleStrategySweepResult(
+        config=config,
+        grid=grid,
+        table=pd.DataFrame(
+            {
+                "sweep_rank": [1, 2],
+                "pareto_rank": [1, 2],
+                "is_pareto_efficient": [True, False],
+                "risk_adjusted_rank": [2, 1],
+                "risk_adjusted_score": [72.0, 86.5],
+                "case_name": ["single-sweep-html-001", "single-sweep-html-002"],
+                "case_config_hash": [case_config_hash(variant) for variant in variants],
+                "risk_reward": [1.5, 2.0],
+                "trend_min_score": [0.8, 0.8],
+                "total_return": [0.08, 0.05],
+                "max_drawdown": [-0.06, -0.03],
+                "trade_count": [34.0, 22.0],
+                "win_rate": [0.56, 0.62],
+                "acceptance_rate": [0.48, 0.41],
+                "diagnostic_primary_issue": ["", "交易样本"],
+            }
+        ),
+        data_coverage=pd.DataFrame(),
+        input_bar_count=200,
+        filtered_limit_open_count=1,
+        elapsed_seconds=1.25,
+    )
+
+    output_dir = save_single_strategy_sweep(result)
+
+    html = (output_dir / "sweep_report.html").read_text(encoding="utf-8")
+    assert "<!doctype html>" in html
+    assert "single-sweep-html" in html
+    assert "参数遍历总览" in html
+    assert "最优参数组" in html
+    assert "风险质量候选" in html
+    assert "Pareto候选" in html
+    assert "参数影响" in html
+    assert "诊断概览" in html
+    assert "重点产物" in html
+    assert "single-sweep-html-001" in html
+    assert "single-sweep-html-002" in html
+    assert "8.00%" in html
+    assert "86.50" in html
+    assert "parameter_summary.csv" in html
+    manifest = pd.read_csv(output_dir / "artifact_manifest.csv").set_index("file_name")
+    assert manifest.loc["sweep_report.html", "category"] == "阅读入口"
+    assert manifest.loc["sweep_report.html", "priority"] == 0
+
+
 def test_experiment_runner_reexports_output_functions_for_compatibility() -> None:
     from trending_winning.backtest import experiment
     from trending_winning.backtest.experiment_output import (
