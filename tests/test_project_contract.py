@@ -88,10 +88,17 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
             "合并卡片",
             "entry_rule_card",
             "factor_calc_grid",
+            "factor-kline",
+            "merged-rule-grid",
+            "merged-rule-card",
+            "背景因子合并",
+            "信号K因子合并",
+            "执行风控合并",
             "scenario-strip",
             "<svg",
         ):
             assert keyword in html, f"{path.name} 缺少 {keyword}"
+        assert html.count("factor-kline") >= 6, f"{path.name} 因子 K 线示意不足"
 
     trend_html = guide_paths[0].read_text(encoding="utf-8")
     for keyword in (
@@ -101,6 +108,9 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
         "entry_long = signal_high + tick",
         "stop_long = min(low[-pullback_lookback:]) - tick",
         "target_long = entry_long + risk_reward * (entry_long - stop_long)",
+        "趋势背景：斜率、结构、均线",
+        "信号质量：收盘位置、实体、H/L 腿",
+        "执行边界：挂单、止损、目标",
         "H2/L2 二次顺势入场",
         "早期顺势 / 中段回撤 / 末端衰竭",
     ):
@@ -114,6 +124,9 @@ def test_000852_strategy_guides_are_actionable_html() -> None:
         "break_up = close > prior_channel_upper + channel_break_buffer",
         "entry_long = signal_high + tick",
         "stop_long = prior_channel_lower - tick",
+        "通道背景：中线、宽度、R²",
+        "突破质量：通道位置、突破距离、收盘确认",
+        "执行边界：挂单、对侧止损、2R",
         "通道内 / 上轨突破 / 末端假突破",
     ):
         assert keyword in channel_html, f"{guide_paths[1].name} 缺少 {keyword}"

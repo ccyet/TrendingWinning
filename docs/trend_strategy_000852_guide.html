@@ -32,10 +32,15 @@
     .entry-rule-card { padding:16px; border:1px solid #cfe0f2; border-radius:8px; background:#f7fbff; }
     .entry-rule-card b { display:block; margin-bottom:8px; }
     .entry-rule-card p { margin:0 0 10px; color:var(--muted); font-size:14px; }
+    .merged-rule-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .merged-rule-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .merged-rule-card b { display:block; margin-bottom:6px; color:#24364d; }
+    .merged-rule-card span { color:var(--muted); font-size:13px; }
     .factor-calc-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .factor-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfe; }
     .factor-card b { display:block; margin-bottom:6px; color:#24364d; }
     .factor-card span { display:block; color:var(--muted); font-size:13px; }
+    .factor-kline { margin:10px 0 8px; }
     .scenario-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:14px; }
     .scenario-card { padding:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .scenario-card b { display:block; margin-bottom:8px; }
@@ -70,7 +75,7 @@
     .mark-entry { fill:#1769aa; stroke:#fff; stroke-width:2; } .mark-exit { fill:#6b7280; stroke:#fff; stroke-width:2; }
     ol { margin:8px 0 0 20px; padding:0; } li { margin:6px 0; }
     .footer-note { color:var(--muted); font-size:13px; }
-    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
+    @media (max-width: 900px) { .hero,.case-head,.chart-grid,.formula-grid,.entry-rule-grid,.merged-rule-grid,.factor-calc-grid,.scenario-strip,.logic-grid,.space-grid,.read-grid { grid-template-columns:1fr; } section { padding:18px; } .wrap { width:min(100vw - 24px, 1180px); } }
   </style>
 </head>
 <body>
@@ -119,16 +124,21 @@ valid_risk = risk > 0 AND risk_pct <= max_structure_risk_pct
 filled = next_high >= entry_long OR next_low <= entry_short</code>
       </div>
     </div>
+    <div class="merged-rule-grid">
+      <div class="merged-rule-card"><b>背景因子合并</b><span>趋势背景：斜率、结构、均线。三项共同决定只做多、只做空，还是只观察；其中任一项明显背离，信号K不直接开仓。</span></div>
+      <div class="merged-rule-card"><b>信号K因子合并</b><span>信号质量：收盘位置、实体、H/L 腿。收盘位置决定方向确认，实体决定推进强度，H/L 腿决定是否属于二次顺势。</span></div>
+      <div class="merged-rule-card"><b>执行风控合并</b><span>执行边界：挂单、止损、目标。入场价、结构止损和 2R 目标在信号K收完后一次性确定，后续只判断触发与风险是否合格。</span></div>
+    </div>
 
     <h3>因子计算方式</h3>
     <div class="factor-calc-grid factor_calc_grid">
-      <div class="factor-card"><b>slope_z</b><code>slope_z = zscore(linreg_slope(close, 20))</code><span>衡量最近 20 根 K 的斜率是否显著；斜率越陡，趋势背景越强。</span></div>
-      <div class="factor-card"><b>structure_score</b><code>structure_score = sign(HH + HL - LH - LL)</code><span>用摆动高低点判断结构，多头看 HH/HL，空头看 LH/LL。</span></div>
-      <div class="factor-card"><b>ma_alignment</b><code>ma_alignment = sign(EMA20 - EMA50)</code><span>短均线在长均线上方加多头分，在下方加空头分。</span></div>
+      <div class="factor-card"><b>slope_z</b><code>slope_z = zscore(linreg_slope(close, 20))</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="slope_z 趋势斜率K线示意"><line class="grid" x1="14" y1="66" x2="246" y2="28"/><polyline class="line-fast" points="24,66 58,60 92,52 126,45 160,38 194,31 228,24"/><rect class="body up" x="203" y="28" width="12" height="24"/><line class="wick up" x1="209" y1="20" x2="209" y2="58"/></svg><span>衡量最近 20 根 K 的斜率是否显著；斜率越陡，趋势背景越强。</span></div>
+      <div class="factor-card"><b>structure_score</b><code>structure_score = sign(HH + HL - LH - LL)</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="structure_score 高低点结构K线示意"><polyline class="line-fast" points="24,66 62,34 98,58 136,28 172,50 214,22"/><text class="label-entry" x="57" y="30">HH</text><text class="label-stop" x="95" y="73">HL</text><text class="label-entry" x="132" y="24">HH</text></svg><span>用摆动高低点判断结构，多头看 HH/HL，空头看 LH/LL。</span></div>
+      <div class="factor-card"><b>ma_alignment</b><code>ma_alignment = sign(EMA20 - EMA50)</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="ma_alignment 均线排列K线示意"><polyline class="line-fast" points="22,58 62,51 102,44 142,38 182,31 224,24"/><polyline class="line-slow" points="22,68 62,64 102,58 142,52 182,46 224,40"/><rect class="body up" x="204" y="29" width="12" height="23"/><line class="wick up" x1="210" y1="20" x2="210" y2="58"/></svg><span>短均线在长均线上方加多头分，在下方加空头分。</span></div>
       <div class="factor-card"><b>close_strength</b><code>close_pos = (close - low) / max(high - low, eps)
-body_ratio = abs(close - open) / max(high - low, eps)</code><span>收盘位置和实体占比决定信号K有没有推进质量。</span></div>
-      <div class="factor-card"><b>follow_through</b><code>follow_through = sign(close - highest(close[-3:-1]))</code><span>多头看是否推进到短线新高，空头对称看是否打出短线新低。</span></div>
-      <div class="factor-card"><b>pullback_legs</b><code>pullback_legs = count_countertrend_swings(last_pullback)</code><span>默认更偏好两段回撤后的 H2/L2，减少第一下追高或追空。</span></div>
+body_ratio = abs(close - open) / max(high - low, eps)</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="close_strength 信号K收盘强度示意"><line class="wick up" x1="130" y1="16" x2="130" y2="74"/><rect class="body up" x="118" y="23" width="24" height="43"/><line class="entry-line" x1="32" y1="23" x2="230" y2="23"/><text class="label-entry" x="34" y="18">收盘靠高位</text></svg><span>收盘位置和实体占比决定信号K有没有推进质量。</span></div>
+      <div class="factor-card"><b>follow_through</b><code>follow_through = sign(close - highest(close[-3:-1]))</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="follow_through 突破推进K线示意"><polyline class="line-fast" points="24,60 58,54 92,50 126,48 160,46 198,34 232,28"/><line class="entry-line" x1="40" y1="42" x2="226" y2="42"/><rect class="body up" x="198" y="28" width="12" height="28"/><line class="wick up" x1="204" y1="20" x2="204" y2="60"/></svg><span>多头看是否推进到短线新高，空头对称看是否打出短线新低。</span></div>
+      <div class="factor-card"><b>pullback_legs</b><code>pullback_legs = count_countertrend_swings(last_pullback)</code><svg class="mini-kline factor-kline" viewBox="0 0 260 88" role="img" aria-label="pullback_legs H2 L2 K线示意"><polyline class="line-fast" points="24,28 58,38 92,30 126,52 160,44 198,62 232,36"/><text class="label-stop" x="113" y="68">第1腿</text><text class="label-entry" x="188" y="78">第2腿</text></svg><span>默认更偏好两段回撤后的 H2/L2，减少第一下追高或追空。</span></div>
     </div>
 
     <h3>可能性展示：早期顺势 / 中段回撤 / 末端衰竭</h3>
