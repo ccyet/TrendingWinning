@@ -35,6 +35,7 @@ def experiment_diagnostic_report(
         _drawdown_pressure_row(stats),
         _profit_quality_row(stats),
         _win_rate_edge_row(stats),
+        _positive_expectancy_row(stats),
         _exit_structure_row(stats),
         _monthly_stability_row(stats),
         _path_risk_row(stats),
@@ -285,6 +286,61 @@ def _win_rate_edge_row(stats: Mapping[str, object]) -> dict[str, object]:
     )
 
 
+def _positive_expectancy_row(stats: Mapping[str, object]) -> dict[str, object]:
+    value = _number(stats.get("positive_expectancy_probability"), default=None)
+    if value is None:
+        return _row(
+            "交易质量",
+            "正期望概率",
+            "通过",
+            "positive_expectancy_probability",
+            0.0,
+            0.0,
+            "未提供正期望概率，跳过该项诊断。",
+        )
+    trade_count = _number(stats.get("trade_count"), default=0.0)
+    detail = _positive_expectancy_detail(stats, value)
+    if trade_count <= 0:
+        return _row(
+            "交易质量",
+            "正期望概率",
+            "失败",
+            "positive_expectancy_probability",
+            value,
+            0.5,
+            "没有成交，无法判断正期望概率。",
+        )
+    if value < 0.5:
+        return _row(
+            "交易质量",
+            "正期望概率",
+            "失败",
+            "positive_expectancy_probability",
+            value,
+            0.5,
+            _append_detail("正期望概率低于 50%，平均收益大概率不具备统计优势。", detail),
+        )
+    if value < 0.75:
+        return _row(
+            "交易质量",
+            "正期望概率",
+            "关注",
+            "positive_expectancy_probability",
+            value,
+            0.75,
+            _append_detail("正期望概率偏低，当前样本对策略优势的支持不够稳。", detail),
+        )
+    return _row(
+        "交易质量",
+        "正期望概率",
+        "通过",
+        "positive_expectancy_probability",
+        value,
+        0.75,
+        _append_detail("正期望概率达到基础观察要求。", detail),
+    )
+
+
 def _exit_structure_row(stats: Mapping[str, object]) -> dict[str, object]:
     trade_count = _number(stats.get("trade_count"), default=0.0)
     primary_reason = str(stats.get("primary_exit_reason") or "").strip()
@@ -440,6 +496,14 @@ def _win_rate_edge_detail(stats: Mapping[str, object], edge: float) -> str:
     if win_rate is None or breakeven is None:
         return ""
     return f"实际胜率 {win_rate:.1%}，盈亏平衡胜率 {breakeven:.1%}，边际 {edge:.1%}。"
+
+
+def _positive_expectancy_detail(stats: Mapping[str, object], probability: float) -> str:
+    lower = _number(stats.get("avg_return_ci_lower"), default=None)
+    upper = _number(stats.get("avg_return_ci_upper"), default=None)
+    if lower is None or upper is None:
+        return f"正期望概率 {probability:.1%}。"
+    return f"正期望概率 {probability:.1%}，平均收益95%区间 {lower:.1%} 至 {upper:.1%}。"
 
 
 def _exit_reason_label(reason: str) -> str:

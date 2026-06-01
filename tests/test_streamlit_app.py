@@ -1387,6 +1387,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "主要退出原因、数量和占比" in html
     assert "主要拒绝原因、数量和占比" in html
     assert "实际胜率、盈亏平衡胜率和边际" in html
+    assert "正期望概率会写出概率和平均收益区间" in html
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
     assert "risk_adjusted_score" in html
@@ -1421,6 +1422,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "win_rate_edge" in readme
     assert "退出结构" in readme
     assert "调胜率边际" in readme
+    assert "调正期望概率" in readme
     assert "参数遍历成交质量" in readme
     assert "识别模块绩效" in readme
     assert "订单决策统计" in readme
@@ -1476,6 +1478,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "盈亏平衡胜率" in html
     assert "胜率边际" in html
     assert "实际胜率、盈亏平衡胜率和边际" in html
+    assert "正期望概率会写出概率和平均收益区间" in html
     assert "退出结构" in html
     assert "回撤曲线" in html
     assert "开平仓路径绩效" in html

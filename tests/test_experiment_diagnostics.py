@@ -28,6 +28,9 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
         "win_rate": 0.42,
         "breakeven_win_rate": 0.5,
         "win_rate_edge": -0.08,
+        "positive_expectancy_probability": 0.42,
+        "avg_return_ci_lower": -0.01,
+        "avg_return_ci_upper": 0.02,
         "monthly_worst_return": -0.11,
         "avg_mae_r": -0.9,
         "max_margin_exposure": 1.2,
@@ -56,6 +59,8 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert by_check.loc["收益质量", "status"] == "失败"
     assert by_check.loc["胜率边际", "status"] == "失败"
     assert "实际胜率 42.0%，盈亏平衡胜率 50.0%，边际 -8.0%" in by_check.loc["胜率边际", "detail"]
+    assert by_check.loc["正期望概率", "status"] == "失败"
+    assert "正期望概率 42.0%，平均收益95%区间 -1.0% 至 2.0%" in by_check.loc["正期望概率", "detail"]
     assert by_check.loc["退出结构", "status"] == "关注"
     assert "止损 7 笔，占退出 58.3%" in by_check.loc["退出结构", "detail"]
     assert by_check.loc["路径风险", "status"] == "关注"
@@ -121,6 +126,25 @@ def test_experiment_diagnostic_report_flags_thin_positive_win_rate_edge() -> Non
     assert row["status"] == "关注"
     assert row["metric"] == "win_rate_edge"
     assert row["threshold"] == 0.03
+
+
+def test_experiment_diagnostic_report_flags_low_positive_expectancy_probability() -> None:
+    report = experiment_diagnostic_report(
+        {
+            "trade_count": 40.0,
+            "profit_factor": 1.3,
+            "positive_expectancy_probability": 0.68,
+            "avg_return_ci_lower": -0.005,
+            "avg_return_ci_upper": 0.018,
+        }
+    )
+
+    row = report.set_index("check").loc["正期望概率"]
+
+    assert row["status"] == "关注"
+    assert row["metric"] == "positive_expectancy_probability"
+    assert row["threshold"] == 0.75
+    assert "平均收益95%区间 -0.5% 至 1.8%" in row["detail"]
 
 
 def test_case_diagnostic_statistics_preserves_sweep_rank_context() -> None:

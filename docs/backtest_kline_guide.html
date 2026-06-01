@@ -705,7 +705,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing / daily_read_error</code></td></tr>
           <tr><td>最大回撤是哪一段？</td><td><code>drawdown_episodes.csv</code> 和回撤区间明细</td><td><code>start_at / trough_at / recovery_at / depth / recovered</code></td></tr>
           <tr><td>回撤曲线每个低点怎么来的？</td><td><code>drawdown_curve.csv</code></td><td><code>path_net_value / drawdown / point_type</code>，区分不利价格估值和结算净值；水下 K 数、平均回撤和 Ulcer 回撤压力按唯一 K 线口径统计</td></tr>
-          <tr><td>先排查哪个问题？</td><td><code>experiment_diagnostics.csv</code> 和实验诊断摘要</td><td><code>status / check / metric / value / threshold / detail</code>；胜率边际会写出实际胜率、盈亏平衡胜率和边际，订单接受率和策略过滤的 <code>detail</code> 会写出主要拒绝原因、数量和占比，退出结构会写出主要退出原因、数量和占比</td></tr>
+          <tr><td>先排查哪个问题？</td><td><code>experiment_diagnostics.csv</code> 和实验诊断摘要</td><td><code>status / check / metric / value / threshold / detail</code>；胜率边际会写出实际胜率、盈亏平衡胜率和边际，正期望概率会写出概率和平均收益区间，订单接受率和策略过滤的 <code>detail</code> 会写出主要拒绝原因、数量和占比，退出结构会写出主要退出原因、数量和占比</td></tr>
           <tr><td>收益来自哪类持仓路径？</td><td><code>trade_path_distribution.csv</code> 和交易路径分布</td><td><code>dimension / bucket / trade_count / win_rate / avg_return / avg_mae_r / avg_mfe_r</code></td></tr>
           <tr><td>月度是否稳定？</td><td><code>monthly_returns.csv</code> 和 <code>stats.json</code></td><td><code>monthly_win_rate / monthly_worst_return / monthly_max_consecutive_losses</code></td></tr>
         </tbody>
