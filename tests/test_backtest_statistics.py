@@ -677,6 +677,9 @@ def test_summarize_order_decisions_reports_custom_rejection_reasons() -> None:
 
     assert stats["rejected_price_limit_blocked_count"] == 2.0
     assert stats["rejected_daily_open_filtered_count"] == 1.0
+    assert stats["primary_rejected_reason"] == "price_limit_blocked"
+    assert stats["primary_rejected_reason_count"] == 2.0
+    assert stats["primary_rejected_reason_rate"] == pytest.approx(2 / 3)
 
 
 def test_compute_decision_reason_statistics_groups_by_strategy_status_and_reason() -> None:
@@ -772,3 +775,6 @@ def test_summarize_strategy_filter_decisions_reports_custom_rejection_reasons() 
     stats = summarize_strategy_filter_decisions(decisions)
 
     assert stats["strategy_rejected_same_timeframe_middle_count"] == 2.0
+    assert stats["primary_strategy_rejected_reason"] == "same_timeframe_middle"
+    assert stats["primary_strategy_rejected_reason_count"] == 2.0
+    assert stats["primary_strategy_rejected_reason_rate"] == pytest.approx(1.0)

@@ -272,6 +272,12 @@ DISPLAY_COLUMN_LABELS = {
     "actual_risk_pct": "实际止损风险",
     "actual_chase_pct": "追价距离",
     "actual_reward_to_risk": "实际盈亏比",
+    "primary_rejected_reason": "主要拒单原因",
+    "primary_rejected_reason_count": "主要拒单次数",
+    "primary_rejected_reason_rate": "主要拒单占比",
+    "primary_strategy_rejected_reason": "主要策略过滤原因",
+    "primary_strategy_rejected_reason_count": "主要策略过滤次数",
+    "primary_strategy_rejected_reason_rate": "主要策略过滤占比",
     "executed_order_count": "触发成交候选数",
     "accepted_executed_order_count": "最终成交数",
     "avg_accepted_actual_risk_pct": "成交平均止损风险",
@@ -1115,6 +1121,8 @@ def _format_display_value(column: str, value: object, *, stock_names: Mapping[st
         return _stock_name_label(value, stock_names=stock_names)
     if isinstance(value, bool):
         return "是" if value else "否"
+    if column in {"primary_rejected_reason", "primary_strategy_rejected_reason"}:
+        return DISPLAY_VALUE_MAP["reason"].get(str(value), str(value))
     mapped = DISPLAY_VALUE_MAP.get(column, {}).get(str(value))
     if mapped is not None:
         return mapped

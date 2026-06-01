@@ -129,18 +129,66 @@ def _trade_sample_row(stats: Mapping[str, object]) -> dict[str, object]:
 def _order_acceptance_row(stats: Mapping[str, object]) -> dict[str, object]:
     order_count = _number(stats.get("order_count"), default=0.0)
     value = _number(stats.get("acceptance_rate"), default=0.0)
+    primary_detail = _primary_reason_detail(
+        stats,
+        reason_key="primary_rejected_reason",
+        count_key="primary_rejected_reason_count",
+        rate_key="primary_rejected_reason_rate",
+        unit="笔",
+        rate_label="占拒单",
+    )
     if order_count <= 0:
         return _row("交易质量", "订单接受率", "失败", "acceptance_rate", value, 0.2, "没有订单进入撮合层，需要先检查策略是否生成信号。")
     if value < 0.2:
-        return _row("交易质量", "订单接受率", "关注", "acceptance_rate", value, 0.2, "订单接受率偏低，优先查看未成交、追价过远和风控拒绝原因。")
-    return _row("交易质量", "订单接受率", "通过", "acceptance_rate", value, 0.2, "订单接受率处于可复盘范围。")
+        return _row(
+            "交易质量",
+            "订单接受率",
+            "关注",
+            "acceptance_rate",
+            value,
+            0.2,
+            _append_detail("订单接受率偏低，优先查看未成交、追价过远和风控拒绝原因。", primary_detail),
+        )
+    return _row(
+        "交易质量",
+        "订单接受率",
+        "通过",
+        "acceptance_rate",
+        value,
+        0.2,
+        _append_detail("订单接受率处于可复盘范围。", primary_detail),
+    )
 
 
 def _strategy_filter_row(stats: Mapping[str, object]) -> dict[str, object]:
     value = _number(stats.get("strategy_filter_rejection_rate"), default=0.0)
+    primary_detail = _primary_reason_detail(
+        stats,
+        reason_key="primary_strategy_rejected_reason",
+        count_key="primary_strategy_rejected_reason_count",
+        rate_key="primary_strategy_rejected_reason_rate",
+        unit="条",
+        rate_label="占过滤拒绝",
+    )
     if value >= 0.6:
-        return _row("交易质量", "策略过滤", "关注", "strategy_filter_rejection_rate", value, 0.6, "策略层过滤比例较高，需要确认过滤参数是否过严。")
-    return _row("交易质量", "策略过滤", "通过", "strategy_filter_rejection_rate", value, 0.6, "策略层过滤比例未见异常。")
+        return _row(
+            "交易质量",
+            "策略过滤",
+            "关注",
+            "strategy_filter_rejection_rate",
+            value,
+            0.6,
+            _append_detail("策略层过滤比例较高，需要确认过滤参数是否过严。", primary_detail),
+        )
+    return _row(
+        "交易质量",
+        "策略过滤",
+        "通过",
+        "strategy_filter_rejection_rate",
+        value,
+        0.6,
+        _append_detail("策略层过滤比例未见异常。", primary_detail),
+    )
 
 
 def _drawdown_pressure_row(stats: Mapping[str, object]) -> dict[str, object]:
@@ -237,3 +285,30 @@ def _round_float(value: float) -> float:
     if math.isinf(value):
         return value
     return float(round(float(value), 12))
+
+
+def _primary_reason_detail(
+    stats: Mapping[str, object],
+    *,
+    reason_key: str,
+    count_key: str,
+    rate_key: str,
+    unit: str,
+    rate_label: str,
+) -> str:
+    reason = str(stats.get(reason_key) or "").strip()
+    count = _number(stats.get(count_key), default=0.0) or 0.0
+    rate = _number(stats.get(rate_key), default=0.0) or 0.0
+    if not reason or count <= 0:
+        return ""
+    return f"主要原因：{reason} {_format_count(count)} {unit}，{rate_label} {rate:.1%}。"
+
+
+def _append_detail(base: str, extra: str) -> str:
+    return f"{base}{extra}" if extra else base
+
+
+def _format_count(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return str(_round_float(value))

@@ -58,7 +58,7 @@ def compute_decision_reason_statistics(
     return grouped[columns]
 
 
-def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]:
+def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, object]:
     """汇总订单接受和拒绝原因；用于解释信号为什么没有变成成交。"""
     keys = [
         "order_count",
@@ -66,6 +66,9 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
         "rejected_order_count",
         "acceptance_rate",
         "rejection_rate",
+        "primary_rejected_reason",
+        "primary_rejected_reason_count",
+        "primary_rejected_reason_rate",
         "rejected_no_fill_count",
         "rejected_no_liquidity_count",
         "rejected_no_bars_count",
@@ -100,7 +103,7 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
         "min_executed_actual_reward_to_risk",
     ]
     if order_decisions.empty or "status" not in order_decisions.columns:
-        return {key: 0.0 for key in keys}
+        return _empty_summary(keys, text_keys={"primary_rejected_reason"})
 
     status = order_decisions["status"].astype(str)
     reason = order_decisions["reason"].astype(str) if "reason" in order_decisions.columns else _empty_reason_series(order_decisions)
@@ -117,6 +120,13 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
         "rejected_order_count": rejected_count,
         "acceptance_rate": _ratio_or_zero(accepted_count, order_count),
         "rejection_rate": _ratio_or_zero(rejected_count, order_count),
+        **_primary_rejected_reason_fields(
+            reason,
+            rejected,
+            reason_key="primary_rejected_reason",
+            count_key="primary_rejected_reason_count",
+            rate_key="primary_rejected_reason_rate",
+        ),
         "rejected_no_fill_count": float((rejected & reason.eq("no_fill")).sum()),
         "rejected_no_liquidity_count": float((rejected & reason.eq("no_liquidity")).sum()),
         "rejected_no_bars_count": float((rejected & reason.eq("no_bars")).sum()),
@@ -154,7 +164,7 @@ def summarize_order_decisions(order_decisions: pd.DataFrame) -> dict[str, float]
     return result
 
 
-def summarize_strategy_filter_decisions(filter_decisions: pd.DataFrame) -> dict[str, float]:
+def summarize_strategy_filter_decisions(filter_decisions: pd.DataFrame) -> dict[str, object]:
     """汇总策略层过滤结果；用于解释信号为什么没有进入撮合层。"""
     keys = [
         "strategy_signal_count",
@@ -162,6 +172,9 @@ def summarize_strategy_filter_decisions(filter_decisions: pd.DataFrame) -> dict[
         "strategy_rejected_signal_count",
         "strategy_filter_acceptance_rate",
         "strategy_filter_rejection_rate",
+        "primary_strategy_rejected_reason",
+        "primary_strategy_rejected_reason_count",
+        "primary_strategy_rejected_reason_rate",
         "strategy_rejected_higher_timeframe_mismatch_count",
         "strategy_rejected_higher_timeframe_no_context_count",
         "strategy_rejected_higher_timeframe_stale_count",
@@ -169,7 +182,7 @@ def summarize_strategy_filter_decisions(filter_decisions: pd.DataFrame) -> dict[
         "strategy_rejected_signal_bar_no_liquidity_count",
     ]
     if filter_decisions.empty or "status" not in filter_decisions.columns:
-        return {key: 0.0 for key in keys}
+        return _empty_summary(keys, text_keys={"primary_strategy_rejected_reason"})
 
     status = filter_decisions["status"].astype(str)
     reason = filter_decisions["reason"].astype(str) if "reason" in filter_decisions.columns else _empty_reason_series(filter_decisions)
@@ -184,6 +197,13 @@ def summarize_strategy_filter_decisions(filter_decisions: pd.DataFrame) -> dict[
         "strategy_rejected_signal_count": rejected_count,
         "strategy_filter_acceptance_rate": _ratio_or_zero(accepted_count, signal_count),
         "strategy_filter_rejection_rate": _ratio_or_zero(rejected_count, signal_count),
+        **_primary_rejected_reason_fields(
+            reason,
+            rejected,
+            reason_key="primary_strategy_rejected_reason",
+            count_key="primary_strategy_rejected_reason_count",
+            rate_key="primary_strategy_rejected_reason_rate",
+        ),
         "strategy_rejected_higher_timeframe_mismatch_count": float((rejected & reason.eq("higher_timeframe_mismatch")).sum()),
         "strategy_rejected_higher_timeframe_no_context_count": float((rejected & reason.eq("higher_timeframe_no_context")).sum()),
         "strategy_rejected_higher_timeframe_stale_count": float((rejected & reason.eq("higher_timeframe_stale")).sum()),
@@ -253,6 +273,33 @@ def _rejected_reason_counts(reason: pd.Series, rejected: pd.Series, *, prefix: s
         for reason_value, count in counts.items()
         if _metric_safe_reason(str(reason_value))
     }
+
+
+def _primary_rejected_reason_fields(
+    reason: pd.Series,
+    rejected: pd.Series,
+    *,
+    reason_key: str,
+    count_key: str,
+    rate_key: str,
+) -> dict[str, object]:
+    rejected_reasons = reason.loc[rejected].fillna("").astype(str)
+    rejected_reasons = rejected_reasons.loc[rejected_reasons.ne("")]
+    if rejected_reasons.empty:
+        return {reason_key: "", count_key: 0.0, rate_key: 0.0}
+    counts = rejected_reasons.value_counts(sort=True)
+    primary_reason = str(counts.index[0])
+    primary_count = float(counts.iloc[0])
+    return {
+        reason_key: primary_reason,
+        count_key: primary_count,
+        rate_key: _ratio_or_zero(primary_count, float(len(rejected_reasons))),
+    }
+
+
+def _empty_summary(keys: list[str], *, text_keys: set[str] | None = None) -> dict[str, object]:
+    text_keys = text_keys or set()
+    return {key: "" if key in text_keys else 0.0 for key in keys}
 
 
 def _metric_safe_reason(reason: str) -> str:

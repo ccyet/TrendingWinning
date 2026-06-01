@@ -16,7 +16,13 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
         "trade_count": 12.0,
         "order_count": 60.0,
         "acceptance_rate": 0.18,
+        "primary_rejected_reason": "actual_risk_too_high",
+        "primary_rejected_reason_count": 24.0,
+        "primary_rejected_reason_rate": 0.5,
         "strategy_filter_rejection_rate": 0.72,
+        "primary_strategy_rejected_reason": "terminal_false_breakout_risk",
+        "primary_strategy_rejected_reason_count": 18.0,
+        "primary_strategy_rejected_reason_rate": 0.42,
         "max_drawdown": -0.24,
         "profit_factor": 0.9,
         "monthly_worst_return": -0.11,
@@ -33,7 +39,9 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert by_check.loc["数据覆盖", "status"] == "失败"
     assert by_check.loc["交易样本", "status"] == "关注"
     assert by_check.loc["订单接受率", "status"] == "关注"
+    assert "actual_risk_too_high 24 笔，占拒单 50.0%" in by_check.loc["订单接受率", "detail"]
     assert by_check.loc["策略过滤", "status"] == "关注"
+    assert "terminal_false_breakout_risk 18 条，占过滤拒绝 42.0%" in by_check.loc["策略过滤", "detail"]
     assert by_check.loc["回撤压力", "status"] == "关注"
     assert by_check.loc["收益质量", "status"] == "失败"
     assert by_check.loc["路径风险", "status"] == "关注"

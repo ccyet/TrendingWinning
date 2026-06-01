@@ -907,6 +907,10 @@ def test_streamlit_localizes_terminal_false_breakout_filter_reason() -> None:
         streamlit_app.DISPLAY_VALUE_MAP["reason"]["terminal_false_breakout_risk"]
         == "末端假突破风险"
     )
+    assert _format_display_value("primary_rejected_reason", "actual_risk_too_high") == "止损风险过大"
+    assert _format_display_value("primary_strategy_rejected_reason", "terminal_false_breakout_risk") == "末端假突破风险"
+    assert streamlit_app.DISPLAY_COLUMN_LABELS["primary_rejected_reason"] == "主要拒单原因"
+    assert streamlit_app.DISPLAY_COLUMN_LABELS["primary_strategy_rejected_reason"] == "主要策略过滤原因"
     assert (
         streamlit_app.DISPLAY_VALUE_MAP["filter_name"]["terminal_false_breakout_filter"]
         == "末端假突破过滤"
@@ -1348,6 +1352,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "策略K线运行区间" in html
     assert "先看策略K线运行区间" in html
     assert "avg_accepted_actual_risk_pct" in html
+    assert "primary_rejected_reason" in html
+    assert "主要拒绝原因、数量和占比" in html
     assert "最终成交订单" in html
     assert "参数遍历成交质量" in html
     assert "risk_adjusted_score" in html
@@ -1374,6 +1380,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "盈利通道回撤止盈" in readme
     assert "strategy_space.csv" in readme
     assert "avg_accepted_actual_risk_pct" in readme
+    assert "primary_rejected_reason" in readme
+    assert "primary_strategy_rejected_reason" in readme
     assert "参数遍历成交质量" in readme
     assert "识别模块绩效" in readme
     assert "订单决策统计" in readme
@@ -1420,6 +1428,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "核心绩效概览" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html
+    assert "主要拒绝原因、数量和占比" in html
     assert "回撤曲线" in html
     assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html
