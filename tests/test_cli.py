@@ -146,6 +146,42 @@ def test_cli_tdx_doctor_auto_runtime_on_macos_routes_to_parallels(monkeypatch, c
     assert r"C:\new_tdx64\PYPlugins\user" in forwarded
 
 
+def test_cli_show_artifacts_prints_saved_manifest_table(tmp_path: Path, monkeypatch, capsys) -> None:
+    output_dir = tmp_path / "run-001"
+    output_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "file_name": "strategy_space.csv",
+                "category": "运行前复核",
+                "priority": 1,
+                "question": "本次到底启用了哪些策略边界？",
+                "description": "列出样本、形态、触发、过滤、退出、仓位、统计和失效空间。",
+            },
+            {
+                "file_name": "data_gap_episodes.csv",
+                "category": "数据质量",
+                "priority": 1,
+                "question": "哪段 K 线连续缺失？",
+                "description": "逐段列出每段连续缺失 K 线。",
+            },
+        ]
+    ).to_csv(output_dir / "artifact_manifest.csv", index=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["trending-winning", "show-artifacts", "--output-dir", str(output_dir)],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "strategy_space.csv" in out
+    assert "运行前复核" in out
+    assert "本次到底启用了哪些策略边界" in out
+    assert str(output_dir / "strategy_space.csv") in out
+
+
 def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

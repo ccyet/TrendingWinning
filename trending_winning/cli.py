@@ -62,6 +62,32 @@ def _print_saved_artifact_manifest(output_dir: str | Path) -> None:
     print(f"artifact_manifest.csv saved: {path}")
 
 
+def _artifact_manifest_table(output_dir: str | Path) -> pd.DataFrame:
+    output_path = Path(output_dir).expanduser()
+    manifest_path = output_path / "artifact_manifest.csv"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"未找到产物索引：{manifest_path}")
+    manifest = pd.read_csv(manifest_path)
+    required = ["file_name", "category", "priority", "question", "description"]
+    missing = [column for column in required if column not in manifest.columns]
+    if missing:
+        raise ValueError(f"artifact_manifest.csv 缺少字段：{', '.join(missing)}")
+    table = manifest.loc[:, required].copy()
+    table["priority"] = pd.to_numeric(table["priority"], errors="coerce").fillna(99).astype(int)
+    table = table.sort_values(["priority", "category", "file_name"], kind="stable").reset_index(drop=True)
+    table["path"] = [str(output_path / str(file_name)) for file_name in table["file_name"]]
+    return table.rename(
+        columns={
+            "file_name": "文件",
+            "category": "类别",
+            "priority": "优先级",
+            "question": "先回答的问题",
+            "description": "说明",
+            "path": "本机路径",
+        }
+    )
+
+
 def _add_side_mode_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--side-mode",
@@ -310,6 +336,9 @@ def main() -> None:
     inventory_parser.add_argument("--adjust", default="qfq")
     inventory_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
 
+    artifacts_parser = subparsers.add_parser("show-artifacts", help="print a saved run artifact_manifest.csv")
+    artifacts_parser.add_argument("--output-dir", required=True)
+
     scan_parser = subparsers.add_parser("backtest", help="scan local bars and run a breakout backtest")
     scan_parser.add_argument("--symbols", required=True)
     scan_parser.add_argument("--timeframe", required=True, choices=["5m", "15m", "30m", "60m"])
@@ -551,6 +580,10 @@ def main() -> None:
     replay_parser.add_argument("--output-dir", default="")
 
     args = parser.parse_args()
+
+    if args.command == "show-artifacts":
+        print(_artifact_manifest_table(args.output_dir).to_string(index=False))
+        return
 
     if args.command == "replay-case":
         config = load_sweep_case_config(
