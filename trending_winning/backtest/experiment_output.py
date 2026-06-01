@@ -1175,6 +1175,7 @@ def _sweep_report_html(
         ["sweep_rank", "case_name", "check", "status", "metric", "value", "threshold", "detail"],
         max_rows=12,
     )
+    sweep_space_panel = _sweep_space_panel(result.table)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1198,6 +1199,21 @@ def _sweep_report_html(
     .metric b {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
     .metric span {{ font-size:22px; font-weight:760; }}
     .metric small {{ display:block; margin-top:6px; color:var(--muted); font-size:12px; }}
+    .sweep-space-grid {{ display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:14px; }}
+    .sweep-card {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .sweep-card strong {{ display:block; margin-bottom:4px; color:#24364d; }}
+    .sweep-card p {{ margin:0 0 10px; color:var(--muted); font-size:13px; }}
+    .sweep-chart {{ display:block; width:100%; height:auto; }}
+    .sweep-axis {{ stroke:#d8e1eb; stroke-width:1; }}
+    .sweep-zero {{ stroke:#7b8794; stroke-width:1; stroke-dasharray:5 5; }}
+    .sweep-dot {{ fill:#1769aa; opacity:.88; }}
+    .sweep-dot-pareto {{ fill:#0f7a55; stroke:#064e3b; stroke-width:2; opacity:.95; }}
+    .sweep-label {{ fill:#5f6f84; font-size:12px; }}
+    .risk-row {{ display:grid; grid-template-columns:minmax(120px,1fr) 96px; gap:10px; align-items:center; margin:9px 0; }}
+    .risk-bar {{ height:9px; border-radius:999px; background:#e8eef6; overflow:hidden; }}
+    .risk-fill {{ display:block; height:100%; border-radius:999px; background:#1769aa; }}
+    .risk-name {{ color:#24364d; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    .risk-score {{ color:var(--muted); font-size:12px; text-align:right; }}
     .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
     .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
     .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; color:var(--blue); text-decoration:none; }}
@@ -1207,13 +1223,14 @@ def _sweep_report_html(
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}
-    @media (max-width: 920px) {{ .metrics,.two-col {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+    @media (max-width: 920px) {{ .metrics,.two-col,.sweep-space-grid {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
   </style>
 </head>
 <body>
 <header><div class="wrap"><h1>{escape(title)} 参数遍历总览</h1><p class="lead">{escape(_sweep_scope_text(result))}</p></div></header>
 <main class="wrap">
   <section><h2>参数遍历总览</h2><div class="metrics">{metric_cards}</div></section>
+  <section><h2>参数空间图谱</h2><p class="section-note">先看参数组在收益、回撤和风险质量上的分布，再进入候选表格。</p>{sweep_space_panel}</section>
   <section><h2>最优参数组</h2><p class="section-note">按 sweep_rank 排序，先看收益、回撤、交易数和诊断主问题。</p>{top_cases}</section>
   <section><h2>风险质量候选</h2><p class="section-note">按 risk_adjusted_rank 排序，优先找收益、回撤、样本量更均衡的参数组。</p>{risk_cases}</section>
   <section><h2>Pareto候选</h2>{pareto_cases}</section>
@@ -1233,6 +1250,113 @@ def _sweep_scope_text(result: PortfolioSweepResult | SingleStrategySweepResult) 
     if not fields:
         fields = "无参数字段"
     return f"{config.timeframe} | {config.start} 至 {config.end} | 参数：{fields}"
+
+
+def _sweep_space_panel(table: pd.DataFrame) -> str:
+    if table.empty or not {"total_return", "max_drawdown"}.issubset(table.columns):
+        return '<p class="empty">暂无参数空间图谱。</p>'
+    scatter = _sweep_scatter_svg(table)
+    bars = _sweep_risk_quality_bars(table)
+    return (
+        '<div class="sweep-space-grid">'
+        '<div class="sweep-card"><strong>收益-回撤散点</strong>'
+        '<p>横轴是总收益，纵轴是最大回撤；绿色点为 Pareto 候选。</p>'
+        f"{scatter}</div>"
+        '<div class="sweep-card"><strong>风险质量条</strong>'
+        '<p>按风险质量评分排序，优先观察收益和回撤更均衡的参数组。</p>'
+        f"{bars}</div>"
+        "</div>"
+    )
+
+
+def _sweep_scatter_svg(table: pd.DataFrame) -> str:
+    data = table.copy()
+    data["_total_return"] = pd.to_numeric(data["total_return"], errors="coerce")
+    data["_max_drawdown"] = pd.to_numeric(data["max_drawdown"], errors="coerce")
+    data["_risk_score"] = pd.to_numeric(data.get("risk_adjusted_score", pd.Series(0.0, index=data.index)), errors="coerce").fillna(0.0)
+    data = data.loc[data["_total_return"].notna() & data["_max_drawdown"].notna()].reset_index(drop=True)
+    if data.empty:
+        return '<p class="empty">暂无有效参数点。</p>'
+
+    width = 680.0
+    height = 260.0
+    pad_left = 54.0
+    pad_right = 22.0
+    pad_top = 20.0
+    pad_bottom = 42.0
+    x_min = float(min(data["_total_return"].min(), 0.0))
+    x_max = float(max(data["_total_return"].max(), 0.0))
+    y_min = float(min(data["_max_drawdown"].min(), 0.0))
+    y_max = float(max(data["_max_drawdown"].max(), 0.0))
+    if abs(x_max - x_min) < 1e-12:
+        x_min -= 0.01
+        x_max += 0.01
+    if abs(y_max - y_min) < 1e-12:
+        y_min -= 0.01
+        y_max += 0.01
+
+    def x_at(value: float) -> float:
+        return pad_left + (value - x_min) / (x_max - x_min) * (width - pad_left - pad_right)
+
+    def y_at(value: float) -> float:
+        return pad_top + (y_max - value) / (y_max - y_min) * (height - pad_top - pad_bottom)
+
+    x_zero = x_at(0.0)
+    y_zero = y_at(0.0)
+    score_min = float(data["_risk_score"].min())
+    score_span = float(data["_risk_score"].max() - score_min)
+    dots: list[str] = []
+    for row in data.to_dict("records"):
+        risk = float(row["_risk_score"])
+        radius = 5.0 if score_span <= 0 else 5.0 + (risk - score_min) / score_span * 5.0
+        is_pareto = bool(row.get("is_pareto_efficient", False))
+        css_class = "sweep-dot-pareto" if is_pareto else "sweep-dot"
+        label = str(row.get("case_name", "参数组"))
+        x = x_at(float(row["_total_return"]))
+        y = y_at(float(row["_max_drawdown"]))
+        dots.append(
+            f'<circle class="{css_class}" cx="{x:.2f}" cy="{y:.2f}" r="{radius:.2f}">'
+            f"<title>{escape(label)} | 收益 {_format_report_value('total_return', row['_total_return'])} | "
+            f"回撤 {_format_report_value('max_drawdown', row['_max_drawdown'])}</title></circle>"
+        )
+
+    return (
+        f'<svg class="sweep-chart" viewBox="0 0 {int(width)} {int(height)}" role="img" '
+        'aria-label="参数收益回撤散点图">'
+        f'<line class="sweep-axis" x1="{pad_left:.2f}" y1="{pad_top:.2f}" x2="{pad_left:.2f}" y2="{height - pad_bottom:.2f}" />'
+        f'<line class="sweep-axis" x1="{pad_left:.2f}" y1="{height - pad_bottom:.2f}" x2="{width - pad_right:.2f}" y2="{height - pad_bottom:.2f}" />'
+        f'<line class="sweep-zero" x1="{x_zero:.2f}" y1="{pad_top:.2f}" x2="{x_zero:.2f}" y2="{height - pad_bottom:.2f}" />'
+        f'<line class="sweep-zero" x1="{pad_left:.2f}" y1="{y_zero:.2f}" x2="{width - pad_right:.2f}" y2="{y_zero:.2f}" />'
+        f'{"".join(dots)}'
+        f'<text class="sweep-label" x="{pad_left:.2f}" y="{height - 10:.2f}">收益 {_format_report_value("total_return", x_min)}</text>'
+        f'<text class="sweep-label" x="{width - 150:.2f}" y="{height - 10:.2f}">收益 {_format_report_value("total_return", x_max)}</text>'
+        f'<text class="sweep-label" x="8" y="{pad_top + 4:.2f}">回撤 {_format_report_value("max_drawdown", y_max)}</text>'
+        f'<text class="sweep-label" x="8" y="{height - pad_bottom + 4:.2f}">回撤 {_format_report_value("max_drawdown", y_min)}</text>'
+        "</svg>"
+    )
+
+
+def _sweep_risk_quality_bars(table: pd.DataFrame) -> str:
+    if "risk_adjusted_score" not in table.columns:
+        return '<p class="empty">暂无风险质量评分。</p>'
+    data = table.copy()
+    data["_risk_score"] = pd.to_numeric(data["risk_adjusted_score"], errors="coerce")
+    data = data.loc[data["_risk_score"].notna()].sort_values(["_risk_score"], ascending=False, kind="mergesort").head(6)
+    if data.empty:
+        return '<p class="empty">暂无有效风险质量评分。</p>'
+    max_score = max(float(data["_risk_score"].max()), 1.0)
+    rows: list[str] = []
+    for row in data.to_dict("records"):
+        name = str(row.get("case_name", "参数组"))
+        score = float(row["_risk_score"])
+        width = max(2.0, min(100.0, score / max_score * 100.0))
+        rows.append(
+            '<div class="risk-row">'
+            f'<div><div class="risk-name">{escape(name)}</div><div class="risk-bar"><i class="risk-fill" style="width:{width:.2f}%"></i></div></div>'
+            f'<div class="risk-score">{escape(_format_report_value("risk_adjusted_score", score))}</div>'
+            "</div>"
+        )
+    return "".join(rows)
 
 
 def _sweep_evidence_file_panel() -> str:

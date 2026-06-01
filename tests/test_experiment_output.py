@@ -157,6 +157,11 @@ def test_save_single_strategy_sweep_writes_html_overview_report(tmp_path) -> Non
     assert "参数影响" in html
     assert "诊断概览" in html
     assert "重点产物" in html
+    assert "参数空间图谱" in html
+    assert "收益-回撤散点" in html
+    assert "风险质量条" in html
+    assert 'class="sweep-chart"' in html
+    assert 'aria-label="参数收益回撤散点图"' in html
     assert 'class="report-table"' in html
     assert "text-align:center" in html
     assert "<th>参数组</th>" in html
