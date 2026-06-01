@@ -593,8 +593,19 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
                 "win_rate": 0.58,
                 "total_return": 0.08,
                 "max_drawdown": -0.05,
+                "current_drawdown": -0.02,
+                "ulcer_index": 0.018,
                 "profit_factor": float("inf"),
                 "acceptance_rate": 0.55,
+                "strategy_filter_rejection_rate": 0.18,
+                "primary_rejected_reason": "not_triggered",
+                "primary_rejected_reason_count": 5.0,
+                "primary_rejected_reason_rate": 0.42,
+                "primary_strategy_rejected_reason": "terminal_false_breakout_risk",
+                "primary_strategy_rejected_reason_count": 2.0,
+                "primary_strategy_rejected_reason_rate": 0.18,
+                "exposure_bar_ratio": 0.36,
+                "avg_cash_ratio": 0.64,
             },
         ),
         input_bar_count=100,
@@ -604,7 +615,14 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
         strategy_stats=pd.DataFrame(),
         symbol_stats=pd.DataFrame(),
         side_stats=pd.DataFrame(),
-        exit_reason_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(
+            {
+                "exit_reason": ["take_profit", "stop_loss"],
+                "trade_count": [7.0, 5.0],
+                "win_rate": [1.0, 0.0],
+                "total_return": [0.16, -0.08],
+            }
+        ),
         monthly_returns=pd.DataFrame(),
     )
 
@@ -615,9 +633,18 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "single-html-report" in html
     assert "核心绩效" in html
     assert "诊断处理顺序" in html
+    assert "复盘路径" in html
+    assert "风险画像" in html
+    assert "订单漏斗" in html
+    assert "退出结构" in html
+    assert "重点证据文件" in html
     assert "产物索引" in html
     assert "总收益" in html
     assert "8.00%" in html
+    assert "36.00%" in html
+    assert "not_triggered" in html
+    assert "terminal_false_breakout_risk" in html
+    assert "take_profit" in html
     assert "∞" in html
     assert "experiment_diagnostics.csv" in html
     manifest = pd.read_csv(output_dir / "artifact_manifest.csv").set_index("file_name")

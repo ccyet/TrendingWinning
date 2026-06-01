@@ -410,6 +410,24 @@ def _experiment_report_html(
             ("订单接受率", "acceptance_rate"),
         )
     )
+    risk_cards = "".join(
+        _metric_card(label, stats.get(key), key, note)
+        for label, key, note in (
+            ("当前回撤", "current_drawdown", "最新净值相对历史高点的回撤。"),
+            ("回撤压力", "ulcer_index", "净值水下时间和深度的综合压力。"),
+            ("场内时间", "exposure_bar_ratio", "持仓 K 数占样本 K 数的比例。"),
+            ("平均现金", "avg_cash_ratio", "组合层平均未使用现金比例。"),
+        )
+    )
+    order_cards = "".join(
+        _metric_card(label, stats.get(key), key, note)
+        for label, key, note in (
+            ("订单总数", "order_count", "进入撮合层的候选订单。"),
+            ("成交交易", "trade_count", "真实进入持仓并完成退出的交易。"),
+            ("订单接受率", "acceptance_rate", "撮合和风控后真正开仓的比例。"),
+            ("策略过滤率", "strategy_filter_rejection_rate", "策略层提前拒绝开仓的比例。"),
+        )
+    )
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -424,25 +442,45 @@ def _experiment_report_html(
     header {{ padding:34px 0 24px; background:#fff; border-bottom:1px solid var(--line); }}
     h1 {{ margin:0 0 8px; font-size:34px; line-height:1.18; letter-spacing:0; }}
     .lead {{ margin:0; color:var(--muted); }}
+    .status-strip {{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }}
+    .status-badge {{ padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:#f8fafc; color:#24364d; font-size:13px; font-weight:700; }}
+    .status-fail {{ color:var(--red); background:#fff7f6; border-color:#f2c8c3; }}
+    .status-watch {{ color:#a15c00; background:#fff8eb; border-color:#efd2a5; }}
+    .status-pass {{ color:var(--green); background:#f0faf5; border-color:#b9e5cc; }}
     main {{ padding:22px 0 52px; }}
     section {{ margin-top:18px; padding:22px; border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); }}
     h2 {{ margin:0 0 12px; font-size:22px; }}
+    .section-note {{ margin:0 0 14px; color:var(--muted); font-size:14px; }}
     .metrics {{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; }}
     .metric {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
     .metric b {{ display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }}
     .metric span {{ font-size:22px; font-weight:760; }}
+    .metric small {{ display:block; margin-top:6px; color:var(--muted); font-size:12px; }}
+    .review-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
+    .review-card {{ padding:14px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .review-card strong {{ display:block; margin-bottom:6px; color:#24364d; }}
+    .review-card p {{ margin:6px 0; color:var(--muted); font-size:13px; }}
+    .review-card em {{ display:inline-block; margin-bottom:6px; color:var(--blue); font-style:normal; font-weight:700; font-size:12px; }}
+    .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
+    .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
+    .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; }}
     table {{ width:100%; border-collapse:collapse; font-size:14px; }}
     th,td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}
-    @media (max-width: 920px) {{ .metrics {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+    @media (max-width: 920px) {{ .metrics,.review-grid,.two-col {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
   </style>
 </head>
 <body>
-<header><div class="wrap"><h1>{escape(title)} 回测总览</h1><p class="lead">{escape(_experiment_scope_text(result))}</p></div></header>
+<header><div class="wrap"><h1>{escape(title)} 回测总览</h1><p class="lead">{escape(_experiment_scope_text(result))}</p>{_diagnostic_status_badges(diagnostics)}</div></header>
 <main class="wrap">
   <section><h2>核心绩效</h2><div class="metrics">{metric_cards}</div></section>
+  <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
+  <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
+  <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div><div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
+  <section><h2>退出结构</h2>{_compact_report_table(result.exit_reason_stats, ["exit_reason", "trade_count", "win_rate", "total_return"])}</section>
+  <section><h2>重点证据文件</h2>{_evidence_file_panel(action_plan)}</section>
   <section><h2>诊断处理顺序</h2>{_html_table(action_plan, link_files=True)}</section>
   <section><h2>实验诊断摘要</h2>{_html_table(diagnostics)}</section>
   <section><h2>产物索引</h2>{_html_table(manifest, link_files=True)}</section>
@@ -460,8 +498,91 @@ def _experiment_scope_text(result: SingleStrategyExperimentResult | PortfolioExp
     return f"{config.timeframe} | {config.start} 至 {config.end} | {symbols}"
 
 
-def _metric_card(label: str, value: object, key: str) -> str:
-    return f'<div class="metric"><b>{escape(label)}</b><span>{escape(_format_report_value(key, value))}</span></div>'
+def _metric_card(label: str, value: object, key: str, note: str = "") -> str:
+    note_html = f"<small>{escape(note)}</small>" if note else ""
+    return (
+        f'<div class="metric"><b>{escape(label)}</b><span>{escape(_format_report_value(key, value))}</span>'
+        f"{note_html}</div>"
+    )
+
+
+def _diagnostic_status_badges(diagnostics: pd.DataFrame) -> str:
+    if diagnostics.empty or "status" not in diagnostics.columns:
+        return ""
+    status = diagnostics["status"].fillna("").astype(str)
+    failed = int(status.eq("失败").sum())
+    attention = int(status.eq("关注").sum())
+    passed = int(status.eq("通过").sum())
+    return (
+        '<div class="status-strip">'
+        f'<span class="status-badge status-fail">失败 {failed}</span>'
+        f'<span class="status-badge status-watch">关注 {attention}</span>'
+        f'<span class="status-badge status-pass">通过 {passed}</span>'
+        "</div>"
+    )
+
+
+def _review_path_cards(action_plan: pd.DataFrame) -> str:
+    if action_plan.empty:
+        return '<p class="empty">暂无优先问题，先查看核心绩效和产物索引。</p>'
+    cards: list[str] = []
+    for row in action_plan.head(3).to_dict("records"):
+        priority = escape(str(row.get("priority", "")))
+        status = escape(str(row.get("status", "")))
+        check = escape(str(row.get("check", "")))
+        action = escape(str(row.get("action", "")))
+        detail = escape(str(row.get("detail", "")))
+        evidence = _evidence_links(row.get("evidence_file", ""))
+        cards.append(
+            '<div class="review-card">'
+            f"<em>优先 {priority} · {status}</em>"
+            f"<strong>{check}</strong>"
+            f"<p>{action}</p>"
+            f"<p>{detail}</p>"
+            f"<p>{evidence}</p>"
+            "</div>"
+        )
+    return f'<div class="review-grid">{"".join(cards)}</div>'
+
+
+def _reason_panel(
+    title: str,
+    stats: Mapping[str, object],
+    reason_key: str,
+    count_key: str,
+    rate_key: str,
+) -> str:
+    reason = str(stats.get(reason_key) or "暂无")
+    count = _format_report_value(count_key, stats.get(count_key))
+    rate = _format_report_value(rate_key, stats.get(rate_key))
+    return (
+        '<div class="review-card">'
+        f"<strong>{escape(title)}</strong>"
+        f"<p>{escape(reason)}</p>"
+        f"<p>数量 {escape(count)} · 占比 {escape(rate)}</p>"
+        "</div>"
+    )
+
+
+def _compact_report_table(frame: pd.DataFrame, preferred_columns: list[str], *, max_rows: int = 6) -> str:
+    if frame.empty:
+        return '<p class="empty">暂无分组统计。</p>'
+    columns = [column for column in preferred_columns if column in frame.columns]
+    if not columns:
+        columns = list(frame.columns[:4])
+    return _html_table(frame.loc[:, columns].head(max_rows))
+
+
+def _evidence_file_panel(action_plan: pd.DataFrame) -> str:
+    files: list[str] = []
+    if not action_plan.empty and "evidence_file" in action_plan.columns:
+        for value in action_plan["evidence_file"].head(5):
+            files.extend(item.strip() for item in str(value).split(";") if item.strip())
+    if not files:
+        files = ["experiment_diagnostics.csv", "artifact_manifest.csv", "stats.json"]
+    unique_files = list(dict.fromkeys(files))
+    links = "".join(_file_link(file_name) for file_name in unique_files[:8])
+    return f'<div class="evidence-list">{links}</div>'
 
 
 def _html_table(frame: pd.DataFrame, *, link_files: bool = False) -> str:
@@ -507,6 +628,8 @@ def _format_report_value(key: str, value: object) -> str:
         return "∞" if numeric > 0 else "-∞"
     if (
         key.endswith("_rate")
+        or key.endswith("_ratio")
+        or key.endswith("_pct")
         or key.endswith("_return")
         or key.endswith("_drawdown")
         or key in {"win_rate", "max_drawdown"}
