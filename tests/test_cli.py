@@ -321,8 +321,10 @@ def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, 
     assert "gross_exposure" in out
     assert "open_positions" in out
     assert "artifact_manifest.csv saved:" in out
+    assert "experiment_report.html saved:" in out
     assert (tmp_path / "cli-run" / "config.json").exists()
     assert (tmp_path / "cli-run" / "artifact_manifest.csv").exists()
+    assert (tmp_path / "cli-run" / "experiment_report.html").exists()
     assert (tmp_path / "cli-run" / "strategy_space.csv").exists()
     assert (tmp_path / "cli-run" / "equity_curve.csv").exists()
     assert (tmp_path / "cli-run" / "drawdown_curve.csv").exists()
@@ -954,8 +956,10 @@ def test_cli_single_strategy_backtest_saves_without_portfolio_outputs(tmp_path: 
     out = capsys.readouterr().out
     assert "trade_count" in out
     assert "artifact_manifest.csv saved:" in out
+    assert "experiment_report.html saved:" in out
     assert (output_dir / "config.json").exists()
     assert (output_dir / "artifact_manifest.csv").exists()
+    assert (output_dir / "experiment_report.html").exists()
     assert (output_dir / "strategy_space.csv").exists()
     assert (output_dir / "trades.csv").exists()
     assert (output_dir / "order_decisions.csv").exists()
@@ -1079,6 +1083,7 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
 
     out = capsys.readouterr().out
     assert "artifact_manifest.csv saved:" in out
+    assert "sweep_report.html saved:" in out
     assert "sweep.csv" in out
     assert "pareto.csv" in out
     assert "parameter_summary.csv" in out
@@ -1086,6 +1091,7 @@ def test_cli_portfolio_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, 
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")
     assert (output_dir / "artifact_manifest.csv").exists()
+    assert (output_dir / "sweep_report.html").exists()
     saved_summary = json.loads((output_dir / "summary.json").read_text())
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 4
@@ -1165,6 +1171,7 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "artifact_manifest.csv saved:" in out
+    assert "sweep_report.html saved:" in out
     assert "sweep.csv" in out
     assert "pareto.csv" in out
     assert "parameter_summary.csv" in out
@@ -1172,6 +1179,7 @@ def test_cli_single_sweep_saves_parameter_table(tmp_path: Path, monkeypatch, cap
     assert "case_configs.jsonl" in out
     saved = pd.read_csv(output_dir / "sweep.csv")
     assert (output_dir / "artifact_manifest.csv").exists()
+    assert (output_dir / "sweep_report.html").exists()
     saved_summary = json.loads((output_dir / "summary.json").read_text())
     saved_config = json.loads((output_dir / "config.json").read_text())
     assert len(saved) == 8

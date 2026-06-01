@@ -62,6 +62,26 @@ def _print_saved_artifact_manifest(output_dir: str | Path) -> None:
     print(f"artifact_manifest.csv saved: {path}")
 
 
+def _print_saved_html_reports(output_dir: str | Path) -> None:
+    output_path = Path(output_dir).expanduser()
+    report_names: list[str] = []
+    manifest_path = output_path / "artifact_manifest.csv"
+    if manifest_path.exists():
+        manifest = pd.read_csv(manifest_path)
+        if "file_name" in manifest.columns:
+            report_names = [
+                str(file_name)
+                for file_name in manifest["file_name"].fillna("").astype(str)
+                if str(file_name).endswith("_report.html")
+            ]
+    if not report_names:
+        report_names = ["experiment_report.html", "sweep_report.html"]
+    for report_name in dict.fromkeys(report_names):
+        report_path = output_path / report_name
+        if report_path.exists():
+            print(f"{report_name} saved: {report_path}")
+
+
 def _artifact_manifest_table(
     output_dir: str | Path,
     *,
@@ -621,6 +641,7 @@ def main() -> None:
         if args.output_dir:
             print(f"replay output saved: {Path(args.output_dir).expanduser()}")
             _print_saved_artifact_manifest(args.output_dir)
+            _print_saved_html_reports(args.output_dir)
         return
 
     symbols = tuple(item.strip() for item in args.symbols.split(",") if item.strip())
@@ -776,6 +797,7 @@ def main() -> None:
             print(result.trades.to_string(index=False))
         if args.output_dir:
             _print_saved_artifact_manifest(args.output_dir)
+            _print_saved_html_reports(args.output_dir)
         return
 
     if args.command == "single-sweep":
@@ -841,6 +863,7 @@ def main() -> None:
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
             _print_saved_artifact_manifest(output_dir)
+            _print_saved_html_reports(output_dir)
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
@@ -936,6 +959,7 @@ def main() -> None:
             )
         if args.output_dir:
             _print_saved_artifact_manifest(args.output_dir)
+            _print_saved_html_reports(args.output_dir)
         return
 
     if args.command == "portfolio-sweep":
@@ -1015,6 +1039,7 @@ def main() -> None:
         if args.output_dir:
             output_dir = Path(args.output_dir).expanduser()
             _print_saved_artifact_manifest(output_dir)
+            _print_saved_html_reports(output_dir)
             print(f"sweep.csv saved: {output_dir / 'sweep.csv'}")
             print(f"pareto.csv saved: {output_dir / 'pareto.csv'}")
             print(f"parameter_summary.csv saved: {output_dir / 'parameter_summary.csv'}")
