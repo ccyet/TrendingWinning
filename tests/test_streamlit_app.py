@@ -38,6 +38,7 @@ from streamlit_app import (
     _prepare_display_frame,
     _resolve_native_directory_choice,
     _portfolio_strategy_space_summary_frame,
+    _saved_artifact_manifest_frame,
     _single_strategy_space_summary_frame,
     _style_display_frame,
     _strategy_holding_interval_frame,
@@ -894,6 +895,44 @@ def test_streamlit_backtest_result_renders_data_coverage_overview_chart() -> Non
     assert "数据缺口明细" in result_source
 
 
+def test_saved_artifact_manifest_frame_localizes_and_adds_paths(tmp_path: Path) -> None:
+    output_dir = tmp_path / "run-001"
+    output_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "file_name": "strategy_space.csv",
+                "category": "运行前复核",
+                "priority": 1,
+                "question": "本次到底启用了哪些策略边界？",
+                "description": "列出样本、形态、触发、过滤、退出、仓位、统计和失效空间。",
+            },
+            {
+                "file_name": "case_configs.jsonl",
+                "category": "复现实验",
+                "priority": 2,
+                "question": "每个参数组的完整配置是什么？",
+                "description": "逐行保存每个 case 的复现配置。",
+            },
+        ]
+    ).to_csv(output_dir / "artifact_manifest.csv", index=False)
+
+    frame = _saved_artifact_manifest_frame(str(output_dir), "ignored-name")
+
+    assert frame.columns.tolist() == ["文件", "类别", "优先级", "先回答的问题", "说明", "本机路径"]
+    assert frame["文件"].tolist() == ["strategy_space.csv", "case_configs.jsonl"]
+    assert frame.loc[0, "类别"] == "运行前复核"
+    assert frame.loc[0, "先回答的问题"] == "本次到底启用了哪些策略边界？"
+    assert frame.loc[0, "本机路径"] == str(output_dir / "strategy_space.csv")
+
+
+def test_saved_experiment_path_renders_artifact_manifest() -> None:
+    source = getsource(streamlit_app._show_saved_experiment_path)
+
+    assert "实验产物索引" in source
+    assert "_saved_artifact_manifest_frame" in source
+
+
 def test_order_decision_funnel_frame_counts_execution_path() -> None:
     decisions = pd.DataFrame(
         {
@@ -1376,6 +1415,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "strategy_space.csv" in html
     assert "artifact_manifest.csv" in html
     assert "产物索引" in html
+    assert "运行后页面会直接展示产物索引" in html
     assert "保存运行前的策略执行空间" in html
     assert "数据覆盖率概览" in html
     assert "策略执行空间" in html
@@ -1437,6 +1477,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "strategy_space.csv" in readme
     assert "artifact_manifest.csv" in readme
     assert "产物索引" in readme
+    assert "运行后页面会直接展示产物索引" in readme
     assert "avg_accepted_actual_risk_pct" in readme
     assert "primary_rejected_reason" in readme
     assert "primary_strategy_rejected_reason" in readme

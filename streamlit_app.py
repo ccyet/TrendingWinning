@@ -2310,6 +2310,39 @@ def _terminal_false_breakout_controls(prefix: str, label_prefix: str = "") -> Te
 def _show_saved_experiment_path(output_dir: str, name: str) -> None:
     saved_path = Path(output_dir or f"runs/{name}").expanduser()
     st.caption(f"实验产物已保存：{saved_path}")
+    manifest = _saved_artifact_manifest_frame(output_dir, name)
+    if manifest.empty:
+        st.warning("未找到 artifact_manifest.csv，无法展示实验产物索引。")
+        return
+    st.markdown("##### 实验产物索引")
+    st.dataframe(_style_display_frame(manifest), use_container_width=True, hide_index=True)
+
+
+def _saved_artifact_manifest_frame(output_dir: str, name: str) -> pd.DataFrame:
+    """读取保存目录里的产物索引，并补充可直接定位的本机路径。"""
+    saved_path = Path(output_dir or f"runs/{name}").expanduser()
+    manifest_path = saved_path / "artifact_manifest.csv"
+    if not manifest_path.exists():
+        return pd.DataFrame(columns=["文件", "类别", "优先级", "先回答的问题", "说明", "本机路径"])
+    manifest = pd.read_csv(manifest_path)
+    required = ["file_name", "category", "priority", "question", "description"]
+    missing = [column for column in required if column not in manifest.columns]
+    if missing:
+        raise ValueError(f"artifact_manifest.csv 缺少字段：{', '.join(missing)}")
+    display = manifest.loc[:, required].copy()
+    display["priority"] = pd.to_numeric(display["priority"], errors="coerce").fillna(99).astype(int)
+    display = display.sort_values(["priority", "category", "file_name"], kind="stable").reset_index(drop=True)
+    display["path"] = [str(saved_path / str(file_name)) for file_name in display["file_name"]]
+    return display.rename(
+        columns={
+            "file_name": "文件",
+            "category": "类别",
+            "priority": "优先级",
+            "question": "先回答的问题",
+            "description": "说明",
+            "path": "本机路径",
+        }
+    )
 
 
 def _fetch_panel(data_root: Path, adjust: str, tdx_path: str) -> None:
