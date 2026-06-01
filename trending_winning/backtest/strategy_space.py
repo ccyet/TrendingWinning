@@ -5,6 +5,10 @@ import pandas as pd
 from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
 
 STRATEGY_SPACE_COLUMNS = ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
+STRATEGY_SPACE_FRAMEWORK = (
+    "策略空间分为样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间；"
+    "先确认当前策略在哪类盘面里可做，再确认哪些分支会被记录。"
+)
 
 DETECTOR_LABELS = {
     "trend": "趋势",
@@ -47,7 +51,7 @@ def _single_strategy_space_summary(config: SingleStrategyExperimentConfig) -> pd
         _row(
             "适用空间",
             _single_strategy_space_scope(config),
-            _detector_space_summary((config.detector,)),
+            f"{_detector_space_summary((config.detector,))} {STRATEGY_SPACE_FRAMEWORK}",
             _single_strategy_space_scenarios(config),
             "适用空间只限定本策略应该评估的盘面；不符合的盘面应通过样本分组、参数或过滤器剔除。",
         ),
@@ -62,7 +66,7 @@ def _single_strategy_space_summary(config: SingleStrategyExperimentConfig) -> pd
             "触发成交",
             f"{_side_mode_label(config.side_mode)}；盈亏比 {config.risk_reward:.2f}R",
             _entry_trigger_summary(),
-            "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录；跳空跨过挂单价时按实际开盘价重算风险。",
+            _single_entry_possibility_summary(),
             "盈亏比只决定固定目标价：目标距离 = 入场风险距离 x risk_reward。",
         ),
         _row(
@@ -88,9 +92,9 @@ def _single_strategy_space_summary(config: SingleStrategyExperimentConfig) -> pd
         ),
         _row(
             "或然分支",
-            "本次回测会把每个候选信号归入清晰路径。",
-            "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出",
-            "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突、止损/目标/回撤止盈/到期退出都会单独归因。",
+            _single_signal_lifecycle_summary(),
+            "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出；触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价。",
+            _single_signal_branch_summary(),
             "先用决策表定位分支，再用 K 线和交易明细复核具体价格。",
         ),
         _row(
@@ -123,7 +127,7 @@ def _portfolio_strategy_space_summary(config: PortfolioExperimentConfig) -> pd.D
         _row(
             "适用空间",
             _portfolio_strategy_space_scope(config),
-            _detector_space_summary(config.detectors),
+            f"{_detector_space_summary(config.detectors)} {STRATEGY_SPACE_FRAMEWORK}",
             _portfolio_strategy_space_scenarios(config),
             "组合层比较机会质量和资金占用，不改变各 detector 的适用边界。",
         ),
@@ -138,7 +142,7 @@ def _portfolio_strategy_space_summary(config: PortfolioExperimentConfig) -> pd.D
             "触发成交",
             f"{_side_mode_label(config.side_mode)}；盈亏比 {config.risk_reward:.2f}R",
             f"{_entry_trigger_summary()} 同 K 多个信号先按策略优先级进入组合检查。",
-            "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录。",
+            _portfolio_entry_possibility_summary(),
             "被资金或容量拒绝的订单仍保留实际触发价、止损风险、追价距离和拒绝原因。",
         ),
         _row(
@@ -164,9 +168,9 @@ def _portfolio_strategy_space_summary(config: PortfolioExperimentConfig) -> pd.D
         ),
         _row(
             "或然分支",
-            "组合回测会把候选信号和组合分配结果分开。",
-            "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出",
-            "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单、同票冲突、止损/目标/回撤止盈/到期退出都会单独归因。",
+            _portfolio_signal_lifecycle_summary(),
+            "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出；触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价。",
+            _portfolio_signal_branch_summary(),
             "先看 order_decisions.csv 的组合拒绝原因，再看策略/股票/行业分组绩效。",
         ),
         _row(
@@ -220,24 +224,66 @@ def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
 
 def _signal_condition_summary() -> str:
     return (
-        "多头有效信号 = 已完成信号K + 识别方向为多头 + 结构止损有效，入场触发价 = 信号K高点 + tick；"
-        "空头有效信号 = 已完成信号K + 识别方向为空头 + 结构止损有效，入场触发价 = 信号K低点 - tick；"
-        "结构止损取信号K相反端或识别模块给出的保护价。"
+        "信号成立条件 = 形态成立 + 已完成信号K + 方向明确 + 结构止损有效 + 价格字段完整；"
+        "多头有效信号 = 识别方向为多头，入场触发价 = 信号K高点 + tick，结构止损必须低于入场触发价；"
+        "空头有效信号 = 识别方向为空头，入场触发价 = 信号K低点 - tick，结构止损必须高于入场触发价；"
+        "交易方向、流动性、大周期方向和末端假突破属于开仓前过滤，不改写原始信号。"
     )
 
 
 def _entry_trigger_summary() -> str:
     return (
         "信号K完成后，多头在信号K高点上方挂突破触发单，空头在信号K低点下方挂突破触发单；"
-        "下一根及之后 K 穿越触发价才成交，触发后按实际入场价、滑点和费用入账。"
+        "下一根及之后 K 穿越触发价才成交。触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价；"
+        "跳空越过触发价按实际开盘价成交，触发后再按实际入场价、滑点和费用重算风险。"
     )
 
 
 def _signal_possibility_summary(*, is_portfolio: bool) -> str:
-    base = "可能出现顺势突破、回调后二次突破、失败突破反向、二次反转、信号有效但未触发或无有效信号。"
+    base = (
+        "可能出现无信号、观察信号、顺势突破、回调后二次突破、失败突破反向、二次反转、"
+        "有效但未触发、触发后风险拒单或完整成交。"
+    )
     if is_portfolio:
         return f"{base} 组合还可能出现同 K 多形态、同票多信号、方向相反信号和容量/资金冲突。"
     return f"{base} 单策略还会把方向禁用、过滤拒单、撮合拒单和已有持仓冲突拆开记录。"
+
+
+def _single_entry_possibility_summary() -> str:
+    return (
+        "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录；"
+        "触发后可能正常成交、跳空成交后重算风险、触发后拒单或已有持仓冲突；"
+        "跳空跨过挂单价时按实际开盘价重算风险。"
+    )
+
+
+def _portfolio_entry_possibility_summary() -> str:
+    return (
+        "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录；"
+        "触发后可能正常成交、跳空成交后重算风险、触发后拒单、组合容量拒单或资金拒单。"
+    )
+
+
+def _single_signal_lifecycle_summary() -> str:
+    return "信号生命周期：无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成。"
+
+
+def _portfolio_signal_lifecycle_summary() -> str:
+    return "信号生命周期：无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成。"
+
+
+def _single_signal_branch_summary() -> str:
+    return (
+        "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
+        "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成是完整检查顺序。"
+    )
+
+
+def _portfolio_signal_branch_summary() -> str:
+    return (
+        "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单、同票冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
+        "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成是完整检查顺序。"
+    )
 
 
 def _single_strategy_space_scope(config: SingleStrategyExperimentConfig) -> str:
