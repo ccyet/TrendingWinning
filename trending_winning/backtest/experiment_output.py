@@ -26,6 +26,7 @@ from trending_winning.backtest.experiment_models import (
     SingleStrategySweepResult,
 )
 from trending_winning.backtest.periods import compute_period_return_statistics
+from trending_winning.backtest.reason_labels import exit_reason_label, reason_label_with_code
 from trending_winning.backtest.reporting import trade_path_distribution_statistics
 from trending_winning.backtest.sweep_analysis import (
     parameter_summary_table as _build_parameter_summary_table,
@@ -39,6 +40,52 @@ from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_MET
 
 
 ARTIFACT_MANIFEST_COLUMNS = ["file_name", "category", "priority", "question", "description"]
+
+REPORT_COLUMN_LABELS: dict[str, str] = {
+    "acceptance_rate": "订单接受率",
+    "avg_risk_adjusted_score": "平均风险质量",
+    "best_case_name": "最佳参数组",
+    "best_total_return": "最高收益",
+    "bucket": "分桶",
+    "bucket_order": "排序",
+    "case_count": "参数组数",
+    "case_name": "参数组",
+    "category": "类别",
+    "check": "检查项",
+    "description": "说明",
+    "detail": "详情",
+    "diagnostic_primary_issue": "诊断主问题",
+    "dimension": "维度",
+    "evidence_file": "证据文件",
+    "exit_reason": "平仓原因",
+    "file_name": "文件名",
+    "is_pareto_efficient": "Pareto有效",
+    "max_drawdown": "最大回撤",
+    "metric": "指标",
+    "parameter": "参数",
+    "pareto_case_count": "Pareto组数",
+    "pareto_hit_rate": "Pareto命中率",
+    "pareto_rank": "Pareto排名",
+    "positive_return_rate": "正收益率",
+    "priority": "优先级",
+    "question": "回答的问题",
+    "reason": "原因",
+    "risk_adjusted_rank": "风险质量排名",
+    "risk_adjusted_score": "风险质量分",
+    "status": "状态",
+    "sweep_rank": "综合排名",
+    "threshold": "门槛",
+    "total_return": "总收益",
+    "trade_count": "成交数",
+    "value": "取值",
+    "win_rate": "胜率",
+    "worst_total_return": "最低收益",
+}
+
+REPORT_VALUE_LABELS: dict[str, dict[str, str]] = {
+    "side": {"long": "多头", "short": "空头"},
+    "status": {"accepted": "接受", "rejected": "拒绝", "passed": "通过", "failed": "失败"},
+}
 
 
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
@@ -479,8 +526,9 @@ def _experiment_report_html(
     .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
     .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
     .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; }}
-    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
-    th,td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
+    .report-table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    .report-table th,.report-table td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:center; vertical-align:middle; }}
+    .report-table td.num {{ font-variant-numeric:tabular-nums; }}
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}
@@ -567,7 +615,7 @@ def _reason_panel(
     count_key: str,
     rate_key: str,
 ) -> str:
-    reason = str(stats.get(reason_key) or "暂无")
+    reason = reason_label_with_code(stats.get(reason_key)) or "暂无"
     count = _format_report_value(count_key, stats.get(count_key))
     rate = _format_report_value(rate_key, stats.get(rate_key))
     return (
@@ -608,12 +656,14 @@ def _html_table(frame: pd.DataFrame, *, link_files: bool = False) -> str:
         data["file_name"] = data["file_name"].map(_file_link)
     if link_files and "evidence_file" in data.columns:
         data["evidence_file"] = data["evidence_file"].map(_evidence_links)
-    headers = "".join(f"<th>{escape(str(column))}</th>" for column in data.columns)
+    headers = "".join(f"<th>{escape(_report_column_label(str(column)))}</th>" for column in data.columns)
     rows = []
     for record in data.to_dict("records"):
-        cells = "".join(f"<td>{_html_cell(column, value)}</td>" for column, value in record.items())
+        cells = "".join(
+            f'<td class="{_html_cell_class(value)}">{_html_cell(column, value)}</td>' for column, value in record.items()
+        )
         rows.append(f"<tr>{cells}</tr>")
-    return f"<table><thead><tr>{headers}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    return f'<table class="report-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
 def _file_link(value: object) -> str:
@@ -634,9 +684,36 @@ def _html_cell(column: str, value: object) -> str:
         return text
     if isinstance(value, bool):
         return "是" if value else "否"
+    normalized_column = str(column)
+    if normalized_column == "exit_reason":
+        return escape(_label_with_code(exit_reason_label(value), value))
+    if normalized_column in {"reason", "primary_rejected_reason", "primary_strategy_rejected_reason"}:
+        return escape(reason_label_with_code(value))
+    labeled_value = REPORT_VALUE_LABELS.get(normalized_column, {}).get(text)
+    if labeled_value:
+        return escape(labeled_value)
     if isinstance(value, Real):
         return escape(_format_report_value(str(column), value))
     return escape(text)
+
+
+def _report_column_label(column: str) -> str:
+    return REPORT_COLUMN_LABELS.get(column, column)
+
+
+def _html_cell_class(value: object) -> str:
+    if isinstance(value, Real) and not isinstance(value, bool):
+        return "num"
+    return "text"
+
+
+def _label_with_code(label: str, value: object) -> str:
+    code = str(value or "").strip()
+    if not code:
+        return ""
+    if not label or label == code:
+        return code
+    return f"{label}（{code}）"
 
 
 def _format_report_value(key: str, value: object) -> str:
@@ -890,8 +967,9 @@ def _sweep_report_html(
     .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
     .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
     .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; color:var(--blue); text-decoration:none; }}
-    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
-    th,td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
+    .report-table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    .report-table th,.report-table td {{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:center; vertical-align:middle; }}
+    .report-table td.num {{ font-variant-numeric:tabular-nums; }}
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}

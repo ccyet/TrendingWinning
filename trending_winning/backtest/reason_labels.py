@@ -19,6 +19,7 @@ DATA_ISSUE_LABELS: dict[str, str] = {
 }
 
 ORDER_REJECT_REASON_LABELS: dict[str, str] = {
+    "not_triggered": "未触发",
     "no_fill": "未成交",
     "no_bars": "无K线数据",
     "no_liquidity": "无有效成交区间",

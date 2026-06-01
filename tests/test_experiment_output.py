@@ -157,6 +157,12 @@ def test_save_single_strategy_sweep_writes_html_overview_report(tmp_path) -> Non
     assert "参数影响" in html
     assert "诊断概览" in html
     assert "重点产物" in html
+    assert 'class="report-table"' in html
+    assert "text-align:center" in html
+    assert "<th>参数组</th>" in html
+    assert "<th>总收益</th>" in html
+    assert "<th>最大回撤</th>" in html
+    assert "<th>诊断主问题</th>" in html
     assert "single-sweep-html-001" in html
     assert "single-sweep-html-002" in html
     assert "8.00%" in html
@@ -706,11 +712,15 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "重点证据文件" in html
     assert "产物索引" in html
     assert "总收益" in html
+    assert 'class="report-table"' in html
+    assert "text-align:center" in html
+    assert "<th>平仓原因</th>" in html
+    assert "<th>成交数</th>" in html
     assert "8.00%" in html
     assert "36.00%" in html
-    assert "not_triggered" in html
-    assert "terminal_false_breakout_risk" in html
-    assert "take_profit" in html
+    assert "未触发（not_triggered）" in html
+    assert "末端假突破风险（terminal_false_breakout_risk）" in html
+    assert "止盈（take_profit）" in html
     assert "∞" in html
     assert "experiment_diagnostics.csv" in html
     manifest = pd.read_csv(output_dir / "artifact_manifest.csv").set_index("file_name")
