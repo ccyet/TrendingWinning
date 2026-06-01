@@ -11,6 +11,9 @@ from trending_winning.data.summary import DATA_INVENTORY_SUMMARY_KEYS
 
 SWEEP_SUMMARY_CONTEXT_COLUMNS = (
     *DATA_INVENTORY_SUMMARY_KEYS,
+    "primary_data_issue",
+    "primary_data_issue_count",
+    "primary_data_issue_rate",
     "data_audit_row_count",
     "data_audit_ok_count",
     "data_audit_failed_count",

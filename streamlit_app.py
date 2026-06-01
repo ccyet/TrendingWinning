@@ -278,6 +278,9 @@ DISPLAY_COLUMN_LABELS = {
     "primary_strategy_rejected_reason": "主要策略过滤原因",
     "primary_strategy_rejected_reason_count": "主要策略过滤次数",
     "primary_strategy_rejected_reason_rate": "主要策略过滤占比",
+    "primary_data_issue": "主要数据问题",
+    "primary_data_issue_count": "主要数据问题项数",
+    "primary_data_issue_rate": "主要数据问题占比",
     "executed_order_count": "触发成交候选数",
     "accepted_executed_order_count": "最终成交数",
     "avg_accepted_actual_risk_pct": "成交平均止损风险",
@@ -385,6 +388,22 @@ DISPLAY_VALUE_MAP = {
         "side_mode_filtered": "交易方向过滤",
         "trailing_take_profit": "回撤止盈",
         "terminal_false_breakout_risk": "末端假突破风险",
+    },
+    "data_issue": {
+        "data_coverage_below_min": "覆盖率低于门槛",
+        "data_audit_missing_file": "审计缺文件",
+        "data_audit_missing_columns": "审计缺字段",
+        "data_audit_no_window_data": "窗口无数据",
+        "data_audit_quality_error": "数据质量异常",
+        "data_audit_read_error": "审计读取失败",
+        "data_inventory_missing_file": "缓存缺文件",
+        "data_inventory_read_error": "缓存读取失败",
+        "data_inventory_missing_columns": "缓存缺字段",
+        "data_inventory_no_valid_rows": "缓存无有效K线",
+        "limit_filter_daily_missing": "日K缺失",
+        "limit_filter_daily_read_error": "日K读取失败",
+        "limit_filter_daily_missing_columns": "日K缺字段",
+        "limit_filter_daily_quality_error": "日K质量异常",
     },
     "filter_name": {
         "terminal_false_breakout_filter": "末端假突破过滤",
@@ -1123,6 +1142,8 @@ def _format_display_value(column: str, value: object, *, stock_names: Mapping[st
         return "是" if value else "否"
     if column in {"primary_rejected_reason", "primary_strategy_rejected_reason"}:
         return DISPLAY_VALUE_MAP["reason"].get(str(value), str(value))
+    if column == "primary_data_issue":
+        return DISPLAY_VALUE_MAP["data_issue"].get(str(value), str(value))
     mapped = DISPLAY_VALUE_MAP.get(column, {}).get(str(value))
     if mapped is not None:
         return mapped

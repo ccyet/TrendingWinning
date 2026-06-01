@@ -30,6 +30,9 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
         "max_margin_exposure": 1.2,
         "data_weighted_coverage_ratio": 0.91,
         "data_coverage_below_min_count": 2.0,
+        "primary_data_issue": "data_coverage_below_min",
+        "primary_data_issue_count": 2.0,
+        "primary_data_issue_rate": 0.4,
     }
 
     report = experiment_diagnostic_report(stats)
@@ -37,6 +40,7 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert report.columns.tolist() == EXPERIMENT_DIAGNOSTIC_COLUMNS.tolist()
     by_check = report.set_index("check")
     assert by_check.loc["数据覆盖", "status"] == "失败"
+    assert "data_coverage_below_min 2 项，占数据问题 40.0%" in by_check.loc["数据覆盖", "detail"]
     assert by_check.loc["交易样本", "status"] == "关注"
     assert by_check.loc["订单接受率", "status"] == "关注"
     assert "actual_risk_too_high 24 笔，占拒单 50.0%" in by_check.loc["订单接受率", "detail"]

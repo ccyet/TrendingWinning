@@ -24,6 +24,9 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
             "candidate_count": [3, 3, 3],
             "candidate_rejection_count": [1, 0, 2],
             "data_inventory_signature": ["sig", "sig", "sig"],
+            "primary_data_issue": ["data_coverage_below_min", "", ""],
+            "primary_data_issue_count": [2.0, 0.0, 0.0],
+            "primary_data_issue_rate": [0.4, 0.0, 0.0],
         }
     )
     strategy_stats = pd.DataFrame({"strategy_name": ["trend", "range"], "trade_count": [2, 0]})
@@ -71,6 +74,9 @@ def test_sweep_summary_statistics_aggregates_best_case_cache_and_case_tables() -
     assert summary["median_risk_adjusted_score"] == 58.0
     assert summary["worst_risk_adjusted_score"] == 11.5
     assert summary["data_inventory_signature"] == "sig"
+    assert summary["primary_data_issue"] == "data_coverage_below_min"
+    assert summary["primary_data_issue_count"] == 2.0
+    assert summary["primary_data_issue_rate"] == 0.4
     assert summary["order_cache_hit_count"] == 2.0
     assert summary["order_cache_hit_rate"] == 2 / 3
     assert summary["candidate_cache_hit_rate"] == 1 / 3

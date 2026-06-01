@@ -733,6 +733,47 @@ def test_data_management_summary_combines_audit_inventory_and_limit_filter() -> 
     assert data_stats["data_inventory_signature"] == inventory_stats["data_inventory_signature"]
 
 
+def test_data_management_summary_reports_primary_data_issue() -> None:
+    data_audit = pd.DataFrame(
+        {
+            "status": ["ok", "ok", "missing_file"],
+            "expected_rows": [10, 10, 0],
+            "missing_rows": [4, 5, 0],
+            "coverage_ratio": [0.6, 0.5, 0.0],
+        }
+    )
+    filter_audit = pd.DataFrame(
+        {
+            "status": ["ok", "daily_missing"],
+            "filter_enabled": [True, True],
+            "filtered_days": [0, 0],
+        }
+    )
+    inventory = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000002.SZ"],
+            "timeframe": ["30m", "30m"],
+            "adjust": ["qfq", "qfq"],
+            "status": ["cached", "missing_file"],
+            "exists": [True, False],
+            "rows": [120, 0],
+            "file_size_bytes": [4096, 0],
+        }
+    )
+
+    stats = summarize_data_management(
+        data_audit,
+        filter_audit,
+        filtered_limit_open_count=0,
+        data_inventory=inventory,
+        min_coverage_ratio=0.8,
+    )
+
+    assert stats["primary_data_issue"] == "data_coverage_below_min"
+    assert stats["primary_data_issue_count"] == 2.0
+    assert stats["primary_data_issue_rate"] == pytest.approx(0.4)
+
+
 def test_summarize_data_inventory_reports_all_unavailable_cache_statuses() -> None:
     inventory = pd.DataFrame(
         {

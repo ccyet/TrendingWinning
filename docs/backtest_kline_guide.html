@@ -699,7 +699,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>盈利通道回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按实际成交价和上一根已完成 K 的最大盈利价位或当前周期均线确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
           <tr><td>哪个参数组综合风险质量更好？</td><td><code>summary.json</code>、<code>sweep.csv</code>、<code>parameter_summary.csv</code></td><td><code>best_risk_adjusted_score / risk_adjusted_rank / risk_adjusted_score / avg_risk_adjusted_score</code></td></tr>
           <tr><td>参数组在哪些股票有效？</td><td><code>case_symbol_stats.csv</code></td><td><code>sweep_rank / stock_name / stock_code / total_return / trade_count</code></td></tr>
-          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature</code></td></tr>
+          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature / primary_data_issue / primary_data_issue_count / primary_data_issue_rate</code>；主要数据问题、数量和占比用于先定位覆盖率、缓存、审计或日 K 过滤哪一类问题最大。</td></tr>
           <tr><td>哪只股票贡献了收益？</td><td><code>symbol_stats.csv</code></td><td><code>stock_name / stock_code / total_return / win_rate</code></td></tr>
           <tr><td>代码对应哪只股票？</td><td><code>symbol_metadata.csv</code></td><td><code>stock_code / stock_name / source</code></td></tr>
           <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing / daily_read_error</code></td></tr>

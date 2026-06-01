@@ -58,6 +58,23 @@ DATA_INVENTORY_SUMMARY_KEYS = [
     "data_inventory_signature",
 ]
 
+DATA_ISSUE_COUNT_FIELDS = (
+    ("data_coverage_below_min", "data_coverage_below_min_count"),
+    ("data_audit_missing_file", "data_audit_missing_file_count"),
+    ("data_audit_missing_columns", "data_audit_missing_columns_count"),
+    ("data_audit_no_window_data", "data_audit_no_window_data_count"),
+    ("data_audit_quality_error", "data_audit_quality_error_count"),
+    ("data_audit_read_error", "data_audit_read_error_count"),
+    ("data_inventory_missing_file", "data_inventory_missing_file_count"),
+    ("data_inventory_read_error", "data_inventory_read_error_count"),
+    ("data_inventory_missing_columns", "data_inventory_missing_columns_count"),
+    ("data_inventory_no_valid_rows", "data_inventory_no_valid_rows_count"),
+    ("limit_filter_daily_missing", "limit_filter_daily_missing_count"),
+    ("limit_filter_daily_read_error", "limit_filter_daily_read_error_count"),
+    ("limit_filter_daily_missing_columns", "limit_filter_daily_missing_columns_count"),
+    ("limit_filter_daily_quality_error", "limit_filter_daily_quality_error_count"),
+)
+
 
 def summarize_data_audit(audit: pd.DataFrame, *, min_coverage_ratio: float | None = None) -> dict[str, object]:
     """把行情审计表压成统计字段，便于 stats.json 和参数遍历表直接对比数据质量。"""
@@ -173,6 +190,7 @@ def summarize_data_management(
     stats.update(summarize_data_inventory(data_inventory))
     stats.update(summarize_limit_filter_audit(limit_filter_audit))
     stats["filtered_limit_open_count"] = float(filtered_limit_open_count)
+    stats.update(_primary_data_issue_summary(stats))
     return stats
 
 
@@ -263,6 +281,33 @@ def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     if column not in frame.columns:
         return pd.Series([0.0] * len(frame), index=frame.index, dtype=float)
     return pd.to_numeric(frame[column], errors="coerce").fillna(0.0).astype(float)
+
+
+def _primary_data_issue_summary(stats: dict[str, object]) -> dict[str, object]:
+    issue_counts: list[tuple[str, float]] = []
+    for issue, key in DATA_ISSUE_COUNT_FIELDS:
+        count = _summary_number(stats.get(key))
+        if count > 0:
+            issue_counts.append((issue, count))
+    if not issue_counts:
+        return {"primary_data_issue": "", "primary_data_issue_count": 0.0, "primary_data_issue_rate": 0.0}
+    total = sum(count for _, count in issue_counts)
+    primary_issue, primary_count = max(issue_counts, key=lambda item: item[1])
+    return {
+        "primary_data_issue": primary_issue,
+        "primary_data_issue_count": primary_count,
+        "primary_data_issue_rate": _ratio_or_zero(primary_count, total),
+    }
+
+
+def _summary_number(value: object) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if pd.isna(numeric):
+        return 0.0
+    return numeric
 
 
 def _ratio_or_zero(numerator: float, denominator: float) -> float:

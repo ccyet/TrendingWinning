@@ -98,10 +98,26 @@ def _data_coverage_row(stats: Mapping[str, object], data_coverage: pd.DataFrame 
     below_min_count = _number(stats.get("data_coverage_below_min_count"), default=0.0)
     failed_count = _number(stats.get("data_audit_failed_count"), default=0.0)
     value = _number(stats.get("data_weighted_coverage_ratio"), default=None)
+    primary_detail = _primary_reason_detail(
+        stats,
+        reason_key="primary_data_issue",
+        count_key="primary_data_issue_count",
+        rate_key="primary_data_issue_rate",
+        unit="项",
+        rate_label="占数据问题",
+    )
     if value is None:
         value = _coverage_value_from_frame(data_coverage)
     if value is None:
-        return _row("数据质量", "数据覆盖", "通过", "data_weighted_coverage_ratio", 1.0, threshold, "未发现覆盖率异常。")
+        return _row(
+            "数据质量",
+            "数据覆盖",
+            "通过",
+            "data_weighted_coverage_ratio",
+            1.0,
+            threshold,
+            _append_detail("未发现覆盖率异常。", primary_detail),
+        )
     if below_min_count > 0 or failed_count > 0 or value < threshold:
         return _row(
             "数据质量",
@@ -110,11 +126,27 @@ def _data_coverage_row(stats: Mapping[str, object], data_coverage: pd.DataFrame 
             "data_weighted_coverage_ratio",
             value,
             threshold,
-            "存在低于最低覆盖率或质量失败的数据，回测结果需要先排查数据。",
+            _append_detail("存在低于最低覆盖率或质量失败的数据，回测结果需要先排查数据。", primary_detail),
         )
     if value < 0.98:
-        return _row("数据质量", "数据覆盖", "关注", "data_weighted_coverage_ratio", value, 0.98, "覆盖率不低，但仍有缺口。")
-    return _row("数据质量", "数据覆盖", "通过", "data_weighted_coverage_ratio", value, threshold, "样本覆盖率满足当前要求。")
+        return _row(
+            "数据质量",
+            "数据覆盖",
+            "关注",
+            "data_weighted_coverage_ratio",
+            value,
+            0.98,
+            _append_detail("覆盖率不低，但仍有缺口。", primary_detail),
+        )
+    return _row(
+        "数据质量",
+        "数据覆盖",
+        "通过",
+        "data_weighted_coverage_ratio",
+        value,
+        threshold,
+        _append_detail("样本覆盖率满足当前要求。", primary_detail),
+    )
 
 
 def _trade_sample_row(stats: Mapping[str, object]) -> dict[str, object]:
