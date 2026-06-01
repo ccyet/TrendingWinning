@@ -387,7 +387,7 @@ if terminal_score >= min_score:
 
     <section id="outputs">
       <h2>输出产物</h2>
-      <p>勾选保存后，系统会把结果写到选定输出父目录下的实验子文件夹；运行后页面会直接展示产物索引，先判断该看哪类文件，再下钻明细。CLI 保存回测或参数遍历时会打印 <code>artifact_manifest.csv saved:</code>，Windows 侧终端测试后先按这行打开产物索引；已有输出目录可用 <code>python -m trending_winning.cli show-artifacts --output-dir runs/single-trend-001</code> 直接在终端查看索引表。</p>
+      <p>勾选保存后，系统会把结果写到选定输出父目录下的实验子文件夹；运行后页面会直接展示产物索引，先判断该看哪类文件，再下钻明细。CLI 保存回测或参数遍历时会打印 <code>artifact_manifest.csv saved:</code>，Windows 侧终端测试后先按这行打开产物索引；已有输出目录可用 <code>python -m trending_winning.cli show-artifacts --output-dir runs/single-trend-001</code> 直接在终端查看索引表。目录很长时加 <code>--max-priority 1</code> 只看最该先读的文件，也可加 <code>--category 数据质量</code> 只看某一类产物。</p>
       <table>
         <thead><tr><th>文件</th><th>说明</th></tr></thead>
         <tbody>

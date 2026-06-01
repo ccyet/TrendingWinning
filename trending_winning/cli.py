@@ -62,7 +62,12 @@ def _print_saved_artifact_manifest(output_dir: str | Path) -> None:
     print(f"artifact_manifest.csv saved: {path}")
 
 
-def _artifact_manifest_table(output_dir: str | Path) -> pd.DataFrame:
+def _artifact_manifest_table(
+    output_dir: str | Path,
+    *,
+    category: str = "",
+    max_priority: int | None = None,
+) -> pd.DataFrame:
     output_path = Path(output_dir).expanduser()
     manifest_path = output_path / "artifact_manifest.csv"
     if not manifest_path.exists():
@@ -74,6 +79,10 @@ def _artifact_manifest_table(output_dir: str | Path) -> pd.DataFrame:
         raise ValueError(f"artifact_manifest.csv 缺少字段：{', '.join(missing)}")
     table = manifest.loc[:, required].copy()
     table["priority"] = pd.to_numeric(table["priority"], errors="coerce").fillna(99).astype(int)
+    if category:
+        table = table.loc[table["category"].astype(str).eq(category)]
+    if max_priority is not None:
+        table = table.loc[table["priority"].le(max_priority)]
     table = table.sort_values(["priority", "category", "file_name"], kind="stable").reset_index(drop=True)
     table["path"] = [str(output_path / str(file_name)) for file_name in table["file_name"]]
     return table.rename(
@@ -338,6 +347,8 @@ def main() -> None:
 
     artifacts_parser = subparsers.add_parser("show-artifacts", help="print a saved run artifact_manifest.csv")
     artifacts_parser.add_argument("--output-dir", required=True)
+    artifacts_parser.add_argument("--category", default="", help="只显示指定类别，例如 数据质量、订单与过滤。")
+    artifacts_parser.add_argument("--max-priority", type=int, default=None, help="只显示不高于该优先级的产物。")
 
     scan_parser = subparsers.add_parser("backtest", help="scan local bars and run a breakout backtest")
     scan_parser.add_argument("--symbols", required=True)
@@ -582,7 +593,13 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "show-artifacts":
-        print(_artifact_manifest_table(args.output_dir).to_string(index=False))
+        print(
+            _artifact_manifest_table(
+                args.output_dir,
+                category=str(args.category).strip(),
+                max_priority=args.max_priority,
+            ).to_string(index=False)
+        )
         return
 
     if args.command == "replay-case":

@@ -1594,6 +1594,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "artifact_manifest.csv saved:" in guide
     assert "show-artifacts" in readme
     assert "show-artifacts" in guide
+    assert "--max-priority 1" in readme
+    assert "--max-priority 1" in guide
     assert "data_gap_episodes.csv" in readme
     assert "data_gap_episodes.csv" in guide
     assert "每段连续缺失K" in readme

@@ -182,6 +182,58 @@ def test_cli_show_artifacts_prints_saved_manifest_table(tmp_path: Path, monkeypa
     assert str(output_dir / "strategy_space.csv") in out
 
 
+def test_cli_show_artifacts_filters_by_priority_and_category(tmp_path: Path, monkeypatch, capsys) -> None:
+    output_dir = tmp_path / "run-001"
+    output_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "file_name": "strategy_space.csv",
+                "category": "运行前复核",
+                "priority": 1,
+                "question": "本次到底启用了哪些策略边界？",
+                "description": "列出策略空间。",
+            },
+            {
+                "file_name": "data_gap_episodes.csv",
+                "category": "数据质量",
+                "priority": 1,
+                "question": "哪段 K 线连续缺失？",
+                "description": "逐段列出每段连续缺失 K 线。",
+            },
+            {
+                "file_name": "limit_filter_audit.csv",
+                "category": "数据质量",
+                "priority": 2,
+                "question": "涨跌停开盘过滤影响了哪些样本？",
+                "description": "记录日 K 涨停开盘过滤。",
+            },
+        ]
+    ).to_csv(output_dir / "artifact_manifest.csv", index=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "show-artifacts",
+            "--output-dir",
+            str(output_dir),
+            "--category",
+            "数据质量",
+            "--max-priority",
+            "1",
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "data_gap_episodes.csv" in out
+    assert "哪段 K 线连续缺失" in out
+    assert "strategy_space.csv" not in out
+    assert "limit_filter_audit.csv" not in out
+
+
 def test_cli_portfolio_backtest_runs_on_local_bars(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(
