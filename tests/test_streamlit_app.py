@@ -251,6 +251,7 @@ def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explici
     assert frame["策略空间"].tolist() == [
         "样本",
         "识别形态",
+        "适用空间",
         "信号条件",
         "触发成交",
         "开仓过滤",
@@ -262,10 +263,13 @@ def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explici
     joined = " ".join(frame.astype(str).to_numpy().ravel())
     assert "趋势" in joined
     assert "只运行一个识别模块" in joined
+    assert "适合趋势延续" in joined
     assert "信号K" in joined
     assert "信号不等于成交" in joined
+    assert "入场触发价 = 信号K高点 + tick" in joined
     assert "挂单" in joined
     assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in joined
     assert "H1/H2/L1/L2" in joined
     assert "仅多" in joined
     assert "大周期方向过滤" in joined
@@ -355,6 +359,7 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     assert frame["策略空间"].tolist() == [
         "样本",
         "识别形态",
+        "适用空间",
         "信号条件",
         "触发成交",
         "开仓过滤",
@@ -364,8 +369,11 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
         "复盘输出",
     ]
     assert "趋势、通道" in joined
+    assert "适合比较多个形态在同一批 K 线里的机会质量" in joined
     assert "多/空" in joined
     assert "信号不等于成交" in joined
+    assert "入场触发价 = 信号K高点 + tick" in joined
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单" in joined
     assert "组合层" in joined
     assert "资金分配" in joined
     assert "最大持仓 3" in joined
@@ -1338,7 +1346,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "保存运行前的策略执行空间" in html
     assert "数据覆盖率概览" in html
     assert "策略执行空间" in html
-    assert "运行前会把当前样本、识别形态、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出整理成一张表" in html
+    assert "运行前会把当前样本、识别形态、适用空间、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出整理成一张表" in html
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in html
     assert "订单决策概览" in html
     assert "拒绝原因分布" in html
     assert "识别模块绩效" in html
@@ -1413,7 +1422,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "旧突破显示固定止盈止损" in html
     assert "策略执行空间" in html
     assert "strategy_space.csv" in html
-    assert "确认页面写明只运行一个识别模块、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出" in html
+    assert "确认页面写明只运行一个识别模块、适用空间、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出" in html
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in html
     assert "单策略和组合策略使用信号 K 结构止损价" in html
     assert "结构止损价说明" in html
     assert "结构止损最大风险" in html

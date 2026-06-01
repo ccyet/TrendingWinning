@@ -12,6 +12,12 @@ DETECTOR_LABELS = {
     "channel": "通道",
     "reversal": "反转",
 }
+DETECTOR_SPACE_LABELS = {
+    "trend": "适合趋势延续：趋势评分已同向，回撤没有破坏结构，H1/H2 或 L1/L2 给出强收盘。",
+    "range": "适合交易区间边缘：价格接近上沿或下沿，中部噪声不交易，只做失败突破后的反向机会。",
+    "channel": "适合通道外扩：价格沿通道运行后收盘打穿上一根边界，交易的是边界失衡而不是通道中部波动。",
+    "reversal": "适合二次反转：旧极端测试失败，并完成结构确认；第一次反转默认观察。",
+}
 SIDE_MODE_LABELS = {"both": "多/空", "long_only": "仅多", "short_only": "仅空"}
 
 
@@ -39,17 +45,24 @@ def _single_strategy_space_summary(config: SingleStrategyExperimentConfig) -> pd
             "用于单独评估一个形态的胜率、R倍数、退出结构、持仓时间和信号生命周期。",
         ),
         _row(
+            "适用空间",
+            _single_strategy_space_scope(config),
+            _detector_space_summary((config.detector,)),
+            _single_strategy_space_scenarios(config),
+            "适用空间只限定本策略应该评估的盘面；不符合的盘面应通过样本分组、参数或过滤器剔除。",
+        ),
+        _row(
             "信号条件",
             "信号K是已收完的确认 K，不使用未来 K 线。",
             _signal_condition_summary(),
-            "可能出现顺势突破、回调后二次突破、失败突破反向、二次反转或无有效信号。",
+            _signal_possibility_summary(is_portfolio=False),
             "信号不等于成交；信号只给出方向、挂单价、结构止损价和信号类型。",
         ),
         _row(
             "触发成交",
             f"{_side_mode_label(config.side_mode)}；盈亏比 {config.risk_reward:.2f}R",
-            "信号K完成后，多头在信号K高点上方挂单，空头在信号K低点下方挂单；触发后按实际入场价、滑点和费用入账。",
-            "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录。",
+            _entry_trigger_summary(),
+            "成交、未触发、方向禁用、追价超限、结构止损风险超限会分开记录；跳空跨过挂单价时按实际开盘价重算风险。",
             "盈亏比只决定固定目标价：目标距离 = 入场风险距离 x risk_reward。",
         ),
         _row(
@@ -77,7 +90,7 @@ def _single_strategy_space_summary(config: SingleStrategyExperimentConfig) -> pd
             "或然分支",
             "本次回测会把每个候选信号归入清晰路径。",
             "候选信号 -> 策略过滤 -> 订单触发 -> 仓位检查 -> 退出",
-            "通过成交、过滤拒单、未触发、方向禁用、追价/风险拒单、已有持仓拒单、止损/目标/回撤止盈/到期退出。",
+            "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突、止损/目标/回撤止盈/到期退出都会单独归因。",
             "先用决策表定位分支，再用 K 线和交易明细复核具体价格。",
         ),
         _row(
@@ -108,16 +121,23 @@ def _portfolio_strategy_space_summary(config: PortfolioExperimentConfig) -> pd.D
             "策略绩效、识别模块绩效和信号形态绩效会分开输出。",
         ),
         _row(
+            "适用空间",
+            _portfolio_strategy_space_scope(config),
+            _detector_space_summary(config.detectors),
+            _portfolio_strategy_space_scenarios(config),
+            "组合层比较机会质量和资金占用，不改变各 detector 的适用边界。",
+        ),
+        _row(
             "信号条件",
             "每个识别模块独立输出信号K、方向、挂单价和结构止损价。",
             _signal_condition_summary(),
-            "可能出现多个形态同 K 发信号、同一股票多信号、方向相反信号或无有效信号。",
+            _signal_possibility_summary(is_portfolio=True),
             "信号不等于成交；组合层只处理冲突和仓位，不重写 detector 的信号。",
         ),
         _row(
             "触发成交",
             f"{_side_mode_label(config.side_mode)}；盈亏比 {config.risk_reward:.2f}R",
-            "各 detector 仍按信号K上方/下方挂单入场；同 K 多个信号先按策略优先级进入组合检查。",
+            f"{_entry_trigger_summary()} 同 K 多个信号先按策略优先级进入组合检查。",
             "成交、未触发、方向禁用、追价超限、结构止损风险超限、资金不足、达到最大持仓数、同票冲突会分开记录。",
             "被资金或容量拒绝的订单仍保留实际触发价、止损风险、追价距离和拒绝原因。",
         ),
@@ -146,7 +166,7 @@ def _portfolio_strategy_space_summary(config: PortfolioExperimentConfig) -> pd.D
             "或然分支",
             "组合回测会把候选信号和组合分配结果分开。",
             "候选信号 -> 策略过滤 -> 订单触发 -> 组合分配 -> 退出",
-            "通过成交、过滤拒单、未触发、资金不足、容量已满、同票冲突、止损/目标/回撤止盈/到期退出。",
+            "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单、同票冲突、止损/目标/回撤止盈/到期退出都会单独归因。",
             "先看 order_decisions.csv 的组合拒绝原因，再看策略/股票/行业分组绩效。",
         ),
         _row(
@@ -188,9 +208,9 @@ def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
     selected = set(detectors)
     parts: list[str] = []
     if "trend" in selected:
-        parts.append("趋势：趋势评分达标后，识别 H1/H2/L1/L2；H1/H2 偏多头，L1/L2 偏空头，H2/L2 要满足最少回调腿数。")
+        parts.append("趋势：趋势评分达标后，识别 H1/H2/L1/L2；H1/H2 是多头回撤后的再次买入，L1/L2 是空头反弹后的再次卖出，H2/L2 要满足最少回调腿数。")
     if "channel" in selected:
-        parts.append("通道：先用回归或摆动点确认中轴和上下轨，价格收盘越过上一根已完成边界后才生成突破信号。")
+        parts.append("通道：先用回归或摆动点确认中轴和上下轨，价格收盘越过上一根已完成边界后才生成上轨突破或下轨跌破信号。")
     if "range" in selected:
         parts.append("区间：先确认上下沿和中部，只在上沿或下沿做失败突破，中部不交易。")
     if "reversal" in selected:
@@ -200,9 +220,63 @@ def _detector_trigger_summary(detectors: tuple[str, ...]) -> str:
 
 def _signal_condition_summary() -> str:
     return (
-        "多头信号K要给出向上突破或下沿失败测试，挂单价在信号K高点上方；"
-        "空头信号K要给出向下突破或上沿失败测试，挂单价在信号K低点下方；"
+        "多头有效信号 = 已完成信号K + 识别方向为多头 + 结构止损有效，入场触发价 = 信号K高点 + tick；"
+        "空头有效信号 = 已完成信号K + 识别方向为空头 + 结构止损有效，入场触发价 = 信号K低点 - tick；"
         "结构止损取信号K相反端或识别模块给出的保护价。"
+    )
+
+
+def _entry_trigger_summary() -> str:
+    return (
+        "信号K完成后，多头在信号K高点上方挂突破触发单，空头在信号K低点下方挂突破触发单；"
+        "下一根及之后 K 穿越触发价才成交，触发后按实际入场价、滑点和费用入账。"
+    )
+
+
+def _signal_possibility_summary(*, is_portfolio: bool) -> str:
+    base = "可能出现顺势突破、回调后二次突破、失败突破反向、二次反转、信号有效但未触发或无有效信号。"
+    if is_portfolio:
+        return f"{base} 组合还可能出现同 K 多形态、同票多信号、方向相反信号和容量/资金冲突。"
+    return f"{base} 单策略还会把方向禁用、过滤拒单、撮合拒单和已有持仓冲突拆开记录。"
+
+
+def _single_strategy_space_scope(config: SingleStrategyExperimentConfig) -> str:
+    return (
+        f"{_detector_label(config.detector)}单策略；参数空间包括识别窗口、强收盘/实体阈值、"
+        f"回撤腿数、结构止损最大风险、追价限制、盈亏比 {config.risk_reward:.2f}R 和最长持有 {config.max_holding_bars} 根 K。"
+    )
+
+
+def _portfolio_strategy_space_scope(config: PortfolioExperimentConfig) -> str:
+    return (
+        f"适合比较多个形态在同一批 K 线里的机会质量：{_detector_list_label(config.detectors)}；"
+        f"参数空间包括各 detector 阈值、交易方向、触发风控、盈亏比 {config.risk_reward:.2f}R、"
+        f"最长持有 {config.max_holding_bars} 根 K、组合容量和资金上限。"
+    )
+
+
+def _detector_space_summary(detectors: tuple[str, ...]) -> str:
+    parts = [DETECTOR_SPACE_LABELS.get(str(detector), f"{detector}：自定义识别模块。") for detector in detectors]
+    return " ".join(parts) if parts else "未选择形态，无法生成策略空间。"
+
+
+def _single_strategy_space_scenarios(config: SingleStrategyExperimentConfig) -> str:
+    return (
+        f"适用盘面才评估{_detector_label(config.detector)}信号；失效空间包括中部震荡、第一次反转、"
+        "末端假突破、流动性不足、结构止损过远和跳空后风险失真。"
+    )
+
+
+def _portfolio_strategy_space_scenarios(config: PortfolioExperimentConfig) -> str:
+    disabled = tuple(key for key in DETECTOR_LABELS if key not in set(config.detectors))
+    disabled_text = (
+        f"未选择的{_detector_list_label(disabled)}不会生成订单。"
+        if disabled
+        else "所有内置形态都已参与，组合层只负责排序和分配。"
+    )
+    return (
+        f"每个形态先独立判断自身适用空间，再由组合层处理优先级、资金和同票冲突；"
+        f"{disabled_text}"
     )
 
 

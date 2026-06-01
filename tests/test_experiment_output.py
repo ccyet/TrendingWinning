@@ -228,6 +228,7 @@ def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path)
     assert saved["策略空间"].tolist() == [
         "样本",
         "识别形态",
+        "适用空间",
         "信号条件",
         "触发成交",
         "开仓过滤",
@@ -240,10 +241,13 @@ def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path)
     assert "单策略" in joined
     assert "趋势" in joined
     assert "只运行一个识别模块" in joined
+    assert "适合趋势延续" in joined
     assert "信号K" in joined
     assert "信号不等于成交" in joined
+    assert "入场触发价 = 信号K高点 + tick" in joined
     assert "挂单" in joined
     assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in joined
     assert "仅多" in joined
     assert "大周期方向过滤" in joined
     assert "末端假突破" in joined
@@ -294,6 +298,7 @@ def test_save_portfolio_experiment_writes_strategy_space_summary(tmp_path) -> No
     assert saved["策略空间"].tolist() == [
         "样本",
         "识别形态",
+        "适用空间",
         "信号条件",
         "触发成交",
         "开仓过滤",
@@ -305,7 +310,10 @@ def test_save_portfolio_experiment_writes_strategy_space_summary(tmp_path) -> No
     joined = " ".join(saved.astype(str).to_numpy().ravel())
     assert "组合策略" in joined
     assert "趋势、通道" in joined
+    assert "适合比较多个形态在同一批 K 线里的机会质量" in joined
     assert "信号不等于成交" in joined
+    assert "入场触发价 = 信号K高点 + tick" in joined
+    assert "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单" in joined
     assert "资金分配" in joined
     assert "最大持仓 3" in joined
     assert "策略优先级" in joined
