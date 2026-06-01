@@ -34,6 +34,7 @@ def experiment_diagnostic_report(
         _strategy_filter_row(stats),
         _drawdown_pressure_row(stats),
         _profit_quality_row(stats),
+        _win_rate_edge_row(stats),
         _exit_structure_row(stats),
         _monthly_stability_row(stats),
         _path_risk_row(stats),
@@ -245,6 +246,45 @@ def _profit_quality_row(stats: Mapping[str, object]) -> dict[str, object]:
     return _row("收益", "收益质量", "通过", "profit_factor", value, 1.2, "盈亏因子达到基础观察要求。")
 
 
+def _win_rate_edge_row(stats: Mapping[str, object]) -> dict[str, object]:
+    value = _number(stats.get("win_rate_edge"), default=None)
+    if value is None:
+        return _row("交易质量", "胜率边际", "通过", "win_rate_edge", 0.0, 0.0, "未提供胜率边际，跳过该项诊断。")
+    trade_count = _number(stats.get("trade_count"), default=0.0)
+    detail = _win_rate_edge_detail(stats, value)
+    if trade_count <= 0:
+        return _row("交易质量", "胜率边际", "失败", "win_rate_edge", value, 0.0, "没有成交，无法判断胜率边际。")
+    if value < 0:
+        return _row(
+            "交易质量",
+            "胜率边际",
+            "失败",
+            "win_rate_edge",
+            value,
+            0.0,
+            _append_detail("实际胜率低于盈亏平衡胜率，当前赔率结构下没有胜率优势。", detail),
+        )
+    if value < 0.03:
+        return _row(
+            "交易质量",
+            "胜率边际",
+            "关注",
+            "win_rate_edge",
+            value,
+            0.03,
+            _append_detail("胜率只小幅高于盈亏平衡胜率，样本波动可能吞掉策略边际。", detail),
+        )
+    return _row(
+        "交易质量",
+        "胜率边际",
+        "通过",
+        "win_rate_edge",
+        value,
+        0.03,
+        _append_detail("实际胜率高于盈亏平衡胜率，胜率边际未触发提示。", detail),
+    )
+
+
 def _exit_structure_row(stats: Mapping[str, object]) -> dict[str, object]:
     trade_count = _number(stats.get("trade_count"), default=0.0)
     primary_reason = str(stats.get("primary_exit_reason") or "").strip()
@@ -392,6 +432,14 @@ def _exit_reason_detail(stats: Mapping[str, object]) -> str:
     if not reason or count <= 0:
         return ""
     return f"主要原因：{_exit_reason_label(reason)} {_format_count(count)} 笔，占退出 {rate:.1%}。"
+
+
+def _win_rate_edge_detail(stats: Mapping[str, object], edge: float) -> str:
+    win_rate = _number(stats.get("win_rate"), default=None)
+    breakeven = _number(stats.get("breakeven_win_rate"), default=None)
+    if win_rate is None or breakeven is None:
+        return ""
+    return f"实际胜率 {win_rate:.1%}，盈亏平衡胜率 {breakeven:.1%}，边际 {edge:.1%}。"
 
 
 def _exit_reason_label(reason: str) -> str:
