@@ -495,6 +495,7 @@ def _experiment_report_html(
             ("策略过滤率", "strategy_filter_rejection_rate", "策略层提前拒绝开仓的比例。"),
         )
     )
+    order_funnel_panel = _order_funnel_panel(stats)
     equity_drawdown_panel = _equity_drawdown_panel(result.backtest.equity_curve)
     data_quality_panel = _data_quality_panel(result, stats)
     return f"""<!doctype html>
@@ -542,6 +543,15 @@ def _experiment_report_html(
     .review-card strong {{ display:block; margin-bottom:6px; color:#24364d; }}
     .review-card p {{ margin:6px 0; color:var(--muted); font-size:13px; }}
     .review-card em {{ display:inline-block; margin-bottom:6px; color:var(--blue); font-style:normal; font-weight:700; font-size:12px; }}
+    .funnel-chart {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin:14px 0; }}
+    .funnel-step {{ padding:12px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .funnel-step b {{ display:block; margin-bottom:6px; color:#24364d; font-size:13px; }}
+    .funnel-step span {{ display:block; font-size:21px; font-weight:760; }}
+    .funnel-step small {{ display:block; margin-top:4px; color:var(--muted); font-size:12px; }}
+    .funnel-bar {{ height:7px; margin-top:10px; border-radius:999px; background:#e8eef6; overflow:hidden; }}
+    .funnel-fill {{ display:block; height:100%; border-radius:999px; background:#1769aa; }}
+    .funnel-loss .funnel-fill {{ background:#b42318; }}
+    .funnel-pass .funnel-fill {{ background:#0f7a55; }}
     .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
     .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
     .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; }}
@@ -551,7 +561,7 @@ def _experiment_report_html(
     th {{ background:#f8fafc; color:#24364d; }}
     a {{ color:var(--blue); text-decoration:none; }}
     .empty {{ color:var(--muted); }}
-    @media (max-width: 920px) {{ .metrics,.review-grid,.two-col,.chart-grid {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
+    @media (max-width: 920px) {{ .metrics,.review-grid,.two-col,.chart-grid,.funnel-chart {{ grid-template-columns:1fr; }} section {{ padding:16px; }} .wrap {{ width:min(100vw - 24px, 1180px); }} }}
   </style>
 </head>
 <body>
@@ -562,7 +572,7 @@ def _experiment_report_html(
   <section><h2>数据质量概览</h2><p class="section-note">先确认本次实际 K 线覆盖、缺口和涨跌停开盘过滤影响，再判断策略表现是否可信。</p>{data_quality_panel}</section>
   <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
   <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
-  <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div><div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
+  <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div>{order_funnel_panel}<div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
   <section><h2>退出结构</h2>{_compact_report_table(result.exit_reason_stats, ["exit_reason", "trade_count", "win_rate", "total_return"])}</section>
   <section><h2>重点证据文件</h2>{_evidence_file_panel(action_plan)}</section>
   <section><h2>诊断处理顺序</h2>{_html_table(action_plan, link_files=True)}</section>
@@ -648,6 +658,68 @@ def _data_quality_panel(
         f'<div class="review-card"><strong>覆盖明细</strong>{coverage_table}</div>'
         "</div>"
     )
+
+
+def _order_funnel_panel(stats: Mapping[str, object]) -> str:
+    signal_count = _numeric_report_value(stats.get("strategy_signal_count"))
+    strategy_rejected = _numeric_report_value(stats.get("strategy_rejected_signal_count"))
+    order_count = _numeric_report_value(stats.get("order_count"))
+    order_rejected = _numeric_report_value(stats.get("rejected_order_count"))
+    executed_count = _numeric_report_value(stats.get("executed_order_count"))
+    trade_count = _numeric_report_value(stats.get("trade_count"))
+
+    if signal_count <= 0:
+        signal_count = max(order_count + strategy_rejected, order_count, trade_count)
+    if order_count <= 0:
+        order_count = max(signal_count - strategy_rejected, trade_count)
+    if executed_count <= 0:
+        executed_count = trade_count
+    base = max(signal_count, order_count, order_rejected, executed_count, 1.0)
+    entered_rate = _ratio_or_zero(order_count, base)
+    executed_rate = _ratio_or_zero(executed_count, base)
+
+    steps = [
+        _funnel_step("策略信号", signal_count, _ratio_or_zero(signal_count, base), "信号层产出的候选机会。", "funnel-pass"),
+        _funnel_step("策略过滤", strategy_rejected, _ratio_or_zero(strategy_rejected, base), "被策略层提前拒绝。", "funnel-loss"),
+        _funnel_step("进入撮合", order_count, entered_rate, "进入撮合与风控的订单。", "funnel-pass"),
+        _funnel_step("撮合拒绝", order_rejected, _ratio_or_zero(order_rejected, base), "未成交、风险过大或容量不足。", "funnel-loss"),
+        _funnel_step("实际开仓", executed_count, executed_rate, "真实进入持仓的订单。", "funnel-pass"),
+    ]
+    return (
+        '<div class="review-card">'
+        "<strong>订单路径漏斗</strong>"
+        '<p>从策略信号到实际开仓逐层看损耗，先定位问题发生在策略过滤还是撮合风控。</p>'
+        f'<div class="funnel-chart">{"".join(steps)}</div>'
+        "</div>"
+    )
+
+
+def _funnel_step(label: str, count: float, rate: float, note: str, status_class: str) -> str:
+    width = max(2.0, min(100.0, rate * 100.0))
+    return (
+        f'<div class="funnel-step {escape(status_class, quote=True)}">'
+        f"<b>{escape(label)}</b>"
+        f"<span>{escape(_format_report_value('funnel_count', count))}</span>"
+        f"<small>{escape(_format_report_value('funnel_rate', rate))} · {escape(note)}</small>"
+        f'<div class="funnel-bar"><i class="funnel-fill" style="width:{width:.2f}%"></i></div>'
+        "</div>"
+    )
+
+
+def _numeric_report_value(value: object) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not isfinite(numeric):
+        return 0.0
+    return max(0.0, numeric)
+
+
+def _ratio_or_zero(numerator: float, denominator: float) -> float:
+    if denominator <= 0:
+        return 0.0
+    return numerator / denominator
 
 
 def _line_chart_svg(

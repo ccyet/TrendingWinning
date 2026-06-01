@@ -669,7 +669,13 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
                 "current_drawdown": -0.02,
                 "ulcer_index": 0.018,
                 "profit_factor": float("inf"),
+                "strategy_signal_count": 30.0,
+                "strategy_rejected_signal_count": 10.0,
+                "strategy_accepted_signal_count": 20.0,
                 "acceptance_rate": 0.55,
+                "accepted_order_count": 12.0,
+                "rejected_order_count": 8.0,
+                "executed_order_count": 12.0,
                 "strategy_filter_rejection_rate": 0.18,
                 "primary_rejected_reason": "not_triggered",
                 "primary_rejected_reason_count": 5.0,
@@ -738,6 +744,14 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "60" in html
     assert "涨跌停过滤" in html
     assert "订单漏斗" in html
+    assert "订单路径漏斗" in html
+    assert 'class="funnel-chart"' in html
+    assert "策略信号" in html
+    assert "策略过滤" in html
+    assert "进入撮合" in html
+    assert "撮合拒绝" in html
+    assert "实际开仓" in html
+    assert "30" in html
     assert "退出结构" in html
     assert "重点证据文件" in html
     assert "产物索引" in html
