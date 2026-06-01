@@ -57,6 +57,7 @@ class DataCacheSnapshot:
     catalog: pd.DataFrame
     catalog_path: Path
     summary: dict[str, object]
+    readiness: pd.DataFrame
     by_timeframe: pd.DataFrame
     by_status: pd.DataFrame
     by_asset_type: pd.DataFrame
@@ -103,6 +104,7 @@ class DataManagementService:
             catalog=catalog,
             catalog_path=catalog_path,
             summary=cache_summary(catalog),
+            readiness=cache_readiness(catalog),
             by_timeframe=cache_by_timeframe(catalog),
             by_status=cache_by_status(catalog),
             by_asset_type=cache_by_asset_type(catalog),
@@ -350,6 +352,49 @@ def cache_by_dataset(catalog: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def cache_readiness(catalog: pd.DataFrame) -> pd.DataFrame:
+    """按资产类型和周期汇总回测准备度，帮助用户先看能否跑，再看明细。"""
+    columns = [
+        "timeframe",
+        "asset_type",
+        "asset_type_label",
+        "total_count",
+        "cached_count",
+        "missing_count",
+        "coverage_ratio",
+        "earliest_start_at",
+        "latest_end_at",
+        "status",
+        "message",
+    ]
+    if catalog.empty:
+        return pd.DataFrame(columns=columns)
+
+    frame = catalog.copy()
+    frame["status"] = frame.get("status", pd.Series([""] * len(frame))).fillna("").astype(str)
+    frame["start_at"] = pd.to_datetime(frame.get("start_at", pd.Series([pd.NaT] * len(frame))), errors="coerce")
+    frame["end_at"] = pd.to_datetime(frame.get("end_at", pd.Series([pd.NaT] * len(frame))), errors="coerce")
+    grouped = frame.groupby(["timeframe", "asset_type"], sort=False).agg(
+        total_count=("status", "size"),
+        cached_count=("status", lambda values: int(values.eq("cached").sum())),
+        earliest_start_at=("start_at", "min"),
+        latest_end_at=("end_at", "max"),
+    )
+    grouped["missing_count"] = grouped["total_count"] - grouped["cached_count"]
+    grouped["coverage_ratio"] = grouped["cached_count"] / grouped["total_count"].where(grouped["total_count"].ne(0), 1)
+    result = grouped.reset_index()
+    result["asset_type_label"] = result["asset_type"].map(lambda value: ASSET_TYPE_LABELS.get(str(value), str(value)))
+    result["status"] = [
+        _cache_readiness_status(cached_count, total_count)
+        for cached_count, total_count in zip(result["cached_count"], result["total_count"], strict=False)
+    ]
+    result["message"] = [
+        _cache_readiness_message(status, missing_count)
+        for status, missing_count in zip(result["status"], result["missing_count"], strict=False)
+    ]
+    return result.loc[:, columns]
+
+
 def download_summary(table: pd.DataFrame) -> dict[str, object]:
     if table.empty:
         return {"row_count": 0.0, "fetched_count": 0.0, "cached_count": 0.0, "new_rows": 0.0, "rows_written": 0.0}
@@ -363,6 +408,25 @@ def download_summary(table: pd.DataFrame) -> dict[str, object]:
         "new_rows": float(new_rows.sum()),
         "rows_written": float(rows_written.sum()),
     }
+
+
+def _cache_readiness_status(cached_count: object, total_count: object) -> str:
+    cached = int(cached_count)
+    total = int(total_count)
+    if total <= 0 or cached <= 0:
+        return "empty"
+    if cached == total:
+        return "ready"
+    return "partial"
+
+
+def _cache_readiness_message(status: str, missing_count: object) -> str:
+    missing = int(missing_count)
+    if status == "ready":
+        return "缓存完整，可以进入回测前数据质量审计。"
+    if status == "partial":
+        return f"部分缓存可用，仍有 {missing} 项需要补齐。"
+    return "没有可用缓存，回测前需要先补齐。"
 
 
 def _force_download_frame(written: pd.DataFrame, *, timeframe: str, adjust: str) -> pd.DataFrame:

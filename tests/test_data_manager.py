@@ -77,6 +77,12 @@ def test_data_management_service_summarizes_cache_snapshot(tmp_path: Path) -> No
     assert snapshot.summary["data_inventory_cached_count"] == 1.0
     assert snapshot.summary["data_inventory_missing_file_count"] == 2.0
     assert snapshot.catalog_path.exists()
+    readiness = snapshot.readiness.set_index(["timeframe", "asset_type"])
+    assert readiness.loc[("60m", "stock"), "status"] == "ready"
+    assert readiness.loc[("60m", "stock"), "coverage_ratio"] == 1.0
+    assert readiness.loc[("60m", "etf"), "status"] == "empty"
+    assert readiness.loc[("60m", "etf"), "missing_count"] == 1
+    assert readiness.loc[("60m", "index"), "message"] == "没有可用缓存，回测前需要先补齐。"
     with sqlite3.connect(snapshot.catalog_path) as connection:
         indexes = pd.read_sql_query("PRAGMA index_list(market_data_files)", connection)
     assert "idx_market_data_lookup" in indexes["name"].tolist()

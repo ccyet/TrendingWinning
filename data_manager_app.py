@@ -31,6 +31,9 @@ STATUS_LABELS = {
     "ok": "通过",
     "quality_error": "质量异常",
     "no_window_data": "窗口无数据",
+    "ready": "准备完成",
+    "partial": "部分可用",
+    "empty": "无可用缓存",
 }
 ASSET_TYPE_OPTIONS = tuple(ASSET_TYPE_LABELS)
 CACHE_ASSET_TABS = (("etf", "ETF"), ("stock", "个股"), ("index", "指数"), ("other", "其他"))
@@ -150,6 +153,11 @@ COLUMN_LABELS = {
     "max_missing_gap_minutes": "最长缺口分钟",
     "first_missing_at": "首个缺口",
     "last_missing_at": "最后缺口",
+    "total_count": "总项数",
+    "cached_count": "可用项",
+    "missing_count": "缺口项",
+    "earliest_start_at": "最早开始",
+    "latest_end_at": "最新结束",
 }
 
 
@@ -676,7 +684,32 @@ def _render_snapshot(snapshot: DataCacheSnapshot) -> None:
     second_metric_cols[2].metric("总行数", _int_metric(summary.get("data_inventory_total_rows")))
     second_metric_cols[3].metric("文件体积", _format_bytes(summary.get("data_inventory_total_file_size_bytes")))
 
+    _render_cache_readiness(snapshot.readiness)
     _render_classified_cache(snapshot.catalog)
+
+
+def _render_cache_readiness(readiness: pd.DataFrame) -> None:
+    st.markdown("##### 回测准备度")
+    if readiness.empty:
+        st.info("暂无准备度记录。先扫描缓存或选择更明确的数据范围。")
+        return
+    columns = [
+        "timeframe",
+        "asset_type_label",
+        "status",
+        "total_count",
+        "cached_count",
+        "missing_count",
+        "coverage_ratio",
+        "earliest_start_at",
+        "latest_end_at",
+        "message",
+    ]
+    st.dataframe(
+        _display_table(readiness.loc[:, [column for column in columns if column in readiness.columns]]),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def _render_plan(plan: pd.DataFrame) -> None:

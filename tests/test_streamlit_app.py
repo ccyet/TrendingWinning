@@ -138,6 +138,8 @@ def test_data_manager_app_uses_directory_picker_and_classified_cache_tabs() -> N
     assert "可选：先预览下载计划确认缺口；也可以直接执行下载。" in source
     assert "st.file_uploader(" in source
     assert "_render_classified_cache(" in source
+    assert "_render_cache_readiness(" in source
+    assert "回测准备度" in source
     assert "altair_chart" not in source
     assert "分类索引" not in source
     assert "索引数据库" not in source
