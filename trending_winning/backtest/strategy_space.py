@@ -5,8 +5,19 @@ import pandas as pd
 from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
 
 STRATEGY_SPACE_COLUMNS = ["策略空间", "当前设置", "触发与信号", "可能性分类", "边界/输出"]
+DETAILED_STRATEGY_SPACE_CHECKLIST = (
+    "策略空间清单 = 样本空间、标的空间、周期空间、形态空间、参数空间、过滤空间、订单空间、风险空间、"
+    "持仓空间、执行空间、退出空间、统计空间、失效空间"
+)
+MARKET_PHASE_SPACE = "早期顺势、趋势中段回撤、趋势末端衰竭、区间边缘、通道外扩、通道破坏、第一次反转观察、第二次反转确认"
+SIGNAL_PROBABILITY_LADDER = (
+    "背景不满足 -> 无信号；背景满足但信号K质量不足 -> 观察信号；信号成立但未穿越挂单价 -> 有效但未触发；"
+    "穿越后风险不合格 -> 触发后拒单"
+)
 STRATEGY_SPACE_FRAMEWORK = (
     "策略空间分为样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间；"
+    "更细拆为可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间，"
+    f"完整复核口径为：{DETAILED_STRATEGY_SPACE_CHECKLIST}；"
     "先确认当前策略在哪类盘面里可做，再确认哪些分支会被记录。"
 )
 
@@ -252,6 +263,7 @@ def _signal_possibility_summary(*, is_portfolio: bool) -> str:
         "过滤阶段 = 方向禁用/大周期不符/末端假突破/流动性不足；"
         "撮合阶段 = 追价超限/结构止损风险超限/目标价无效；"
         "持仓阶段 = 已有持仓或组合容量资金冲突；退出阶段 = 止损/固定目标/回撤止盈/到期/样本结束。"
+        f"{SIGNAL_PROBABILITY_LADDER}；"
         "可能出现无信号、观察信号、顺势突破、回调后二次突破、失败突破反向、二次反转、"
         "有效但未触发、触发后风险拒单或完整成交。"
     )
@@ -288,6 +300,7 @@ def _portfolio_signal_lifecycle_summary() -> str:
 def _single_signal_branch_summary() -> str:
     return (
         "或然情况分层：识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段；"
+        f"{SIGNAL_PROBABILITY_LADDER}；"
         "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
         "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成是完整检查顺序。"
     )
@@ -296,6 +309,7 @@ def _single_signal_branch_summary() -> str:
 def _portfolio_signal_branch_summary() -> str:
     return (
         "或然情况分层：识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段；"
+        f"{SIGNAL_PROBABILITY_LADDER}；"
         "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单、同票冲突、止损/目标/回撤止盈/到期退出都会单独归因；"
         "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成是完整检查顺序。"
     )
@@ -306,6 +320,8 @@ def _single_strategy_space_scope(config: SingleStrategyExperimentConfig) -> str:
         f"{_detector_label(config.detector)}单策略；参数空间包括识别窗口、强收盘/实体阈值、"
         f"回撤腿数、结构止损最大风险、追价限制、盈亏比 {config.risk_reward:.2f}R 和最长持有 {config.max_holding_bars} 根 K。"
         "策略空间清单 = 可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间；"
+        f"{DETAILED_STRATEGY_SPACE_CHECKLIST}；"
+        f"可交易盘面按{MARKET_PHASE_SPACE}分类，先确定当前处在哪一类，再决定是否允许开仓。"
         "单策略只验证一个 detector 的独立效果。"
     )
 
@@ -316,6 +332,8 @@ def _portfolio_strategy_space_scope(config: PortfolioExperimentConfig) -> str:
         f"参数空间包括各 detector 阈值、交易方向、触发风控、盈亏比 {config.risk_reward:.2f}R、"
         f"最长持有 {config.max_holding_bars} 根 K、组合容量和资金上限。"
         "策略空间清单 = 可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间；"
+        f"{DETAILED_STRATEGY_SPACE_CHECKLIST}；"
+        f"可交易盘面按{MARKET_PHASE_SPACE}分类，每个 detector 只处理自己负责的盘面。"
         "组合策略额外引入资金空间、优先级空间和约束空间。"
     )
 
@@ -329,6 +347,7 @@ def _single_strategy_space_scenarios(config: SingleStrategyExperimentConfig) -> 
     return (
         f"适用盘面才评估{_detector_label(config.detector)}信号；可交易空间 = detector 状态清晰、"
         "信号K质量达标、挂单触发后仍有合理风险收益；不交易空间 = 中部震荡、第一次反转、观察信号；"
+        f"盘面可能处于{MARKET_PHASE_SPACE}；"
         "失效空间包括末端假突破、流动性不足、结构止损过远、低质量影线和跳空后风险失真。"
     )
 
@@ -342,6 +361,7 @@ def _portfolio_strategy_space_scenarios(config: PortfolioExperimentConfig) -> st
     )
     return (
         f"每个形态先独立判断自身适用空间，再由组合层处理优先级、资金和同票冲突；"
+        f"盘面可能处于{MARKET_PHASE_SPACE}；"
         f"组合策略空间 = 信号空间 + 资金空间 + 约束空间 + 归因空间；{disabled_text}"
     )
 

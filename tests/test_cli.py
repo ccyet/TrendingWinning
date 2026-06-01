@@ -486,6 +486,58 @@ def test_cli_audit_data_can_include_higher_timeframe(tmp_path: Path, monkeypatch
     assert sum(line.lstrip().startswith("000001.SZ") for line in out.splitlines()) == 2
 
 
+def test_cli_audit_data_can_show_gap_episodes(tmp_path: Path, monkeypatch, capsys) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2026-05-25 10:00:00",
+                    "2026-05-25 10:30:00",
+                    "2026-05-25 11:30:00",
+                    "2026-05-25 13:30:00",
+                    "2026-05-25 15:00:00",
+                ]
+            ),
+            "stock_code": ["000001.SZ"] * 5,
+            "open": [10.0, 10.1, 10.2, 10.3, 10.4],
+            "high": [10.3, 10.4, 10.5, 10.6, 10.7],
+            "low": [9.8, 9.9, 10.0, 10.1, 10.2],
+            "close": [10.2, 10.3, 10.4, 10.5, 10.6],
+            "volume": [1000.0] * 5,
+            "amount": [10200.0, 10300.0, 10400.0, 10500.0, 10600.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "trending-winning",
+            "audit-data",
+            "--symbols",
+            "000001.SZ",
+            "--timeframe",
+            "30m",
+            "--start",
+            "2026-05-25 09:30:00",
+            "--end",
+            "2026-05-25 15:00:00",
+            "--data-root",
+            str(data_root),
+            "--show-gap-episodes",
+        ],
+    )
+
+    main()
+
+    out = capsys.readouterr().out
+    assert "数据缺口明细" in out
+    assert "2026-05-25 11:00:00" in out
+    assert "2026-05-25 14:00:00" in out
+    assert "gap_minutes" in out
+
+
 def test_cli_inventory_data_reports_local_cache_state(tmp_path: Path, monkeypatch, capsys) -> None:
     data_root = tmp_path / "market" / "daily"
     bars = pd.DataFrame(

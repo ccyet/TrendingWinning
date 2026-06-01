@@ -52,6 +52,23 @@ AUDIT_COLUMNS = [
     "message",
 ]
 
+DATA_GAP_EPISODE_COLUMNS = [
+    "stock_code",
+    "timeframe",
+    "adjust",
+    "gap_no",
+    "start_at",
+    "end_at",
+    "missing_rows",
+    "gap_minutes",
+    "previous_available_at",
+    "next_available_at",
+    "requested_start",
+    "requested_end",
+    "path",
+    "status",
+]
+
 LIMIT_FILTER_AUDIT_COLUMNS = [
     "stock_code",
     "status",
@@ -99,6 +116,36 @@ def audit_local_data(
         for symbol in unique_symbols(tuple(symbols))
     ]
     return pd.DataFrame(rows, columns=AUDIT_COLUMNS)
+
+
+def data_gap_episodes(
+    *,
+    data_root: str | Path,
+    timeframe: str,
+    adjust: str,
+    symbols: tuple[str, ...] | list[str],
+    start: str | pd.Timestamp,
+    end: str | pd.Timestamp,
+    expected_sessions_by_symbol: Mapping[str, Sequence[pd.Timestamp]] | None = None,
+) -> pd.DataFrame:
+    """输出连续缺失 K 段，便于用户直接定位要补哪一段缓存。"""
+    normalized_timeframe = ensure_supported_timeframe(timeframe)
+    root = resolve_timeframe_root(data_root, normalized_timeframe) / adjust
+    start_ts, end_ts = _audit_window_for_timeframe(normalized_timeframe, start=start, end=end)
+    rows: list[dict[str, object]] = []
+    for symbol in unique_symbols(tuple(symbols)):
+        rows.extend(
+            _symbol_gap_episodes(
+                root=root,
+                symbol=symbol,
+                timeframe=normalized_timeframe,
+                adjust=adjust,
+                start_ts=start_ts,
+                end_ts=end_ts,
+                expected_sessions=(expected_sessions_by_symbol or {}).get(symbol),
+            )
+        )
+    return pd.DataFrame(rows, columns=DATA_GAP_EPISODE_COLUMNS)
 
 
 def daily_sessions_by_symbol(
@@ -289,6 +336,64 @@ def _audit_symbol_file(
     )
 
 
+def _symbol_gap_episodes(
+    *,
+    root: Path,
+    symbol: str,
+    timeframe: str,
+    adjust: str,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    expected_sessions: Sequence[pd.Timestamp] | None = None,
+) -> list[dict[str, object]]:
+    path = root / f"{symbol}.parquet"
+    base = {
+        "stock_code": symbol,
+        "timeframe": timeframe,
+        "adjust": adjust,
+        "requested_start": start_ts,
+        "requested_end": end_ts,
+        "path": str(path),
+    }
+    if not path.exists():
+        return _gap_episodes_for_dates(
+            pd.DataFrame(columns=["date"]),
+            timeframe,
+            expected_sessions=expected_sessions,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            base=base,
+            status="missing_file",
+        )
+    try:
+        raw = pd.read_parquet(path)
+    except Exception:  # noqa: BLE001
+        return []
+    if sorted(set(CANONICAL_COLUMNS).difference(raw.columns)):
+        return _gap_episodes_for_dates(
+            pd.DataFrame(columns=["date"]),
+            timeframe,
+            expected_sessions=expected_sessions,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            base=base,
+            status="missing_columns",
+        )
+
+    normalized = normalize_bars(raw, symbol)
+    raw_in_window = normalized.loc[normalized["date"].between(start_ts, end_ts)]
+    in_window = _drop_zero_liquidity_bars(raw_in_window)
+    return _gap_episodes_for_dates(
+        in_window,
+        timeframe,
+        expected_sessions=expected_sessions,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        base=base,
+        status="missing_bars",
+    )
+
+
 def _audit_record(base: dict[str, object], **overrides: object) -> dict[str, object]:
     record = {
         **base,
@@ -358,18 +463,16 @@ def _intraday_session_coverage(
     if in_window.empty and not expected_sessions:
         return _empty_coverage()
     minutes = _timeframe_minutes(timeframe)
-    actual_dates = pd.to_datetime(in_window["date"], errors="coerce").dropna().dt.floor("min")
-    if expected_sessions:
-        session_dates = pd.Series(pd.to_datetime(list(expected_sessions), errors="coerce")).dropna().dt.normalize()
-        session_dates = session_dates.drop_duplicates().sort_values()
-    else:
-        session_dates = actual_dates.dt.normalize().drop_duplicates().sort_values()
-    expected = _expected_intraday_timestamps(session_dates, minutes)
-    expected = [timestamp for timestamp in expected if start_ts <= timestamp <= end_ts]
+    expected, actual_set = _intraday_expected_and_actual(
+        in_window,
+        minutes,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        expected_sessions=expected_sessions,
+    )
     expected_count = len(expected)
     if expected_count == 0:
         return _empty_coverage()
-    actual_set = set(actual_dates)
     missing = [timestamp for timestamp in expected if timestamp not in actual_set]
     return {
         "expected_rows": int(expected_count),
@@ -386,19 +489,15 @@ def _daily_session_coverage(
     end_ts: pd.Timestamp,
     expected_sessions: Sequence[pd.Timestamp] | None = None,
 ) -> dict[str, object]:
-    actual_dates = pd.to_datetime(in_window["date"], errors="coerce").dropna().dt.normalize()
-    if expected_sessions:
-        session_dates = pd.Series(pd.to_datetime(list(expected_sessions), errors="coerce")).dropna().dt.normalize()
-        session_dates = session_dates.drop_duplicates().sort_values()
-    else:
-        session_dates = actual_dates.drop_duplicates().sort_values()
-    start_day = start_ts.normalize()
-    end_day = inclusive_end_timestamp(end_ts).normalize()
-    expected = [pd.Timestamp(item) for item in session_dates if start_day <= pd.Timestamp(item) <= end_day]
+    expected, actual_set = _daily_expected_and_actual(
+        in_window,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        expected_sessions=expected_sessions,
+    )
     expected_count = len(expected)
     if expected_count == 0:
         return _empty_coverage()
-    actual_set = set(actual_dates)
     missing = [timestamp for timestamp in expected if timestamp not in actual_set]
     return {
         "expected_rows": int(expected_count),
@@ -418,6 +517,163 @@ def _empty_coverage() -> dict[str, object]:
         "last_missing_at": pd.NaT,
         "max_missing_gap_start_at": pd.NaT,
         "max_missing_gap_end_at": pd.NaT,
+    }
+
+
+def _gap_episodes_for_dates(
+    in_window: pd.DataFrame,
+    timeframe: str,
+    *,
+    expected_sessions: Sequence[pd.Timestamp] | None,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    base: dict[str, object],
+    status: str,
+) -> list[dict[str, object]]:
+    if ensure_supported_timeframe(timeframe) == "1d":
+        expected, actual_set = _daily_expected_and_actual(
+            in_window,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            expected_sessions=expected_sessions,
+        )
+        minutes = 1440
+    else:
+        minutes = _timeframe_minutes(timeframe)
+        expected, actual_set = _intraday_expected_and_actual(
+            in_window,
+            minutes,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            expected_sessions=expected_sessions,
+        )
+    return _missing_gap_episode_rows(expected, actual_set=actual_set, minutes=minutes, base=base, status=status)
+
+
+def _intraday_expected_and_actual(
+    in_window: pd.DataFrame,
+    minutes: int,
+    *,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    expected_sessions: Sequence[pd.Timestamp] | None,
+) -> tuple[list[pd.Timestamp], set[pd.Timestamp]]:
+    actual_dates = _actual_minute_dates(in_window)
+    if expected_sessions:
+        session_dates = pd.Series(pd.to_datetime(list(expected_sessions), errors="coerce")).dropna().dt.normalize()
+        session_dates = session_dates.drop_duplicates().sort_values()
+    else:
+        session_dates = actual_dates.dt.normalize().drop_duplicates().sort_values()
+    expected = _expected_intraday_timestamps(session_dates, minutes)
+    expected = [timestamp for timestamp in expected if start_ts <= timestamp <= end_ts]
+    return expected, set(actual_dates)
+
+
+def _daily_expected_and_actual(
+    in_window: pd.DataFrame,
+    *,
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    expected_sessions: Sequence[pd.Timestamp] | None,
+) -> tuple[list[pd.Timestamp], set[pd.Timestamp]]:
+    actual_dates = _actual_minute_dates(in_window).dt.normalize()
+    if expected_sessions:
+        session_dates = pd.Series(pd.to_datetime(list(expected_sessions), errors="coerce")).dropna().dt.normalize()
+        session_dates = session_dates.drop_duplicates().sort_values()
+    else:
+        session_dates = actual_dates.drop_duplicates().sort_values()
+    start_day = start_ts.normalize()
+    end_day = inclusive_end_timestamp(end_ts).normalize()
+    expected = [pd.Timestamp(item) for item in session_dates if start_day <= pd.Timestamp(item) <= end_day]
+    return expected, set(actual_dates)
+
+
+def _actual_minute_dates(in_window: pd.DataFrame) -> pd.Series:
+    if in_window.empty or "date" not in in_window.columns:
+        return pd.Series(dtype="datetime64[ns]")
+    return pd.to_datetime(in_window["date"], errors="coerce").dropna().dt.floor("min")
+
+
+def _missing_gap_episode_rows(
+    expected: list[pd.Timestamp],
+    *,
+    actual_set: set[pd.Timestamp],
+    minutes: int,
+    base: dict[str, object],
+    status: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    previous_available = pd.NaT
+    gap_start = pd.NaT
+    gap_end = pd.NaT
+    gap_previous = pd.NaT
+    missing_rows = 0
+    for timestamp in expected:
+        if timestamp not in actual_set:
+            if missing_rows == 0:
+                gap_start = timestamp
+                gap_previous = previous_available
+            missing_rows += 1
+            gap_end = timestamp
+            continue
+        if missing_rows > 0:
+            rows.append(
+                _gap_episode_row(
+                    base,
+                    gap_no=len(rows) + 1,
+                    start_at=gap_start,
+                    end_at=gap_end,
+                    missing_rows=missing_rows,
+                    minutes=minutes,
+                    previous_available_at=gap_previous,
+                    next_available_at=timestamp,
+                    status=status,
+                )
+            )
+            missing_rows = 0
+            gap_start = pd.NaT
+            gap_end = pd.NaT
+            gap_previous = pd.NaT
+        previous_available = timestamp
+    if missing_rows > 0:
+        rows.append(
+            _gap_episode_row(
+                base,
+                gap_no=len(rows) + 1,
+                start_at=gap_start,
+                end_at=gap_end,
+                missing_rows=missing_rows,
+                minutes=minutes,
+                previous_available_at=gap_previous,
+                next_available_at=pd.NaT,
+                status=status,
+            )
+        )
+    return rows
+
+
+def _gap_episode_row(
+    base: dict[str, object],
+    *,
+    gap_no: int,
+    start_at: pd.Timestamp,
+    end_at: pd.Timestamp,
+    missing_rows: int,
+    minutes: int,
+    previous_available_at: pd.Timestamp,
+    next_available_at: pd.Timestamp,
+    status: str,
+) -> dict[str, object]:
+    return {
+        **base,
+        "gap_no": int(gap_no),
+        "start_at": start_at,
+        "end_at": end_at,
+        "missing_rows": int(missing_rows),
+        "gap_minutes": int(missing_rows * minutes),
+        "previous_available_at": previous_available_at,
+        "next_available_at": next_available_at,
+        "status": status,
     }
 
 

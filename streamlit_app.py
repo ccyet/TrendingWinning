@@ -215,6 +215,14 @@ DISPLAY_COLUMN_LABELS = {
     "data_inventory_no_valid_rows_count": "缓存无有效K线数",
     "data_inventory_total_rows": "缓存总K线数",
     "data_inventory_total_file_size_bytes": "缓存文件总字节",
+    "gap_no": "缺口序号",
+    "gap_minutes": "缺口分钟",
+    "missing_rows": "缺失K数",
+    "previous_available_at": "前一根可用K",
+    "next_available_at": "后一根可用K",
+    "requested_start": "请求开始",
+    "requested_end": "请求结束",
+    "path": "文件路径",
     "start": "开始",
     "end": "结束",
     "signal_date": "信号时间",
@@ -3540,6 +3548,7 @@ def _execute_single_strategy_experiment(
         bars=experiment.bars,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
+        data_gap_episodes=experiment.data_gap_episodes,
         stock_names=stock_names,
     )
     _render_experiment_breakdowns(experiment, stock_names=stock_names)
@@ -3643,6 +3652,7 @@ def _execute_portfolio_strategy_experiment(
         bars=experiment.bars,
         filtered_limit_open_count=experiment.filtered_limit_open_count,
         data_coverage=experiment.data_coverage,
+        data_gap_episodes=experiment.data_gap_episodes,
         stock_names=stock_names,
     )
     _render_experiment_breakdowns(experiment, stock_names=stock_names)
@@ -3657,6 +3667,7 @@ def _render_backtest_result(
     bars: pd.DataFrame | None = None,
     filtered_limit_open_count: int | None = None,
     data_coverage: pd.DataFrame | None = None,
+    data_gap_episodes: pd.DataFrame | None = None,
     stock_names: Mapping[str, str] | None = None,
 ) -> None:
     c1, c2, c3, c4 = st.columns(4)
@@ -3681,6 +3692,9 @@ def _render_backtest_result(
     if data_coverage is not None and not data_coverage.empty:
         _render_data_coverage_chart(data_coverage, stock_names=stock_names)
         _render_display_table("数据覆盖率检查", data_coverage, stock_names=stock_names)
+    gap_episodes = data_gap_episodes if data_gap_episodes is not None else getattr(bundle, "data_gap_episodes", None)
+    if gap_episodes is not None and not gap_episodes.empty:
+        _render_display_table("数据缺口明细", gap_episodes, stock_names=stock_names)
     _render_order_decision_charts(result.order_decisions)
     _render_display_table("逐笔交易", result.trades, stock_names=stock_names)
     if not result.equity_curve.empty:

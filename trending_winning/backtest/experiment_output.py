@@ -156,6 +156,7 @@ def _write_common_experiment_outputs(
     _experiment_drawdown_episodes(result.backtest.equity_curve).to_csv(output_dir / "drawdown_episodes.csv", index=False)
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
+    result.data_gap_episodes.to_csv(output_dir / "data_gap_episodes.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
     strategy_space_summary(result.config).to_csv(output_dir / "strategy_space.csv", index=False)
@@ -201,6 +202,7 @@ def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | Single
     write_jsonl(output_dir / "case_configs.jsonl", sweep_case_config_records(result))
     result.data_inventory.to_csv(output_dir / "data_inventory.csv", index=False)
     result.data_coverage.to_csv(output_dir / "data_coverage.csv", index=False)
+    result.data_gap_episodes.to_csv(output_dir / "data_gap_episodes.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
 

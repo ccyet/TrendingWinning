@@ -8,8 +8,10 @@ import pandas as pd
 
 from trending_winning.data.audit import (
     AUDIT_COLUMNS,
+    DATA_GAP_EPISODE_COLUMNS,
     LIMIT_FILTER_AUDIT_COLUMNS,
     audit_local_data,
+    data_gap_episodes,
     daily_sessions_by_symbol,
     limit_open_dates_in_window,
     limit_open_filter_audit,
@@ -44,6 +46,7 @@ from trending_winning.data.symbols import load_symbol_metadata, resolve_symbol_n
 __all__ = [
     "BacktestDataBundle",
     "DATA_AUDIT_SUMMARY_KEYS",
+    "DATA_GAP_EPISODE_COLUMNS",
     "DATA_INVENTORY_SUMMARY_KEYS",
     "INVENTORY_COLUMNS",
     "LIMIT_FILTER_SUMMARY_KEYS",
@@ -51,6 +54,7 @@ __all__ = [
     "MarketDataRepository",
     "audit_local_data",
     "available_symbols",
+    "data_gap_episodes",
     "inventory_local_data",
     "load_backtest_data",
     "load_daily_bars",
@@ -135,6 +139,7 @@ class BacktestDataBundle:
     daily_bars: pd.DataFrame
     filtered_limit_open_days: pd.DataFrame
     data_audit: pd.DataFrame
+    data_gap_episodes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=DATA_GAP_EPISODE_COLUMNS))
     limit_filter_audit: pd.DataFrame = field(
         default_factory=lambda: pd.DataFrame(columns=LIMIT_FILTER_AUDIT_COLUMNS)
     )
@@ -148,6 +153,7 @@ class MultiTimeframeBacktestDataBundle:
     daily_bars: pd.DataFrame
     filtered_limit_open_days: pd.DataFrame
     data_audit: pd.DataFrame
+    data_gap_episodes: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=DATA_GAP_EPISODE_COLUMNS))
     limit_filter_audit: pd.DataFrame = field(
         default_factory=lambda: pd.DataFrame(columns=LIMIT_FILTER_AUDIT_COLUMNS)
     )
@@ -232,6 +238,36 @@ class MarketDataRepository:
             else None
         )
         return audit_local_data(
+            data_root=self.data_root,
+            timeframe=normalized_timeframe,
+            adjust=self.adjust,
+            symbols=symbols,
+            start=start,
+            end=end,
+            expected_sessions_by_symbol=expected_sessions_by_symbol,
+        )
+
+    def data_gap_episodes(
+        self,
+        *,
+        timeframe: str,
+        symbols: tuple[str, ...] | list[str],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+    ) -> pd.DataFrame:
+        normalized_timeframe = ensure_supported_timeframe(timeframe)
+        expected_sessions_by_symbol = (
+            _expected_sessions_by_symbol_from_daily(
+                data_root=self.data_root,
+                adjust=self.adjust,
+                symbols=unique_symbols(tuple(symbols)),
+                start=start,
+                end=end,
+            )
+            if normalized_timeframe != "1d"
+            else None
+        )
+        return data_gap_episodes(
             data_root=self.data_root,
             timeframe=normalized_timeframe,
             adjust=self.adjust,
@@ -405,6 +441,15 @@ def load_backtest_data(
         end=end,
         expected_sessions_by_symbol=daily_sessions_by_symbol(daily, start=start, end=end),
     )
+    gap_episodes = data_gap_episodes(
+        data_root=data_root,
+        timeframe=timeframe,
+        adjust=adjust,
+        symbols=symbols,
+        start=start,
+        end=end,
+        expected_sessions_by_symbol=daily_sessions_by_symbol(daily, start=start, end=end),
+    )
     if strict_data_quality:
         _raise_for_failed_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
 
@@ -441,6 +486,7 @@ def load_backtest_data(
             daily_bars=daily,
             filtered_limit_open_days=blocked,
             data_audit=data_audit,
+            data_gap_episodes=gap_episodes,
             limit_filter_audit=filter_audit,
         )
 
@@ -450,6 +496,7 @@ def load_backtest_data(
         daily_bars=daily,
         filtered_limit_open_days=blocked,
         data_audit=data_audit,
+        data_gap_episodes=gap_episodes,
         limit_filter_audit=filter_audit,
     )
 
@@ -498,6 +545,22 @@ def load_multi_timeframe_backtest_data(
         for timeframe in normalized_timeframes
     ]
     data_audit = pd.concat(audit_frames, ignore_index=True) if audit_frames else pd.DataFrame(columns=AUDIT_COLUMNS)
+    gap_frames = [
+        data_gap_episodes(
+            data_root=data_root,
+            timeframe=timeframe,
+            adjust=adjust,
+            symbols=symbols,
+            start=start,
+            end=end,
+            expected_sessions_by_symbol=expected_sessions_by_symbol,
+        )
+        for timeframe in normalized_timeframes
+    ]
+    gap_frames = [frame for frame in gap_frames if not frame.empty]
+    gap_episodes = (
+        pd.concat(gap_frames, ignore_index=True) if gap_frames else pd.DataFrame(columns=DATA_GAP_EPISODE_COLUMNS)
+    )
     if strict_data_quality:
         _raise_for_failed_data_audit(data_audit, min_coverage_ratio=min_coverage_ratio)
 
@@ -539,6 +602,7 @@ def load_multi_timeframe_backtest_data(
         daily_bars=daily,
         filtered_limit_open_days=blocked,
         data_audit=data_audit,
+        data_gap_episodes=gap_episodes,
         limit_filter_audit=filter_audit,
     )
 

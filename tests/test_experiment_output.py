@@ -186,6 +186,60 @@ def test_save_single_strategy_experiment_writes_drawdown_episodes(tmp_path) -> N
     assert saved.loc[0, "trough_at"] == "2026-05-28 00:00:00"
 
 
+def test_save_single_strategy_experiment_writes_data_gap_episodes(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-data-gaps",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-data-gaps"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    gap_episodes = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ"],
+            "timeframe": ["30m"],
+            "adjust": ["qfq"],
+            "gap_no": [1],
+            "start_at": [pd.Timestamp("2026-05-25 14:00:00")],
+            "end_at": [pd.Timestamp("2026-05-25 14:30:00")],
+            "missing_rows": [2],
+            "gap_minutes": [60],
+            "previous_available_at": [pd.Timestamp("2026-05-25 13:30:00")],
+            "next_available_at": [pd.Timestamp("2026-05-25 15:00:00")],
+            "requested_start": [pd.Timestamp("2026-05-25 09:30:00")],
+            "requested_end": [pd.Timestamp("2026-05-25 15:00:00")],
+            "path": ["/data/30m/qfq/000001.SZ.parquet"],
+            "status": ["missing_bars"],
+        }
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(trades=pd.DataFrame(), equity_curve=pd.DataFrame(), stats={"trade_count": 0.0}),
+        input_bar_count=0,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        data_gap_episodes=gap_episodes,
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    saved = pd.read_csv(output_dir / "data_gap_episodes.csv")
+    assert saved["stock_code"].tolist() == ["000001.SZ"]
+    assert saved["start_at"].tolist() == ["2026-05-25 14:00:00"]
+    assert saved["missing_rows"].tolist() == [2]
+
+
 def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path) -> None:
     from trending_winning.backtest.experiment_output import save_single_strategy_experiment
 
@@ -247,6 +301,9 @@ def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path)
     assert "入场触发价 = 信号K高点 + tick" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in joined
+    assert "背景不满足 -> 无信号；背景满足但信号K质量不足 -> 观察信号；信号成立但未穿越挂单价 -> 有效但未触发；穿越后风险不合格 -> 触发后拒单" in joined
+    assert "策略空间清单 = 样本空间、标的空间、周期空间、形态空间、参数空间、过滤空间、订单空间、风险空间、持仓空间、执行空间、退出空间、统计空间、失效空间" in joined
+    assert "早期顺势、趋势中段回撤、趋势末端衰竭、区间边缘、通道外扩、通道破坏、第一次反转观察、第二次反转确认" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "挂单" in joined
     assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
@@ -318,6 +375,9 @@ def test_save_portfolio_experiment_writes_strategy_space_summary(tmp_path) -> No
     assert "入场触发价 = 信号K高点 + tick" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成" in joined
+    assert "背景不满足 -> 无信号；背景满足但信号K质量不足 -> 观察信号；信号成立但未穿越挂单价 -> 有效但未触发；穿越后风险不合格 -> 触发后拒单" in joined
+    assert "策略空间清单 = 样本空间、标的空间、周期空间、形态空间、参数空间、过滤空间、订单空间、风险空间、持仓空间、执行空间、退出空间、统计空间、失效空间" in joined
+    assert "早期顺势、趋势中段回撤、趋势末端衰竭、区间边缘、通道外扩、通道破坏、第一次反转观察、第二次反转确认" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单" in joined
     assert "资金分配" in joined

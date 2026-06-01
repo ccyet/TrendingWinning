@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from trending_winning.backtest.models import BacktestResult
+from trending_winning.data.audit import DATA_GAP_EPISODE_COLUMNS
+
+
+def _empty_data_gap_episodes() -> pd.DataFrame:
+    """返回带标准列的空缺口明细，避免保存空 CSV 时丢失表头。"""
+    return pd.DataFrame(columns=DATA_GAP_EPISODE_COLUMNS)
 
 
 @dataclass(frozen=True)
@@ -169,6 +175,7 @@ class PortfolioExperimentResult:
     exit_reason_stats: pd.DataFrame
     monthly_returns: pd.DataFrame
     elapsed_seconds: float
+    data_gap_episodes: pd.DataFrame = field(default_factory=_empty_data_gap_episodes)
     signal_lifecycle_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -199,6 +206,7 @@ class SingleStrategyExperimentResult:
     side_stats: pd.DataFrame
     exit_reason_stats: pd.DataFrame
     monthly_returns: pd.DataFrame
+    data_gap_episodes: pd.DataFrame = field(default_factory=_empty_data_gap_episodes)
     signal_lifecycle_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -238,6 +246,7 @@ class PortfolioSweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    data_gap_episodes: pd.DataFrame = field(default_factory=_empty_data_gap_episodes)
     strategy_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -260,6 +269,7 @@ class SingleStrategySweepResult:
     input_bar_count: int
     filtered_limit_open_count: int
     elapsed_seconds: float
+    data_gap_episodes: pd.DataFrame = field(default_factory=_empty_data_gap_episodes)
     strategy_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     detector_stats: pd.DataFrame = field(default_factory=pd.DataFrame)
     setup_stats: pd.DataFrame = field(default_factory=pd.DataFrame)

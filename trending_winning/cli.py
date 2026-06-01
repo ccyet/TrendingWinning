@@ -293,6 +293,11 @@ def main() -> None:
     audit_parser.add_argument("--end", required=True)
     audit_parser.add_argument("--adjust", default="qfq")
     audit_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
+    audit_parser.add_argument(
+        "--show-gap-episodes",
+        action="store_true",
+        help="同时输出每段连续缺失 K 的起止时间、缺失根数和前后可用 K。",
+    )
 
     inventory_parser = subparsers.add_parser("inventory-data", help="list local parquet cache inventory by timeframe")
     inventory_parser.add_argument("--symbols", default="")
@@ -638,6 +643,19 @@ def main() -> None:
         ]
         result = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
         print(result.to_string(index=False))
+        if args.show_gap_episodes:
+            gap_frames = [
+                repo.data_gap_episodes(
+                    timeframe=timeframe,
+                    symbols=symbols,
+                    start=args.start,
+                    end=args.end,
+                )
+                for timeframe in timeframes
+            ]
+            gaps = pd.concat(gap_frames, ignore_index=True) if len(gap_frames) > 1 else gap_frames[0]
+            print("\n数据缺口明细")
+            print("无连续缺口" if gaps.empty else gaps.to_string(index=False))
         return
 
     if args.command == "single-backtest":

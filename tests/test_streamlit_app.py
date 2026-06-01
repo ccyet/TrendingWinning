@@ -272,6 +272,9 @@ def test_single_strategy_space_summary_makes_trigger_filters_and_outputs_explici
     assert "可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in joined
+    assert "背景不满足 -> 无信号；背景满足但信号K质量不足 -> 观察信号；信号成立但未穿越挂单价 -> 有效但未触发；穿越后风险不合格 -> 触发后拒单" in joined
+    assert "策略空间清单 = 样本空间、标的空间、周期空间、形态空间、参数空间、过滤空间、订单空间、风险空间、持仓空间、执行空间、退出空间、统计空间、失效空间" in joined
+    assert "早期顺势、趋势中段回撤、趋势末端衰竭、区间边缘、通道外扩、通道破坏、第一次反转观察、第二次反转确认" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "挂单" in joined
     assert "成交、未触发、方向禁用、追价超限、结构止损风险超限" in joined
@@ -384,6 +387,9 @@ def test_portfolio_strategy_space_summary_describes_allocation_and_strategy_boun
     assert "可交易空间、参数空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "触发成交条件：多头 high >= 入场触发价，空头 low <= 入场触发价" in joined
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、容量/资金拒单、退出完成" in joined
+    assert "背景不满足 -> 无信号；背景满足但信号K质量不足 -> 观察信号；信号成立但未穿越挂单价 -> 有效但未触发；穿越后风险不合格 -> 触发后拒单" in joined
+    assert "策略空间清单 = 样本空间、标的空间、周期空间、形态空间、参数空间、过滤空间、订单空间、风险空间、持仓空间、执行空间、退出空间、统计空间、失效空间" in joined
+    assert "早期顺势、趋势中段回撤、趋势末端衰竭、区间边缘、通道外扩、通道破坏、第一次反转观察、第二次反转确认" in joined
     assert "样本空间、形态空间、过滤空间、执行空间、退出空间、统计空间" in joined
     assert "有效信号、有效但未触发、过滤拒单、撮合拒单、容量/资金拒单" in joined
     assert "组合层" in joined
@@ -884,6 +890,8 @@ def test_streamlit_backtest_result_renders_data_coverage_overview_chart() -> Non
 
     assert "_render_data_coverage_chart" in result_source
     assert "数据覆盖率概览" in chart_source
+    assert "data_gap_episodes" in result_source
+    assert "数据缺口明细" in result_source
 
 
 def test_order_decision_funnel_frame_counts_execution_path() -> None:
@@ -1363,6 +1371,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "inventory-data" in html
     assert "本地缓存库存" in html
     assert "data_inventory.csv" in html
+    assert "data_gap_episodes.csv" in html
     assert "symbol_metadata.csv" in html
     assert "strategy_space.csv" in html
     assert "保存运行前的策略执行空间" in html
@@ -1370,6 +1379,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "策略执行空间" in html
     assert "运行前会把当前样本、识别形态、适用空间、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出整理成一张表" in html
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in html
+    assert "背景不满足 -> 无信号" in html
+    assert "订单空间、风险空间、持仓空间" in html
     assert "策略空间不是一个单项参数，而是样本、形态、过滤、执行、退出、统计六类边界" in html
     assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in html
     assert "订单决策概览" in html
@@ -1466,6 +1477,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "strategy_space.csv" in html
     assert "确认页面写明只运行一个识别模块、适用空间、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出" in html
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in html
+    assert "背景不满足 -> 无信号" in html
+    assert "订单空间、风险空间、持仓空间" in html
     assert "策略空间不是一个单项参数，而是样本、形态、过滤、执行、退出、统计六类边界" in html
     assert "有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突" in html
     assert "单策略和组合策略使用信号 K 结构止损价" in html
@@ -1529,6 +1542,10 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "symbol_metadata.csv" in guide
     assert "strategy_space.csv" in readme
     assert "strategy_space.csv" in guide
+    assert "data_gap_episodes.csv" in readme
+    assert "data_gap_episodes.csv" in guide
+    assert "每段连续缺失K" in readme
+    assert "每段连续缺失 K" in guide
     assert "monthly_max_consecutive_losses" in readme
     assert "monthly_max_consecutive_losses" in guide
     assert "monthly_max_recovery_periods" in readme

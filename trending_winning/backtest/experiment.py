@@ -168,6 +168,7 @@ def run_single_strategy_experiment(
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         elapsed_seconds=float(max(perf_counter() - start_time, 1e-12)),
         data_coverage=data.data_audit,
+        data_gap_episodes=data.data_gap_episodes,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_strategy_trade_statistics(
@@ -244,6 +245,7 @@ def run_portfolio_experiment(config: PortfolioExperimentConfig, *, save: bool = 
         input_bar_count=int(len(data.bars)),
         filtered_limit_open_count=int(len(data.filtered_limit_open_days)),
         data_coverage=data.data_audit,
+        data_gap_episodes=data.data_gap_episodes,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         strategy_stats=_strategy_trade_statistics(
@@ -460,6 +462,7 @@ def run_portfolio_parameter_sweep(
         grid={key: list(values) for key, values in grid.items()},
         table=table,
         data_coverage=data.data_audit,
+        data_gap_episodes=data.data_gap_episodes,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         input_bar_count=int(len(data.bars)),
@@ -634,6 +637,7 @@ def run_single_strategy_parameter_sweep(
         grid={key: list(values) for key, values in grid.items()},
         table=table,
         data_coverage=data.data_audit,
+        data_gap_episodes=data.data_gap_episodes,
         data_inventory=data.data_inventory,
         limit_filter_audit=data.limit_filter_audit,
         input_bar_count=int(len(data.bars)),

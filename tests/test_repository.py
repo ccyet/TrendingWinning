@@ -7,10 +7,12 @@ import pytest
 
 from trending_winning.data.repository import (
     BacktestDataBundle,
+    DATA_GAP_EPISODE_COLUMNS,
     MultiTimeframeBacktestDataBundle,
     MarketDataRepository,
     audit_local_data,
     available_symbols,
+    data_gap_episodes,
     inventory_local_data,
     load_daily_bars,
     load_backtest_data,
@@ -222,6 +224,62 @@ def test_storage_has_independent_module_entrypoint(tmp_path: Path) -> None:
     assert loaded["date"].tolist() == [pd.Timestamp("2026-05-25 10:30:00")]
     assert loaded["close"].tolist() == [10.3]
     assert resolve_daily_root_from_storage(tmp_path / "market" / "30m") == tmp_path / "market" / "daily"
+
+
+def test_data_gap_episodes_reports_all_consecutive_missing_windows(tmp_path: Path) -> None:
+    data_root = tmp_path / "market" / "daily"
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2026-05-25 10:00:00",
+                    "2026-05-25 10:30:00",
+                    "2026-05-25 11:30:00",
+                    "2026-05-25 13:30:00",
+                    "2026-05-25 15:00:00",
+                ]
+            ),
+            "stock_code": ["000001.SZ"] * 5,
+            "open": [10.0, 10.1, 10.2, 10.3, 10.4],
+            "high": [10.3, 10.4, 10.5, 10.6, 10.7],
+            "low": [9.9, 10.0, 10.1, 10.2, 10.3],
+            "close": [10.2, 10.3, 10.4, 10.5, 10.6],
+            "volume": [1000.0] * 5,
+            "amount": [10200.0, 10300.0, 10400.0, 10500.0, 10600.0],
+        }
+    )
+    write_local_bars(data_root=data_root, timeframe="30m", adjust="qfq", bars=bars)
+
+    episodes = data_gap_episodes(
+        data_root=data_root,
+        timeframe="30m",
+        adjust="qfq",
+        symbols=("000001.SZ",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        expected_sessions_by_symbol={"000001.SZ": [pd.Timestamp("2026-05-25")]},
+    )
+
+    assert episodes.columns.tolist() == DATA_GAP_EPISODE_COLUMNS
+    assert episodes["gap_no"].tolist() == [1, 2]
+    assert episodes["start_at"].tolist() == [
+        pd.Timestamp("2026-05-25 11:00:00"),
+        pd.Timestamp("2026-05-25 14:00:00"),
+    ]
+    assert episodes["end_at"].tolist() == [
+        pd.Timestamp("2026-05-25 11:00:00"),
+        pd.Timestamp("2026-05-25 14:30:00"),
+    ]
+    assert episodes["missing_rows"].tolist() == [1, 2]
+    assert episodes["gap_minutes"].tolist() == [30, 60]
+    assert episodes["previous_available_at"].tolist() == [
+        pd.Timestamp("2026-05-25 10:30:00"),
+        pd.Timestamp("2026-05-25 13:30:00"),
+    ]
+    assert episodes["next_available_at"].tolist() == [
+        pd.Timestamp("2026-05-25 11:30:00"),
+        pd.Timestamp("2026-05-25 15:00:00"),
+    ]
 
 
 def test_inventory_local_data_reports_cached_and_missing_symbols(tmp_path: Path) -> None:

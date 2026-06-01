@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from trending_winning.backtest.experiment_models import PortfolioExperimentConfig, SingleStrategyExperimentConfig
+from trending_winning.data.audit import DATA_GAP_EPISODE_COLUMNS
 from trending_winning.backtest.models import BacktestResult
 from trending_winning.data.summary import summarize_data_management
 
@@ -17,6 +18,7 @@ class LoadedExperimentData:
     bars: pd.DataFrame
     higher_bars: pd.DataFrame
     data_audit: pd.DataFrame
+    data_gap_episodes: pd.DataFrame
     data_inventory: pd.DataFrame
     limit_filter_audit: pd.DataFrame
     filtered_limit_open_days: pd.DataFrame
@@ -47,6 +49,7 @@ def load_experiment_data(
             bars=bundle.bars_by_timeframe.get(config.timeframe, pd.DataFrame()),
             higher_bars=bundle.bars_by_timeframe.get(higher_timeframe, pd.DataFrame()),
             data_audit=bundle.data_audit,
+            data_gap_episodes=_bundle_data_gap_episodes(bundle),
             data_inventory=data_inventory,
             limit_filter_audit=bundle.limit_filter_audit,
             filtered_limit_open_days=bundle.filtered_limit_open_days,
@@ -63,10 +66,15 @@ def load_experiment_data(
         bars=bundle.bars,
         higher_bars=pd.DataFrame(),
         data_audit=bundle.data_audit,
+        data_gap_episodes=_bundle_data_gap_episodes(bundle),
         data_inventory=data_inventory,
         limit_filter_audit=bundle.limit_filter_audit,
         filtered_limit_open_days=bundle.filtered_limit_open_days,
     )
+
+
+def _bundle_data_gap_episodes(bundle: Any) -> pd.DataFrame:
+    return getattr(bundle, "data_gap_episodes", pd.DataFrame(columns=DATA_GAP_EPISODE_COLUMNS))
 
 
 def experiment_inventory_timeframes(config: PortfolioExperimentConfig | SingleStrategyExperimentConfig) -> list[str]:

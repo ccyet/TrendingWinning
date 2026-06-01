@@ -323,7 +323,7 @@
         <div class="card"><b>确定样本</b><span>回测页同一行填写周期、标的代码、开始日期、结束日期，周期只用 <code>5m / 15m / 30m / 60m</code>。</span></div>
         <div class="card"><b>选择模式</b><span>优先使用单策略回测验证趋势、区间、通道、反转；组合策略只在多策略资金分配时使用。</span></div>
         <div class="card"><b>设置风控</b><span>查看结构止损价说明，设置最大持有 K 数、启用盈利通道回撤止盈、末端假突破过滤、交易方向、手续费、滑点、K 线覆盖率检查和同 K 止盈止损冲突规则。</span></div>
-        <div class="card"><b>复核策略空间</b><span>运行前先看“策略执行空间”，确认样本、形态、适用空间、触发、过滤、退出、仓位和复盘输出是否与当前测试目标一致。策略空间不是一个单项参数，而是样本、形态、过滤、执行、退出、统计六类边界；更细看包括可交易空间、参数空间、过滤空间、执行空间、退出空间和统计空间。</span></div>
+        <div class="card"><b>复核策略空间</b><span>运行前先看“策略执行空间”，确认样本、形态、适用空间、触发、过滤、退出、仓位和复盘输出是否与当前测试目标一致。策略空间不是一个单项参数，而是样本、形态、过滤、执行、退出、统计六类边界；更细看包括可交易空间、参数空间、过滤空间、执行空间、退出空间和统计空间，完整清单还包括订单空间、风险空间、持仓空间和失效空间。</span></div>
         <div class="card"><b>读取产物</b><span>先看策略K线运行区间里的开多、开空、止损标注、平仓标注和回撤止盈标注，再看核心绩效概览、净值曲线、回撤曲线、回撤区间明细、实验诊断摘要、交易路径分布、数据覆盖率概览、订单决策概览、拒绝原因分布、策略绩效、识别模块绩效、信号形态绩效、开平仓路径绩效、订单决策统计、策略过滤统计和月度稳定性。回撤曲线使用组合持仓期间的不利价格估算，多头看 K 线最低价，空头看 K 线最高价；退出 K 先按仍持仓状态估算，再按结算净值确认修复，不只看开仓和平仓点。</span></div>
       </div>
       <div class="note">建议每次只改一类参数：先调形态识别阈值，再调大周期方向过滤，再调末端假突破过滤，最后调交易成本和组合仓位。否则很难判断收益变化来自信号质量、撮合规则还是资金分配。</div>
@@ -342,7 +342,7 @@
           <tr><td>末端假突破过滤（可选）</td><td>只在趋势或通道等用户选择的形态模块开仓前过滤；不改变形态识别、撮合和组合仓位。</td><td>现代单策略和组合策略</td></tr>
           <tr><td>5. 单策略参数</td><td>一个形态识别模块的阈值、交易方向、止损风险、追价过滤和末端假突破过滤。</td><td>单策略回测</td></tr>
           <tr><td>5. 组合仓位与资金</td><td>组合形态、交易方向、持仓容量、资金预算、行业上限和同票重叠。</td><td>组合策略回测</td></tr>
-          <tr><td>策略执行空间</td><td>运行前汇总当前样本、形态、适用空间、触发、过滤、退出、仓位和复盘输出，帮助确认哪些模块生效、哪些参数只属于组合层；触发条件拆成背景条件、信号K条件、订单条件、风控条件，同时把识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段拆开。完整生命周期包括无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成，并保留有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突等口径，组合回测额外拆出容量/资金拒单。</td><td>现代单策略和组合策略</td></tr>
+          <tr><td>策略执行空间</td><td>运行前汇总当前样本、形态、适用空间、触发、过滤、退出、仓位和复盘输出，帮助确认哪些模块生效、哪些参数只属于组合层；触发条件拆成背景条件、信号K条件、订单条件、风控条件，同时把识别阶段、触发阶段、过滤阶段、撮合阶段、持仓阶段、退出阶段拆开。完整生命周期包括无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成；常用分支为背景不满足 -> 无信号、信号成立未触发、触发后风险不合格，并保留有效信号、有效但未触发、过滤拒单、撮合拒单、持仓冲突等口径，组合回测额外拆出容量/资金拒单。</td><td>现代单策略和组合策略</td></tr>
           <tr><td>6. 保存与运行</td><td>输出父目录、实验子文件夹和运行按钮。</td><td>全部模式</td></tr>
           <tr><td>回测结果：订单决策概览</td><td>展示全部订单、触发入场价、最终成交、未成交/被拒四段数量，并用拒绝原因分布定位未成交、容量、资金、止损风险或追价问题。</td><td>运行后显示</td></tr>
           <tr><td>回测结果：策略K线运行区间</td><td>展示完整样本 K 线，横轴和价格轴都可缩放；长样本不受 5000 行默认限制，SVG 矢量渲染放大后仍保持清晰，并标注开多、开空、止损横线、止损点和盈利通道回撤止盈点。</td><td>运行后显示</td></tr>
@@ -641,7 +641,7 @@
         <thead><tr><th>步骤</th><th>操作</th><th>判断标准</th></tr></thead>
         <tbody>
           <tr><td>1</td><td>选择 <code>单策略回测</code>，指定 <code>单策略形态</code> 和 <code>单策略交易方向</code>。</td><td>只出现一种形态识别结果；方向可在多/空、仅多、仅空之间切换。</td></tr>
-          <tr><td>2</td><td>先看 <code>策略执行空间</code>。</td><td>确认页面写明只运行一个识别模块、适用空间、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出；重点核对信号生命周期和六类策略边界。</td></tr>
+          <tr><td>2</td><td>先看 <code>策略执行空间</code>。</td><td>确认页面写明只运行一个识别模块、适用空间、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出；重点核对信号生命周期、六类策略边界，以及订单空间、风险空间、持仓空间。</td></tr>
           <tr><td>3</td><td>先关闭大周期方向过滤。</td><td>确认基础信号数量、成交数量和拒单原因。</td></tr>
           <tr><td>4</td><td>开启大周期方向过滤和有效分钟。</td><td>看 <code>strategy_filter_decisions.csv</code> 中方向过滤是否合理。</td></tr>
           <tr><td>5</td><td>开启末端假突破过滤。</td><td>看被过滤信号是否集中在趋势/通道末端，而不是趋势早期。</td></tr>
@@ -688,7 +688,7 @@ min_coverage_ratio = 0.95</code></pre>
         <tbody>
           <tr><td>为什么没有成交？</td><td>订单决策概览、拒绝原因分布、<code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
-          <tr><td>本次到底启用了哪些策略边界？</td><td><code>strategy_space.csv</code></td><td>按样本、识别形态、适用空间、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出复核运行前设置</td></tr>
+          <tr><td>本次到底启用了哪些策略边界？</td><td><code>strategy_space.csv</code></td><td>按样本、识别形态、适用空间、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出复核运行前设置；重点看背景不满足 -> 无信号、信号成立未触发、触发后风险不合格、订单空间、风险空间、持仓空间。</td></tr>
           <tr><td>末端假突破过滤了什么？</td><td><code>strategy_filter_decisions.csv</code>、策略 K 线运行区间</td><td><code>terminal_false_breakout_filter / terminal_false_breakout_risk / context_state</code></td></tr>
           <tr><td>哪类信号形态有效？</td><td><code>setup_stats.csv</code></td><td><code>detector_name / event_type / side / total_return / win_rate</code>；只有信号但没有成交的 setup 也保留零值行。</td></tr>
           <tr><td>同一类开仓信号最后怎么平仓？</td><td><code>signal_lifecycle_stats.csv</code>、开平仓路径绩效</td><td><code>detector_name / event_type / side / exit_reason / trade_count / total_return / win_rate</code></td></tr>
@@ -699,7 +699,7 @@ min_coverage_ratio = 0.95</code></pre>
           <tr><td>盈利通道回撤止盈为什么没有在同一根 K 触发？</td><td><code>trades.csv</code>、策略 K 线运行区间</td><td>回撤止盈按实际成交价和上一根已完成 K 的最大盈利价位或当前周期均线确认，当前 K 只刷新下一根可用的回撤线。</td></tr>
           <tr><td>哪个参数组综合风险质量更好？</td><td><code>summary.json</code>、<code>sweep.csv</code>、<code>parameter_summary.csv</code></td><td><code>best_risk_adjusted_score / risk_adjusted_rank / risk_adjusted_score / avg_risk_adjusted_score</code></td></tr>
           <tr><td>参数组在哪些股票有效？</td><td><code>case_symbol_stats.csv</code></td><td><code>sweep_rank / stock_name / stock_code / total_return / trade_count</code></td></tr>
-          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature / primary_data_issue / primary_data_issue_count / primary_data_issue_rate</code>；主要数据问题、数量和占比用于先定位覆盖率、缓存、审计或日 K 过滤哪一类问题最大。</td></tr>
+          <tr><td>数据是否拖累结果？</td><td><code>data_coverage.csv</code>、<code>data_gap_episodes.csv</code>、<code>stats.json</code></td><td><code>coverage_ratio / missing_rows / max_missing_gap_start_at / max_missing_gap_end_at / data_inventory_signature / primary_data_issue / primary_data_issue_count / primary_data_issue_rate</code>；<code>data_gap_episodes.csv</code> 会逐段列出每段连续缺失 K 的起止、缺失根数、缺口分钟数、前一根和后一根可用 K，主要数据问题、数量和占比用于先定位覆盖率、缓存、审计或日 K 过滤哪一类问题最大。</td></tr>
           <tr><td>哪只股票贡献了收益？</td><td><code>symbol_stats.csv</code></td><td><code>stock_name / stock_code / total_return / win_rate</code></td></tr>
           <tr><td>代码对应哪只股票？</td><td><code>symbol_metadata.csv</code></td><td><code>stock_code / stock_name / source</code></td></tr>
           <tr><td>日 K 涨停开盘过滤了多少？</td><td><code>limit_filter_audit.csv</code></td><td><code>status / filtered_days / daily_missing / daily_read_error</code></td></tr>
