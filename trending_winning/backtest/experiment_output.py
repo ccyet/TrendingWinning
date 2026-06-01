@@ -73,6 +73,7 @@ REPORT_COLUMN_LABELS: dict[str, str] = {
     "priority": "优先级",
     "question": "回答的问题",
     "reason": "原因",
+    "return": "收益",
     "risk_adjusted_rank": "风险质量排名",
     "risk_adjusted_score": "风险质量分",
     "status": "状态",
@@ -80,6 +81,8 @@ REPORT_COLUMN_LABELS: dict[str, str] = {
     "sweep_rank": "综合排名",
     "threshold": "门槛",
     "timeframe": "周期",
+    "observation_count": "观测点",
+    "period": "周期",
     "total_return": "总收益",
     "trade_count": "成交数",
     "value": "取值",
@@ -499,6 +502,7 @@ def _experiment_report_html(
     equity_drawdown_panel = _equity_drawdown_panel(result.backtest.equity_curve)
     data_quality_panel = _data_quality_panel(result, stats)
     strategy_space_panel = _strategy_space_panel(result)
+    monthly_stability_panel = _monthly_stability_panel(result.monthly_returns)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -553,6 +557,13 @@ def _experiment_report_html(
     .funnel-fill {{ display:block; height:100%; border-radius:999px; background:#1769aa; }}
     .funnel-loss .funnel-fill {{ background:#b42318; }}
     .funnel-pass .funnel-fill {{ background:#0f7a55; }}
+    .period-heatmap {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:10px; margin:14px 0; }}
+    .period-cell {{ padding:12px; border:1px solid var(--line); border-radius:var(--radius); background:#fbfcfe; }}
+    .period-cell b {{ display:block; color:#24364d; font-size:13px; margin-bottom:6px; }}
+    .period-cell span {{ display:block; font-size:20px; font-weight:760; }}
+    .period-cell small {{ display:block; margin-top:4px; color:var(--muted); font-size:12px; }}
+    .period-positive {{ border-color:#b9e5cc; background:#f0faf5; }}
+    .period-negative {{ border-color:#f2c8c3; background:#fff7f6; }}
     .two-col {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }}
     .evidence-list {{ display:flex; flex-wrap:wrap; gap:8px; }}
     .evidence-list a {{ padding:7px 10px; border:1px solid #cfe0f2; border-radius:999px; background:#f7fbff; font-size:13px; }}
@@ -574,6 +585,7 @@ def _experiment_report_html(
   <section><h2>复盘路径</h2><p class="section-note">按诊断严重程度排序，先处理会改变结论的问题，再下钻对应证据文件。</p>{_review_path_cards(action_plan)}</section>
   <section><h2>策略空间复核</h2><p class="section-note">先确认本次启用的策略边界、信号条件、过滤和退出口径，再解释绩效。</p>{strategy_space_panel}</section>
   <section><h2>风险画像</h2><div class="metrics">{risk_cards}</div></section>
+  <section><h2>月度收益稳定性</h2><p class="section-note">先看收益是否分散在多个自然月，避免只由单一月份贡献结论。</p>{monthly_stability_panel}</section>
   <section><h2>订单漏斗</h2><div class="metrics">{order_cards}</div>{order_funnel_panel}<div class="two-col">{_reason_panel("撮合主因", stats, "primary_rejected_reason", "primary_rejected_reason_count", "primary_rejected_reason_rate")}{_reason_panel("策略过滤主因", stats, "primary_strategy_rejected_reason", "primary_strategy_rejected_reason_count", "primary_strategy_rejected_reason_rate")}</div></section>
   <section><h2>退出结构</h2>{_compact_report_table(result.exit_reason_stats, ["exit_reason", "trade_count", "win_rate", "total_return"])}</section>
   <section><h2>重点证据文件</h2>{_evidence_file_panel(action_plan)}</section>
@@ -671,6 +683,48 @@ def _strategy_space_panel(result: SingleStrategyExperimentResult | PortfolioExpe
     if compact.empty:
         compact = frame.head(6).copy()
     return _html_table(compact.loc[:, ["策略空间", "当前设置", "触发与信号", "边界/输出"]])
+
+
+def _monthly_stability_panel(monthly_returns: pd.DataFrame) -> str:
+    if monthly_returns.empty or not {"period", "return"}.issubset(monthly_returns.columns):
+        return '<p class="empty">暂无月度收益。</p>'
+    data = monthly_returns.copy()
+    data["_return"] = pd.to_numeric(data["return"], errors="coerce")
+    data["_max_drawdown"] = pd.to_numeric(data.get("max_drawdown", pd.Series(0.0, index=data.index)), errors="coerce").fillna(0.0)
+    data = data.loc[data["_return"].notna()].reset_index(drop=True)
+    if data.empty:
+        return '<p class="empty">暂无有效月度收益。</p>'
+
+    positive_count = int(data["_return"].gt(0).sum())
+    negative_count = int(data["_return"].lt(0).sum())
+    worst_row = data.loc[data["_return"].idxmin()]
+    best_row = data.loc[data["_return"].idxmax()]
+    cards = "".join(
+        _metric_card(label, value, key, note)
+        for label, key, value, note in (
+            ("正收益月", "period_count", positive_count, "月度收益大于 0 的月份数。"),
+            ("负收益月", "period_count", negative_count, "月度收益小于 0 的月份数。"),
+            ("最好月份", "return", best_row["_return"], str(best_row.get("period", ""))),
+            ("最差月份", "return", worst_row["_return"], str(worst_row.get("period", ""))),
+        )
+    )
+    heatmap = "".join(_period_heatmap_cell(row) for row in data.to_dict("records"))
+    table = _compact_report_table(monthly_returns, ["period", "return", "max_drawdown", "observation_count"], max_rows=6)
+    return f'<div class="metrics">{cards}</div><div class="period-heatmap">{heatmap}</div>{table}'
+
+
+def _period_heatmap_cell(row: Mapping[str, object]) -> str:
+    period = str(row.get("period", ""))
+    period_return = float(row.get("_return", 0.0))
+    drawdown = float(row.get("_max_drawdown", 0.0))
+    css_class = "period-positive" if period_return >= 0 else "period-negative"
+    return (
+        f'<div class="period-cell {css_class}">'
+        f"<b>{escape(period)}</b>"
+        f"<span>{escape(_format_report_value('return', period_return))}</span>"
+        f"<small>最大回撤 {escape(_format_report_value('max_drawdown', drawdown))}</small>"
+        "</div>"
+    )
 
 
 def _order_funnel_panel(stats: Mapping[str, object]) -> str:

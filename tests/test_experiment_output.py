@@ -719,7 +719,14 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
                 "total_return": [0.16, -0.08],
             }
         ),
-        monthly_returns=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(
+            {
+                "period": ["2026-01", "2026-02", "2026-03"],
+                "return": [0.08, -0.03, 0.02],
+                "max_drawdown": [-0.02, -0.05, -0.01],
+                "observation_count": [20, 18, 22],
+            }
+        ),
         limit_filter_audit=pd.DataFrame({"stock_code": ["000001.SZ"], "status": ["ok"], "filtered_days": [2]}),
     )
 
@@ -737,6 +744,12 @@ def test_save_single_strategy_experiment_writes_html_overview_report(tmp_path) -
     assert "信号K是已收完的确认 K" in html
     assert "满仓进出" in html
     assert "风险画像" in html
+    assert "月度收益稳定性" in html
+    assert 'class="period-heatmap"' in html
+    assert "正收益月" in html
+    assert "负收益月" in html
+    assert "最差月份" in html
+    assert "2026-02" in html
     assert "净值与回撤" in html
     assert "净值曲线以 1.0 为基准" in html
     assert 'class="equity-chart"' in html
