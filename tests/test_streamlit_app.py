@@ -928,6 +928,8 @@ def test_streamlit_localizes_terminal_false_breakout_filter_reason() -> None:
         == "末端假突破风险"
     )
     assert _format_display_value("primary_rejected_reason", "actual_risk_too_high") == "止损风险过大"
+    assert _format_display_value("primary_strategy_rejected_reason", "signal_bar_no_liquidity") == "信号K无流动性"
+    assert _format_display_value("primary_strategy_rejected_reason", "higher_timeframe_stale") == "大周期信号过旧"
     assert _format_display_value("primary_strategy_rejected_reason", "terminal_false_breakout_risk") == "末端假突破风险"
     assert _format_display_value("primary_data_issue", "data_coverage_below_min") == "覆盖率低于门槛"
     assert _format_display_value("primary_exit_reason", "trailing_take_profit") == "回撤止盈"
