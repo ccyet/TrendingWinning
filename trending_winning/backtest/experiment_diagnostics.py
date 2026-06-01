@@ -34,6 +34,7 @@ def experiment_diagnostic_report(
         _strategy_filter_row(stats),
         _drawdown_pressure_row(stats),
         _profit_quality_row(stats),
+        _exit_structure_row(stats),
         _monthly_stability_row(stats),
         _path_risk_row(stats),
         _capital_exposure_row(stats),
@@ -244,6 +245,54 @@ def _profit_quality_row(stats: Mapping[str, object]) -> dict[str, object]:
     return _row("收益", "收益质量", "通过", "profit_factor", value, 1.2, "盈亏因子达到基础观察要求。")
 
 
+def _exit_structure_row(stats: Mapping[str, object]) -> dict[str, object]:
+    trade_count = _number(stats.get("trade_count"), default=0.0)
+    primary_reason = str(stats.get("primary_exit_reason") or "").strip()
+    value = _number(stats.get("primary_exit_reason_rate"), default=0.0) or 0.0
+    primary_detail = _exit_reason_detail(stats)
+    if trade_count <= 0:
+        return _row("交易质量", "退出结构", "失败", "primary_exit_reason_rate", value, 0.5, "没有平仓交易，无法判断退出结构。")
+    if primary_reason == "stop_loss" and value >= 0.5:
+        return _row(
+            "交易质量",
+            "退出结构",
+            "关注",
+            "primary_exit_reason_rate",
+            value,
+            0.5,
+            _append_detail("止损退出占比偏高，需要复核入场质量、结构止损和过滤条件。", primary_detail),
+        )
+    if primary_reason == "max_holding" and value >= 0.5:
+        return _row(
+            "交易质量",
+            "退出结构",
+            "关注",
+            "primary_exit_reason_rate",
+            value,
+            0.5,
+            _append_detail("持有到期退出占比偏高，需要复核目标价、回撤止盈或最大持仓 K 数。", primary_detail),
+        )
+    if primary_reason == "end_of_data" and value > 0:
+        return _row(
+            "交易质量",
+            "退出结构",
+            "关注",
+            "primary_exit_reason_rate",
+            value,
+            0.0,
+            _append_detail("样本结束导致平仓，需要复核回测结束日期对退出统计的影响。", primary_detail),
+        )
+    return _row(
+        "交易质量",
+        "退出结构",
+        "通过",
+        "primary_exit_reason_rate",
+        value,
+        0.5,
+        _append_detail("退出结构未见明显单边失衡。", primary_detail),
+    )
+
+
 def _monthly_stability_row(stats: Mapping[str, object]) -> dict[str, object]:
     value = _number(stats.get("monthly_worst_return"), default=0.0)
     if value <= -0.2:
@@ -334,6 +383,26 @@ def _primary_reason_detail(
     if not reason or count <= 0:
         return ""
     return f"主要原因：{reason} {_format_count(count)} {unit}，{rate_label} {rate:.1%}。"
+
+
+def _exit_reason_detail(stats: Mapping[str, object]) -> str:
+    reason = str(stats.get("primary_exit_reason") or "").strip()
+    count = _number(stats.get("primary_exit_reason_count"), default=0.0) or 0.0
+    rate = _number(stats.get("primary_exit_reason_rate"), default=0.0) or 0.0
+    if not reason or count <= 0:
+        return ""
+    return f"主要原因：{_exit_reason_label(reason)} {_format_count(count)} 笔，占退出 {rate:.1%}。"
+
+
+def _exit_reason_label(reason: str) -> str:
+    return {
+        "take_profit": "止盈",
+        "trailing_take_profit": "回撤止盈",
+        "stop_loss": "止损",
+        "max_holding": "持有到期",
+        "end_of_data": "样本结束",
+        "other": "其他",
+    }.get(reason, reason)
 
 
 def _append_detail(base: str, extra: str) -> str:

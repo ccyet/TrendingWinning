@@ -1368,6 +1368,7 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "primary_rejected_reason" in html
     assert "primary_data_issue" in html
     assert "primary_exit_reason" in html
+    assert "退出结构" in html
     assert "主要数据问题、数量和占比" in html
     assert "主要退出原因、数量和占比" in html
     assert "主要拒绝原因、数量和占比" in html
@@ -1401,6 +1402,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "primary_strategy_rejected_reason" in readme
     assert "primary_data_issue" in readme
     assert "primary_exit_reason" in readme
+    assert "退出结构" in readme
     assert "参数遍历成交质量" in readme
     assert "识别模块绩效" in readme
     assert "订单决策统计" in readme
@@ -1451,6 +1453,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "主要拒绝原因、数量和占比" in html
     assert "主要数据问题、数量和占比" in html
     assert "主要退出原因、数量和占比" in html
+    assert "退出结构" in html
     assert "回撤曲线" in html
     assert "开平仓路径绩效" in html
     assert "开多、开空、止损标注" in html

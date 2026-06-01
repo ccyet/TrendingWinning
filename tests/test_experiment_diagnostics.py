@@ -33,6 +33,9 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
         "primary_data_issue": "data_coverage_below_min",
         "primary_data_issue_count": 2.0,
         "primary_data_issue_rate": 0.4,
+        "primary_exit_reason": "stop_loss",
+        "primary_exit_reason_count": 7.0,
+        "primary_exit_reason_rate": 7 / 12,
     }
 
     report = experiment_diagnostic_report(stats)
@@ -48,6 +51,8 @@ def test_experiment_diagnostic_report_flags_core_risks() -> None:
     assert "terminal_false_breakout_risk 18 条，占过滤拒绝 42.0%" in by_check.loc["策略过滤", "detail"]
     assert by_check.loc["回撤压力", "status"] == "关注"
     assert by_check.loc["收益质量", "status"] == "失败"
+    assert by_check.loc["退出结构", "status"] == "关注"
+    assert "止损 7 笔，占退出 58.3%" in by_check.loc["退出结构", "detail"]
     assert by_check.loc["路径风险", "status"] == "关注"
     assert by_check.loc["资金暴露", "status"] == "关注"
 
@@ -58,6 +63,7 @@ def test_experiment_diagnostic_report_marks_zero_trade_as_failed() -> None:
     by_check = report.set_index("check")
     assert by_check.loc["交易样本", "status"] == "失败"
     assert by_check.loc["订单接受率", "status"] == "失败"
+    assert by_check.loc["退出结构", "status"] == "失败"
     assert by_check.loc["交易样本", "detail"] == "没有成交，统计结果不能用于评估策略质量。"
 
 
