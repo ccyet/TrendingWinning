@@ -6,10 +6,12 @@ TDX-only A 股 K 线趋势策略工作台。
 
 首版能力：
 
-- TDX `tqcenter` K 线：日 K `1d` 和分钟 K `5m / 15m / 30m / 60m`
+- TDX `tqcenter` K 线：日 K `1d` 和分钟 K `1m / 5m / 15m / 30m / 60m`
 - TDX 分钟兜底：`15m / 30m / 60m` 原生周期无数据时，自动用 TDX `5m` 聚合生成目标周期 K 线
 - 本地 parquet 落地：兼容 `trend-backtest/data/market/<timeframe>/<adjust>/<symbol>.parquet`，其中 `1d` 写入既有 `market/daily/<adjust>` 目录
 - 本地缓存库存：按 `1d / 5m / 15m / 30m / 60m` 列出 parquet 是否存在、行数、起止时间、文件大小和状态
+- 独立数据管理应用：`data_manager_app.py` 只负责 TDX 下载、补齐计划、批量进度和本地缓存总览，与策略回测界面解耦
+- 数据 catalog：扫描本地 parquet 时生成 `metadata/market_data_catalog.sqlite`，按资产类型、数据种类、指标、周期、复权、代码和状态建立索引，便于快速定位与对齐调用
 - 标志K识别：振幅、量能、实体比例参数化
 - 趋势通道识别：支持批量滚动 log 回归通道和摆动点趋势通道；上升通道优先用确认低点画上升支撑线，下降通道优先用确认高点画下降压力线，上下轨、斜率、R²、方向和锚点可追溯
 - 市场结构识别：pivot 标在实际摆动 K 上，但 `last_swing_high / last_swing_low / structure_score / BOS / CHoCH` 通过向量化延迟确认，只在右侧确认 K 线完成后才更新，避免结构字段提前暴露未来信息
@@ -43,6 +45,14 @@ cd /Users/a1234/Documents/TrendingWinning
 python -m pip install -r requirements.txt
 streamlit run streamlit_app.py --server.port 8520
 ```
+
+单独运行 TDX 数据管理应用：
+
+```bash
+streamlit run data_manager_app.py --server.port 8521
+```
+
+数据管理应用支持按“常用样例 / 当前缓存全部 / 缓存按资产类型 / 宽基指数 / ETF样例”快速选择标的；缓存扫描会把本地 parquet 分类为个股、指数、ETF 或其他，并写入 SQLite catalog。当前价格成交数据集的指标名为 `ohlcv`，后续技术指标文件可以沿用同一张 catalog 表扩展。
 
 TDX 真取数只支持 Windows/Parallels 内的通达信。Mac 本机通达信不支持 `tqcenter` 取数，Mac 端 CLI 默认用 `--runtime auto` 调度到 Parallels；Windows 侧运行时默认本地执行。`60m` 会按 TDX 接口要求映射为 `1h` 请求；`15m / 30m / 60m` 如果原生周期无数据，会自动回退到 TDX `5m` 并按 A 股上午、下午交易段聚合。分钟线能否返回数据仍取决于 Windows 通达信本地是否已有对应 5m 数据。
 

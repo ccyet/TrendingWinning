@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-SUPPORTED_TIMEFRAMES = ("1d", "5m", "15m", "30m", "60m")
+SUPPORTED_TIMEFRAMES = ("1d", "1m", "5m", "15m", "30m", "60m")
 TIMEFRAME_DIR_NAMES = {"1d": "daily", **{timeframe: timeframe for timeframe in SUPPORTED_TIMEFRAMES if timeframe != "1d"}}
 CANONICAL_COLUMNS = ["date", "stock_code", "open", "high", "low", "close", "volume", "amount"]
 

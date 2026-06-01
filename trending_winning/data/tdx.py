@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import importlib
 import json
 import os
@@ -25,8 +25,8 @@ from trending_winning.data.schema import (
 TDX_TQCENTER_ENV_VAR = "TDX_TQCENTER_PATH"
 TDX_ALLOW_MAC_TQCENTER_ENV_VAR = "TDX_ALLOW_MAC_TQCENTER"
 TDX_REQUEST_BATCH_SIZE = 100
-REFRESHABLE_KLINE_PERIODS = {"5m"}
-TDX_PERIOD_MAP = {"1d": "1d", "5m": "5m", "15m": "15m", "30m": "30m", "60m": "1h"}
+REFRESHABLE_KLINE_PERIODS = {"1m", "5m"}
+TDX_PERIOD_MAP = {"1d": "1d", "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m", "60m": "1h"}
 DERIVABLE_FROM_5M_TIMEFRAMES = {"15m", "30m", "60m"}
 ADJUST_MAP = {"": "none", "qfq": "front", "hfq": "back"}
 TDX_DIAG_COLUMNS = ["timeframe", "tdx_period", "status", "rows", "symbols", "start", "end", "message"]
@@ -51,6 +51,7 @@ OUTPUT_RENAME = {
 _TQ_CLIENT: Any | None = None
 _INITIALIZED_CLIENT_ID: int | None = None
 _INITIALIZED_CLIENT: Any | None = None
+ProgressCallback = Callable[[dict[str, object]], None]
 
 
 def fetch_tdx_bars(
@@ -62,8 +63,11 @@ def fetch_tdx_bars(
     adjust: str = "qfq",
     tqcenter_path: str = "",
     tq_client: Any | None = None,
+    batch_size: int = TDX_REQUEST_BATCH_SIZE,
+    progress_callback: ProgressCallback | None = None,
 ) -> pd.DataFrame:
     normalized_timeframe = ensure_supported_timeframe(timeframe)
+    normalized_batch_size = _normalize_batch_size(batch_size)
     period = TDX_PERIOD_MAP[normalized_timeframe]
     dividend_type = ADJUST_MAP.get(str(adjust))
     if dividend_type is None:
@@ -74,6 +78,13 @@ def fetch_tdx_bars(
     if not normalized_symbols:
         return empty_bars()
 
+    _emit_progress(
+        progress_callback,
+        stage="tdx_request_start",
+        timeframe=normalized_timeframe,
+        period=period,
+        symbol_count=len(normalized_symbols),
+    )
     tq = tq_client or _load_tq(tqcenter_path)
     _ensure_initialized(tq)
 
@@ -84,14 +95,38 @@ def fetch_tdx_bars(
         end=end,
         period=period,
         dividend_type=dividend_type,
+        batch_size=normalized_batch_size,
+        progress_callback=progress_callback,
+        timeframe=normalized_timeframe,
     )
     if normalized_timeframe not in DERIVABLE_FROM_5M_TIMEFRAMES:
+        _emit_progress(
+            progress_callback,
+            stage="tdx_request_done",
+            timeframe=normalized_timeframe,
+            period=period,
+            rows=len(bars),
+        )
         return bars
     missing_symbols = _symbols_missing_bars(normalized_symbols, bars)
     if not missing_symbols:
+        _emit_progress(
+            progress_callback,
+            stage="tdx_request_done",
+            timeframe=normalized_timeframe,
+            period=period,
+            rows=len(bars),
+        )
         return bars
 
     fallback_start, fallback_end = _expanded_5m_aggregation_window(start, end)
+    _emit_progress(
+        progress_callback,
+        stage="tdx_fallback_start",
+        timeframe=normalized_timeframe,
+        period="5m",
+        symbol_count=len(missing_symbols),
+    )
     five_minute_bars = _fetch_tdx_period_bars(
         tq,
         symbols=missing_symbols,
@@ -99,6 +134,9 @@ def fetch_tdx_bars(
         end=fallback_end,
         period="5m",
         dividend_type=dividend_type,
+        batch_size=normalized_batch_size,
+        progress_callback=progress_callback,
+        timeframe=normalized_timeframe,
     )
     derived = _aggregate_5m_bars(
         five_minute_bars,
@@ -107,10 +145,19 @@ def fetch_tdx_bars(
         end=end,
     )
     if bars.empty:
-        return derived
-    if derived.empty:
-        return bars
-    return pd.concat([bars, derived], ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
+        result = derived
+    elif derived.empty:
+        result = bars
+    else:
+        result = pd.concat([bars, derived], ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
+    _emit_progress(
+        progress_callback,
+        stage="tdx_request_done",
+        timeframe=normalized_timeframe,
+        period=period,
+        rows=len(result),
+    )
+    return result
 
 
 def diagnose_tdx_source(
@@ -229,10 +276,23 @@ def _fetch_tdx_period_bars(
     end: str,
     period: str,
     dividend_type: str,
+    batch_size: int,
+    progress_callback: ProgressCallback | None,
+    timeframe: str,
 ) -> pd.DataFrame:
     """按一个 TDX 原生周期请求并标准化；高周期 fallback 复用这个低层入口。"""
     frames: list[pd.DataFrame] = []
-    for batch in _batched_symbols(symbols, TDX_REQUEST_BATCH_SIZE):
+    batches = _batched_symbols(symbols, batch_size)
+    for batch_index, batch in enumerate(batches, start=1):
+        _emit_progress(
+            progress_callback,
+            stage="tdx_batch_start",
+            timeframe=timeframe,
+            period=period,
+            batch_index=batch_index,
+            batch_count=len(batches),
+            symbol_count=len(batch),
+        )
         _refresh_tdx_kline_cache(tq, batch, period)
         payload = tq.get_market_data(
             field_list=list(REQUIRED_FIELDS),
@@ -244,10 +304,22 @@ def _fetch_tdx_period_bars(
             dividend_type=dividend_type,
             fill_data=False,
         )
+        batch_frames: list[pd.DataFrame] = []
         for symbol in batch:
             frame = _normalize_tdx_payload(payload, symbol=symbol, start=start, end=end)
             if not frame.empty:
-                frames.append(frame)
+                batch_frames.append(frame)
+        frames.extend(batch_frames)
+        _emit_progress(
+            progress_callback,
+            stage="tdx_batch_done",
+            timeframe=timeframe,
+            period=period,
+            batch_index=batch_index,
+            batch_count=len(batches),
+            symbol_count=len(batch),
+            rows=sum(len(frame) for frame in batch_frames),
+        )
     if not frames:
         return empty_bars()
     return pd.concat(frames, ignore_index=True).sort_values(["stock_code", "date"]).reset_index(drop=True)
@@ -535,6 +607,18 @@ def _batched_symbols(symbols: list[str], batch_size: int) -> list[list[str]]:
     if batch_size < 1:
         raise ValueError("batch_size 至少需要 1。")
     return [symbols[index : index + batch_size] for index in range(0, len(symbols), batch_size)]
+
+
+def _normalize_batch_size(value: int) -> int:
+    batch_size = int(value)
+    if batch_size < 1:
+        raise ValueError("TDX 请求批次大小至少需要 1。")
+    return batch_size
+
+
+def _emit_progress(callback: ProgressCallback | None, **payload: object) -> None:
+    if callback is not None:
+        callback(payload)
 
 
 def _format_market_time(value: str) -> str:

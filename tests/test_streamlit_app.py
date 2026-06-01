@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from inspect import getsource
 from pathlib import Path
 
@@ -11,6 +12,17 @@ from trending_winning.backtest.experiment_models import PortfolioExperimentConfi
 from trending_winning.backtest.strategy_space import strategy_space_summary
 
 import streamlit_app
+from data_manager_app import (
+    _date_range_label,
+    _date_range_values,
+    _execution_mode_label,
+    _filter_symbols_by_keyword,
+    _source_option_label,
+    _subtract_years,
+    _symbol_preview_frame,
+    _symbols_from_text,
+    _symbols_from_uploaded_file,
+)
 from streamlit_app import (
     BacktestDataQualityInputs,
     BacktestRiskInputs,
@@ -71,6 +83,124 @@ def test_streamlit_app_exposes_tdx_prepare_controls() -> None:
     assert any(button.label == "查看本地缓存库存" for button in app.button)
     assert any(button.label == "生成TDX补齐计划" for button in app.button)
     assert any(button.label == "审计并补齐TDX数据" for button in app.button)
+
+
+def test_data_manager_app_renders_standalone_controls() -> None:
+    root = Path(__file__).resolve().parents[1]
+    app = AppTest.from_file(str(root / "data_manager_app.py"))
+
+    app.run(timeout=5)
+
+    assert not app.exception
+    assert app.title[0].value == "TDX 数据管理"
+    assert not any(item.label == "行情根目录" for item in app.text_input)
+    assert not any(item.label == "TDX PYPlugins/user" for item in app.text_input)
+    assert any(button.label == "选择文件夹" for button in app.button)
+    assert any(checkbox.label == "使用系统默认 TDX 路径" for checkbox in app.checkbox)
+    assert any(item.label == "TDX 批次大小" for item in app.number_input)
+    assert any(item.label == "代码来源" for item in app.selectbox)
+    source = next(item for item in app.selectbox if item.label == "代码来源")
+    assert "上传代码集 · CSV/TXT" in source.options
+    assert "ETF样例 · 5只" in source.options
+    assert _source_option_label("ETF样例") == "ETF样例 · 5只"
+    assert any(item.label == "执行方式" for item in app.selectbox)
+    mode = next(item for item in app.selectbox if item.label == "执行方式")
+    assert mode.options == ["智能补齐 · 缺什么补什么", "强制刷新 · 重新拉取覆盖"]
+    assert _execution_mode_label("force") == "强制刷新 · 重新拉取覆盖"
+    assert any(item.label == "日期快捷" for item in app.selectbox)
+    date_range = next(item for item in app.selectbox if item.label == "日期快捷")
+    assert date_range.options == ["近 N 天", "年初至今", "近 N 年", "自定义"]
+    assert any(item.label == "N 天" for item in app.number_input)
+    timeframe = next(item for item in app.multiselect if item.label == "周期")
+    assert "1m" in timeframe.options
+    assert any(button.label == "扫描缓存" for button in app.button)
+    assert any(button.label == "预览下载计划" for button in app.button)
+    assert any(button.label == "执行下载" for button in app.button)
+
+
+def test_data_manager_app_uses_directory_picker_and_classified_cache_tabs() -> None:
+    source = (Path(__file__).resolve().parents[1] / "data_manager_app.py").read_text()
+
+    assert 'st.text_input("行情根目录"' not in source
+    assert 'st.text_input("TDX PYPlugins/user"' not in source
+    assert "_open_native_directory_dialog(" in source
+    assert "选择文件夹" in source
+    assert "上传代码集" in source
+    assert "代码来源成分" in source
+    assert "智能补齐 · 缺什么补什么" in source
+    assert "强制刷新 · 重新拉取覆盖" in source
+    assert "日期快捷" in source
+    assert "近 N 天" in source
+    assert "年初至今" in source
+    assert "近 N 年" in source
+    assert "代码/名称筛选" in source
+    assert "当前匹配数量较大，不展示任意明细" in source
+    assert "可选：先预览下载计划确认缺口；也可以直接执行下载。" in source
+    assert "st.file_uploader(" in source
+    assert "_render_classified_cache(" in source
+    assert "altair_chart" not in source
+    assert "分类索引" not in source
+    assert "索引数据库" not in source
+    assert "本地缓存分类" in source
+    assert "ETF" in source
+    assert "个股" in source
+    assert "指数" in source
+
+
+class _UploadedFile:
+    def __init__(self, name: str, text: str, *, encoding: str = "utf-8") -> None:
+        self.name = name
+        self._payload = text.encode(encoding)
+
+    def getvalue(self) -> bytes:
+        return self._payload
+
+
+def test_data_manager_uploaded_symbol_files_parse_csv_and_txt() -> None:
+    csv_symbols = _symbols_from_uploaded_file(
+        _UploadedFile("symbols.csv", "stock_code,stock_name\n000001.SZ,平安银行\n600519.SH,贵州茅台\n")
+    )
+    txt_symbols = _symbols_from_uploaded_file(_UploadedFile("symbols.txt", "000001.SZ 600519.SH\n300750"))
+
+    assert csv_symbols == ("000001.SZ", "600519.SH")
+    assert txt_symbols == ("000001.SZ", "600519.SH", "300750.SZ")
+    assert _symbols_from_text("000001.SZ;600519.SH，300750") == ("000001.SZ", "600519.SH", "300750.SZ")
+
+
+def test_data_manager_symbol_preview_names_known_sample_constituents() -> None:
+    frame = _symbol_preview_frame(("510300.SH", "159915.SZ"))
+
+    assert frame.to_dict("records") == [
+        {"序号": 1, "代码": "510300.SH", "名称": "沪深300ETF"},
+        {"序号": 2, "代码": "159915.SZ", "名称": "创业板ETF"},
+    ]
+
+
+def test_data_manager_cache_symbol_keyword_filters_code_and_name() -> None:
+    symbols = ("510300.SH", "510500.SH", "000001.SZ")
+    name_by_symbol = {"510300.SH": "沪深300ETF", "510500.SH": "中证500ETF", "000001.SZ": "平安银行"}
+
+    assert _filter_symbols_by_keyword(symbols, keyword="ETF", name_by_symbol=name_by_symbol) == (
+        "510300.SH",
+        "510500.SH",
+    )
+    assert _filter_symbols_by_keyword(symbols, keyword="000001", name_by_symbol=name_by_symbol) == ("000001.SZ",)
+    assert _filter_symbols_by_keyword(symbols, keyword="", name_by_symbol=name_by_symbol) == symbols
+
+
+def test_data_manager_date_range_shortcuts_compute_expected_windows() -> None:
+    today = date(2026, 6, 1)
+
+    assert _date_range_label("recent_days") == "近 N 天"
+    assert _date_range_values("recent_days", days=20, years=1, today=today) == (date(2026, 5, 12), today)
+    assert _date_range_values("year_to_date", days=20, years=1, today=today) == (date(2026, 1, 1), today)
+    assert _date_range_values("recent_years", days=20, years=3, today=today) == (date(2023, 6, 1), today)
+    assert _subtract_years(date(2024, 2, 29), 1) == date(2023, 2, 28)
+
+
+def test_data_manager_uploaded_symbol_file_rejects_empty_content() -> None:
+    with pytest.raises(ValueError, match="上传文件为空"):
+        _symbols_from_uploaded_file(_UploadedFile("symbols.txt", ""))
 
 
 def test_streamlit_data_prepare_includes_daily_without_enabling_daily_strategy_timeframes() -> None:

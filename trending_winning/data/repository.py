@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,8 @@ from trending_winning.data.summary import (
 )
 from trending_winning.data.storage import load_daily_bars, load_local_bars, resolve_daily_root, write_local_bars
 from trending_winning.data.symbols import load_symbol_metadata, resolve_symbol_names
+
+ProgressCallback = Callable[[dict[str, object]], None]
 
 __all__ = [
     "BacktestDataBundle",
@@ -286,6 +289,8 @@ class MarketDataRepository:
         end: str,
         tqcenter_path: str = "",
         tq_client: Any | None = None,
+        batch_size: int = 100,
+        progress_callback: ProgressCallback | None = None,
     ) -> pd.DataFrame:
         return update_from_tdx(
             data_root=self.data_root,
@@ -296,6 +301,8 @@ class MarketDataRepository:
             end=end,
             tqcenter_path=tqcenter_path,
             tq_client=tq_client,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
         )
 
     def prepare_from_tdx(
@@ -307,6 +314,8 @@ class MarketDataRepository:
         end: str,
         tqcenter_path: str = "",
         tq_client: Any | None = None,
+        batch_size: int = 100,
+        progress_callback: ProgressCallback | None = None,
         min_coverage_ratio: float | None = None,
         strict_after_update: bool = True,
     ) -> pd.DataFrame:
@@ -319,6 +328,8 @@ class MarketDataRepository:
             end=end,
             tqcenter_path=tqcenter_path,
             tq_client=tq_client,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
             min_coverage_ratio=min_coverage_ratio,
             strict_after_update=strict_after_update,
         )
@@ -732,6 +743,11 @@ def _format_ratio(value: float) -> str:
     return f"{float(value):.6g}"
 
 
+def _emit_progress(callback: ProgressCallback | None, **payload: object) -> None:
+    if callback is not None:
+        callback(payload)
+
+
 def update_from_tdx(
     *,
     data_root: str | Path,
@@ -742,10 +758,18 @@ def update_from_tdx(
     end: str,
     tqcenter_path: str = "",
     tq_client: Any | None = None,
+    batch_size: int = 100,
+    progress_callback: ProgressCallback | None = None,
 ) -> pd.DataFrame:
     from trending_winning.data.tdx import fetch_tdx_bars
 
     fetch_start, fetch_end = _tdx_fetch_window_for_timeframe(timeframe, start=start, end=end)
+    _emit_progress(
+        progress_callback,
+        stage="fetch_start",
+        timeframe=ensure_supported_timeframe(timeframe),
+        symbol_count=len(unique_symbols(tuple(symbols))),
+    )
     bars = fetch_tdx_bars(
         symbols=symbols,
         start=fetch_start,
@@ -754,8 +778,24 @@ def update_from_tdx(
         adjust=adjust,
         tqcenter_path=tqcenter_path,
         tq_client=tq_client,
+        batch_size=batch_size,
+        progress_callback=progress_callback,
     )
-    return write_local_bars(data_root=data_root, timeframe=timeframe, adjust=adjust, bars=bars)
+    _emit_progress(
+        progress_callback,
+        stage="write_start",
+        timeframe=ensure_supported_timeframe(timeframe),
+        rows=len(bars),
+    )
+    result = write_local_bars(data_root=data_root, timeframe=timeframe, adjust=adjust, bars=bars)
+    _emit_progress(
+        progress_callback,
+        stage="write_done",
+        timeframe=ensure_supported_timeframe(timeframe),
+        rows=int(result["rows"].sum()) if "rows" in result.columns else 0,
+        new_rows=int(result["new_rows"].sum()) if "new_rows" in result.columns else 0,
+    )
+    return result
 
 
 def _tdx_fetch_window_for_timeframe(timeframe: str, *, start: str, end: str) -> tuple[str, str]:
@@ -820,6 +860,8 @@ def prepare_tdx_backtest_data(
     end: str,
     tqcenter_path: str = "",
     tq_client: Any | None = None,
+    batch_size: int = 100,
+    progress_callback: ProgressCallback | None = None,
     min_coverage_ratio: float | None = None,
     strict_after_update: bool = True,
 ) -> pd.DataFrame:
@@ -845,7 +887,14 @@ def prepare_tdx_backtest_data(
     write_summaries: dict[str, pd.DataFrame] = {}
     fetch_symbols_by_timeframe: dict[str, list[str]] = {}
 
-    for timeframe in processing_timeframes:
+    for step_index, timeframe in enumerate(processing_timeframes, start=1):
+        _emit_progress(
+            progress_callback,
+            stage="audit_start",
+            timeframe=timeframe,
+            step_index=step_index,
+            step_count=len(processing_timeframes),
+        )
         before = audit_local_data(
             data_root=data_root,
             timeframe=timeframe,
@@ -856,6 +905,14 @@ def prepare_tdx_backtest_data(
             expected_sessions_by_symbol=expected_sessions_by_symbol,
         )
         before_audits[timeframe] = before
+        _emit_progress(
+            progress_callback,
+            stage="audit_done",
+            timeframe=timeframe,
+            step_index=step_index,
+            step_count=len(processing_timeframes),
+            row_count=len(before),
+        )
         fetch_symbols = [
             str(row.stock_code)
             for row in before.itertuples(index=False)
@@ -872,6 +929,15 @@ def prepare_tdx_backtest_data(
                 end=end,
                 tqcenter_path=tqcenter_path,
                 tq_client=tq_client,
+                batch_size=batch_size,
+                progress_callback=progress_callback,
+            )
+            _emit_progress(
+                progress_callback,
+                stage="reaudit_start",
+                timeframe=timeframe,
+                step_index=step_index,
+                step_count=len(processing_timeframes),
             )
             after_audits[timeframe] = audit_local_data(
                 data_root=data_root,
@@ -882,9 +948,25 @@ def prepare_tdx_backtest_data(
                 end=end,
                 expected_sessions_by_symbol=expected_sessions_by_symbol,
             )
+            _emit_progress(
+                progress_callback,
+                stage="reaudit_done",
+                timeframe=timeframe,
+                step_index=step_index,
+                step_count=len(processing_timeframes),
+                row_count=len(after_audits[timeframe]),
+            )
         else:
             write_summaries[timeframe] = pd.DataFrame()
             after_audits[timeframe] = before
+            _emit_progress(
+                progress_callback,
+                stage="fetch_skipped",
+                timeframe=timeframe,
+                step_index=step_index,
+                step_count=len(processing_timeframes),
+                reason="local_ok",
+            )
         if timeframe == "1d":
             expected_sessions_by_symbol = _expected_sessions_by_symbol_from_daily(
                 data_root=data_root,
@@ -909,7 +991,14 @@ def prepare_tdx_backtest_data(
                 min_coverage_ratio=min_coverage_ratio,
             )
         )
-    return pd.DataFrame(rows, columns=PREPARE_COLUMNS)
+    result = pd.DataFrame(rows, columns=PREPARE_COLUMNS)
+    _emit_progress(
+        progress_callback,
+        stage="prepare_done",
+        row_count=len(result),
+        fetched_count=int(result["action"].eq("fetched").sum()) if "action" in result.columns else 0,
+    )
+    return result
 
 
 def _timeframes_with_daily_dependency(timeframes: tuple[str, ...] | list[str]) -> list[str]:

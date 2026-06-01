@@ -286,7 +286,7 @@ def main() -> None:
 
     fetch_parser = subparsers.add_parser("fetch", help="fetch minute bars from TDX")
     fetch_parser.add_argument("--symbols", required=True)
-    fetch_parser.add_argument("--timeframe", required=True, choices=["1d", "5m", "15m", "30m", "60m"])
+    fetch_parser.add_argument("--timeframe", required=True, choices=["1d", "1m", "5m", "15m", "30m", "60m"])
     fetch_parser.add_argument("--start", required=True)
     fetch_parser.add_argument("--end", required=True)
     fetch_parser.add_argument("--adjust", default="qfq")
@@ -296,7 +296,7 @@ def main() -> None:
 
     doctor_parser = subparsers.add_parser("tdx-doctor", help="diagnose TDX import, login and sample K-line requests")
     doctor_parser.add_argument("--symbols", required=True)
-    doctor_parser.add_argument("--timeframes", default="1d,5m,15m,30m,60m")
+    doctor_parser.add_argument("--timeframes", default="1d,1m,5m,15m,30m,60m")
     doctor_parser.add_argument("--start", required=True)
     doctor_parser.add_argument("--end", required=True)
     doctor_parser.add_argument("--adjust", default="qfq")
@@ -326,7 +326,7 @@ def main() -> None:
 
     audit_parser = subparsers.add_parser("audit-data", help="audit local parquet coverage before backtesting")
     audit_parser.add_argument("--symbols", required=True)
-    audit_parser.add_argument("--timeframe", required=True, choices=["1d", "5m", "15m", "30m", "60m"])
+    audit_parser.add_argument("--timeframe", required=True, choices=["1d", "1m", "5m", "15m", "30m", "60m"])
     audit_parser.add_argument("--higher-timeframe", default="", choices=["", "5m", "15m", "30m", "60m"])
     audit_parser.add_argument("--higher-timeframe-max-age-minutes", type=int, default=None)
     audit_parser.add_argument("--start", required=True)
@@ -341,7 +341,7 @@ def main() -> None:
 
     inventory_parser = subparsers.add_parser("inventory-data", help="list local parquet cache inventory by timeframe")
     inventory_parser.add_argument("--symbols", default="")
-    inventory_parser.add_argument("--timeframes", default="1d,5m,15m,30m,60m")
+    inventory_parser.add_argument("--timeframes", default="1d,1m,5m,15m,30m,60m")
     inventory_parser.add_argument("--adjust", default="qfq")
     inventory_parser.add_argument("--data-root", default="/Users/a1234/Desktop/trend-backtest/data/market/daily")
 

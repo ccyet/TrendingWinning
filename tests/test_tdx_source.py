@@ -151,6 +151,30 @@ def test_fetch_tdx_bars_supports_60m_batch_payload() -> None:
     assert out.loc[out["stock_code"] == "000001.SZ", "close"].tolist() == [10.7, 11.2]
 
 
+def test_fetch_tdx_bars_respects_batch_size_and_reports_progress() -> None:
+    fake = FakeTq(_payload())
+    events: list[dict[str, object]] = []
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ", "600519.SH"),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        timeframe="60m",
+        adjust="qfq",
+        tq_client=fake,
+        batch_size=1,
+        progress_callback=events.append,
+    )
+
+    assert [call["stock_list"] for call in fake.market_calls] == [["000001.SZ"], ["600519.SH"]]
+    assert [event["stage"] for event in events if event["stage"] == "tdx_batch_done"] == [
+        "tdx_batch_done",
+        "tdx_batch_done",
+    ]
+    assert events[-1]["stage"] == "tdx_request_done"
+    assert len(out) == 4
+
+
 def test_fetch_tdx_bars_supports_1d_daily_payload() -> None:
     fake = FakeTq(_daily_payload())
 
@@ -167,6 +191,23 @@ def test_fetch_tdx_bars_supports_1d_daily_payload() -> None:
     assert fake.refresh_calls == []
     assert out["date"].tolist() == [pd.Timestamp("2026-05-24"), pd.Timestamp("2026-05-25")]
     assert out["close"].tolist() == [9.9, 10.7]
+
+
+def test_fetch_tdx_bars_supports_1m_payload_and_refreshes_cache() -> None:
+    fake = FakeTq(_payload())
+
+    out = fetch_tdx_bars(
+        symbols=("000001.SZ",),
+        start="2026-05-25 09:30:00",
+        end="2026-05-25 15:00:00",
+        timeframe="1m",
+        adjust="qfq",
+        tq_client=fake,
+    )
+
+    assert fake.market_calls[0]["period"] == "1m"
+    assert fake.refresh_calls == [(["000001.SZ"], "1m")]
+    assert out["close"].tolist() == [10.7, 11.2]
 
 
 def test_fetch_tdx_bars_derives_30m_from_tdx_5m_when_direct_period_has_no_data() -> None:
@@ -274,7 +315,7 @@ def test_fetch_tdx_bars_rejects_non_target_timeframe() -> None:
             symbols=("000001.SZ",),
             start="2026-05-25",
             end="2026-05-25",
-            timeframe="1m",
+            timeframe="2m",
             tq_client=FakeTq(_payload()),
         )
 
