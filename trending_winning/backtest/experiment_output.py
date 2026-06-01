@@ -34,6 +34,9 @@ from trending_winning.data.summary import summarize_data_management
 from trending_winning.data.symbols import DEFAULT_STOCK_NAME_BY_CODE, SYMBOL_METADATA_COLUMNS, load_symbol_metadata
 
 
+ARTIFACT_MANIFEST_COLUMNS = ["file_name", "category", "priority", "question", "description"]
+
+
 def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> Path:
     output_dir = Path(result.config.output_dir or f"runs/{result.config.name}").expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -56,6 +59,7 @@ def save_single_strategy_experiment(result: SingleStrategyExperimentResult) -> P
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
+    _artifact_manifest("experiment").to_csv(output_dir / "artifact_manifest.csv", index=False)
     return output_dir
 
 
@@ -81,6 +85,7 @@ def save_portfolio_experiment(result: PortfolioExperimentResult) -> Path:
     result.setup_order_decision_stats.to_csv(output_dir / "setup_order_decision_stats.csv", index=False)
     result.setup_strategy_filter_stats.to_csv(output_dir / "setup_strategy_filter_stats.csv", index=False)
     result.monthly_returns.to_csv(output_dir / "monthly_returns.csv", index=False)
+    _artifact_manifest("experiment").to_csv(output_dir / "artifact_manifest.csv", index=False)
     return output_dir
 
 
@@ -205,6 +210,222 @@ def _write_sweep_outputs(output_dir: Path, result: PortfolioSweepResult | Single
     result.data_gap_episodes.to_csv(output_dir / "data_gap_episodes.csv", index=False)
     result.limit_filter_audit.to_csv(output_dir / "limit_filter_audit.csv", index=False)
     symbol_metadata_for_config(result.config).to_csv(output_dir / "symbol_metadata.csv", index=False)
+    _artifact_manifest("sweep").to_csv(output_dir / "artifact_manifest.csv", index=False)
+
+
+def _artifact_manifest(kind: str) -> pd.DataFrame:
+    """保存结果目录的阅读索引，帮助用户先看关键文件再下钻明细。"""
+    rows = _sweep_artifact_rows() if kind == "sweep" else _experiment_artifact_rows()
+    return pd.DataFrame(rows, columns=pd.Index(ARTIFACT_MANIFEST_COLUMNS))
+
+
+def _experiment_artifact_rows() -> list[tuple[str, str, int, str, str]]:
+    return [
+        (
+            "artifact_manifest.csv",
+            "阅读入口",
+            1,
+            "这个目录里的文件先看什么？",
+            "当前结果目录的索引，说明每个文件回答的问题。",
+        ),
+        (
+            "strategy_space.csv",
+            "运行前复核",
+            1,
+            "本次到底启用了哪些策略边界？",
+            "列出样本、形态、触发、过滤、退出、仓位、统计和失效空间。",
+        ),
+        ("config.json", "复现实验", 1, "本次参数如何复现？", "完整保存本次实验配置。"),
+        ("stats.json", "核心统计", 1, "收益、回撤、成交和拒单概况是什么？", "实验级聚合统计。"),
+        (
+            "experiment_diagnostics.csv",
+            "核心统计",
+            1,
+            "优先检查数据、信号、风控还是仓位？",
+            "把回测质量问题汇总成可复核诊断。",
+        ),
+        ("trades.csv", "成交明细", 1, "每笔交易怎样开仓和平仓？", "逐笔成交、退出原因和盈亏明细。"),
+        ("equity_curve.csv", "净值与回撤", 1, "组合资产净值如何逐 K 线变化？", "净值曲线原始序列。"),
+        (
+            "drawdown_curve.csv",
+            "净值与回撤",
+            1,
+            "组合资产价格波动产生了多大回撤？",
+            "按净值路径计算的连续回撤曲线。",
+        ),
+        (
+            "drawdown_episodes.csv",
+            "净值与回撤",
+            1,
+            "主要回撤区间从哪里开始、在哪里见底？",
+            "按组合资产净值路径拆分的重点回撤区间。",
+        ),
+        (
+            "order_decisions.csv",
+            "订单与过滤",
+            1,
+            "信号触发后为什么成交或没有成交？",
+            "撮合层订单接受、拒绝、风险和追价原因。",
+        ),
+        (
+            "strategy_filter_decisions.csv",
+            "订单与过滤",
+            1,
+            "信号为什么被策略过滤？",
+            "策略层过滤原因，例如末端假突破风险。",
+        ),
+        (
+            "data_inventory.csv",
+            "数据质量",
+            1,
+            "本次实际读到了哪些 K 线缓存？",
+            "本地数据文件、行数、时间范围和快照签名。",
+        ),
+        (
+            "data_coverage.csv",
+            "数据质量",
+            1,
+            "样本覆盖是否足够做回测？",
+            "每个标的周期的覆盖率和缺口数量。",
+        ),
+        (
+            "data_gap_episodes.csv",
+            "数据质量",
+            1,
+            "哪段 K 线连续缺失？",
+            "逐段列出每段连续缺失 K 线的起止时间、根数和文件路径。",
+        ),
+        ("strategy_stats.csv", "分组统计", 2, "不同策略贡献如何？", "按策略信号统计交易表现。"),
+        ("detector_stats.csv", "分组统计", 2, "不同识别模块贡献如何？", "按趋势、通道等识别模块统计表现。"),
+        ("setup_stats.csv", "分组统计", 2, "不同 setup 的质量如何？", "按 setup 名称统计交易表现。"),
+        ("symbol_stats.csv", "分组统计", 2, "不同股票贡献如何？", "按股票统计交易表现。"),
+        ("side_stats.csv", "分组统计", 2, "多头和空头表现差异如何？", "按交易方向统计表现。"),
+        ("exit_reason_stats.csv", "分组统计", 2, "主要靠什么方式平仓？", "按止损、止盈、持仓到期等退出原因统计。"),
+        ("signal_lifecycle_stats.csv", "分组统计", 2, "信号从出现到退出的链路是否顺畅？", "按信号生命周期统计。"),
+        ("event_type_stats.csv", "分组统计", 2, "事件类型分布是否异常？", "按事件类型统计交易表现。"),
+        ("trade_path_distribution.csv", "分组统计", 2, "交易路径中的波动和回撤长什么样？", "逐笔交易路径分布统计。"),
+        ("monthly_returns.csv", "分组统计", 2, "月度收益是否稳定？", "按月份统计收益。"),
+        (
+            "order_decision_stats.csv",
+            "订单与过滤",
+            2,
+            "撮合层拒单集中在哪些原因？",
+            "订单接受率、拒绝率和风险指标汇总。",
+        ),
+        (
+            "strategy_filter_stats.csv",
+            "订单与过滤",
+            2,
+            "策略过滤集中在哪些原因？",
+            "策略层过滤接受率和拒绝原因汇总。",
+        ),
+        (
+            "setup_order_decision_stats.csv",
+            "订单与过滤",
+            2,
+            "哪个 setup 更容易被撮合层拒绝？",
+            "按 setup 拆分订单决策统计。",
+        ),
+        (
+            "setup_strategy_filter_stats.csv",
+            "订单与过滤",
+            2,
+            "哪个 setup 更容易被策略过滤？",
+            "按 setup 拆分策略过滤统计。",
+        ),
+        (
+            "limit_filter_audit.csv",
+            "数据质量",
+            2,
+            "涨跌停开盘过滤影响了哪些样本？",
+            "记录涨跌停开盘样本过滤过程。",
+        ),
+        ("symbol_metadata.csv", "标的信息", 2, "股票代码对应什么名称？", "股票名称和来源路径。"),
+    ]
+
+
+def _sweep_artifact_rows() -> list[tuple[str, str, int, str, str]]:
+    return [
+        (
+            "artifact_manifest.csv",
+            "阅读入口",
+            1,
+            "这个目录里的文件先看什么？",
+            "当前参数遍历目录的索引，说明每个文件回答的问题。",
+        ),
+        ("config.json", "复现实验", 1, "本次参数遍历如何复现？", "基础配置和 sweep_grid 参数空间。"),
+        ("summary.json", "参数遍历", 1, "参数遍历总体质量如何？", "参数组合数量、耗时、数据和信号质量摘要。"),
+        (
+            "sweep.csv",
+            "参数遍历",
+            1,
+            "先筛选参数组，看收益、回撤、诊断状态和风险质量排名。",
+            "每组参数的核心收益、回撤、成交、拒单和排名字段。",
+        ),
+        ("pareto.csv", "参数遍历", 1, "哪些参数组在收益和风险之间更占优？", "帕累托有效参数组。"),
+        (
+            "parameter_summary.csv",
+            "参数遍历",
+            1,
+            "单个参数值整体倾向好还是坏？",
+            "按参数取值聚合表现、稳定性和拒单指标。",
+        ),
+        ("case_diagnostics.csv", "参数遍历", 1, "哪些参数组质量不合格？", "每组参数的诊断状态。"),
+        (
+            "data_inventory.csv",
+            "数据质量",
+            1,
+            "本次实际读到了哪些 K 线缓存？",
+            "本地数据文件、行数、时间范围和快照签名。",
+        ),
+        (
+            "data_coverage.csv",
+            "数据质量",
+            1,
+            "样本覆盖是否足够做参数遍历？",
+            "每个标的周期的覆盖率和缺口数量。",
+        ),
+        (
+            "data_gap_episodes.csv",
+            "数据质量",
+            1,
+            "哪段 K 线连续缺失？",
+            "逐段列出每段连续缺失 K 线的起止时间、根数和文件路径。",
+        ),
+        (
+            "case_configs.jsonl",
+            "复现实验",
+            2,
+            "每个参数组的完整配置是什么？",
+            "逐行保存每个 case 的复现配置。",
+        ),
+        ("case_strategy_stats.csv", "分组统计", 2, "不同参数下策略贡献如何？", "按 case 和策略信号统计表现。"),
+        ("case_detector_stats.csv", "分组统计", 2, "不同参数下识别模块贡献如何？", "按 case 和识别模块统计表现。"),
+        ("case_setup_stats.csv", "分组统计", 2, "不同参数下 setup 质量如何？", "按 case 和 setup 统计表现。"),
+        ("case_symbol_stats.csv", "分组统计", 2, "不同参数下股票贡献如何？", "按 case 和股票统计表现。"),
+        (
+            "case_setup_order_decision_stats.csv",
+            "订单与过滤",
+            2,
+            "参数变化后哪个 setup 更容易被撮合层拒绝？",
+            "按 case 和 setup 拆分订单决策统计。",
+        ),
+        (
+            "case_setup_strategy_filter_stats.csv",
+            "订单与过滤",
+            2,
+            "参数变化后哪个 setup 更容易被策略过滤？",
+            "按 case 和 setup 拆分策略过滤统计。",
+        ),
+        (
+            "limit_filter_audit.csv",
+            "数据质量",
+            2,
+            "涨跌停开盘过滤影响了哪些样本？",
+            "记录涨跌停开盘样本过滤过程。",
+        ),
+        ("symbol_metadata.csv", "标的信息", 2, "股票代码对应什么名称？", "股票名称和来源路径。"),
+    ]
 
 
 def _sweep_summary_statistics(result: PortfolioSweepResult | SingleStrategySweepResult) -> dict[str, object]:

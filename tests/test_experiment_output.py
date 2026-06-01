@@ -52,6 +52,11 @@ def test_experiment_output_imports_without_experiment_runner_and_saves_sweep(tmp
     assert (output_dir / "parameter_summary.csv").exists()
     assert (output_dir / "case_diagnostics.csv").exists()
     assert (output_dir / "symbol_metadata.csv").exists()
+    manifest = pd.read_csv(output_dir / "artifact_manifest.csv")
+    assert manifest.columns.tolist() == ["file_name", "category", "priority", "question", "description"]
+    assert manifest.set_index("file_name").loc["sweep.csv", "category"] == "参数遍历"
+    assert "先筛选参数组" in manifest.set_index("file_name").loc["sweep.csv", "question"]
+    assert manifest.set_index("file_name").loc["case_configs.jsonl", "priority"] == 2
 
 
 def test_save_single_strategy_sweep_writes_case_diagnostics(tmp_path) -> None:
@@ -238,6 +243,46 @@ def test_save_single_strategy_experiment_writes_data_gap_episodes(tmp_path) -> N
     assert saved["stock_code"].tolist() == ["000001.SZ"]
     assert saved["start_at"].tolist() == ["2026-05-25 14:00:00"]
     assert saved["missing_rows"].tolist() == [2]
+
+
+def test_save_single_strategy_experiment_writes_artifact_manifest(tmp_path) -> None:
+    from trending_winning.backtest.experiment_output import save_single_strategy_experiment
+
+    config = SingleStrategyExperimentConfig(
+        name="single-manifest",
+        data_root="/data",
+        output_dir=str(tmp_path / "single-manifest"),
+        symbols=("000001.SZ",),
+        timeframe="30m",
+        start="2026-05-25",
+        end="2026-05-25",
+        detector="trend",
+    )
+    result = SingleStrategyExperimentResult(
+        config=config,
+        backtest=BacktestResult(trades=pd.DataFrame(), equity_curve=pd.DataFrame(), stats={"trade_count": 0.0}),
+        input_bar_count=0,
+        filtered_limit_open_count=0,
+        elapsed_seconds=0.1,
+        data_coverage=pd.DataFrame(),
+        strategy_stats=pd.DataFrame(),
+        symbol_stats=pd.DataFrame(),
+        side_stats=pd.DataFrame(),
+        exit_reason_stats=pd.DataFrame(),
+        monthly_returns=pd.DataFrame(),
+    )
+
+    output_dir = save_single_strategy_experiment(result)
+
+    manifest = pd.read_csv(output_dir / "artifact_manifest.csv")
+    assert manifest.columns.tolist() == ["file_name", "category", "priority", "question", "description"]
+    by_file = manifest.set_index("file_name")
+    assert by_file.loc["strategy_space.csv", "category"] == "运行前复核"
+    assert by_file.loc["strategy_space.csv", "priority"] == 1
+    assert "本次到底启用了哪些策略边界" in by_file.loc["strategy_space.csv", "question"]
+    assert by_file.loc["data_gap_episodes.csv", "category"] == "数据质量"
+    assert "每段连续缺失 K" in by_file.loc["data_gap_episodes.csv", "description"]
+    assert by_file.loc["order_decisions.csv", "category"] == "订单与过滤"
 
 
 def test_save_single_strategy_experiment_writes_strategy_space_summary(tmp_path) -> None:

@@ -686,6 +686,7 @@ min_coverage_ratio = 0.95</code></pre>
       <table>
         <thead><tr><th>想回答的问题</th><th>优先看</th><th>关键字段</th></tr></thead>
         <tbody>
+          <tr><td>这个结果目录先看什么？</td><td><code>artifact_manifest.csv</code></td><td>产物索引，按类别和阅读优先级列出每个文件回答的问题；先用它判断该看策略空间、K 线成交、净值回撤、订单过滤、参数遍历还是数据质量。</td></tr>
           <tr><td>为什么没有成交？</td><td>订单决策概览、拒绝原因分布、<code>order_decisions.csv</code></td><td><code>status / reason / actual_entry_price / actual_risk_pct / actual_chase_pct</code></td></tr>
           <tr><td>为什么信号被策略过滤？</td><td><code>strategy_filter_decisions.csv</code></td><td><code>filter_name / status / reason / higher_timeframe</code></td></tr>
           <tr><td>本次到底启用了哪些策略边界？</td><td><code>strategy_space.csv</code></td><td>按样本、识别形态、适用空间、信号条件、触发成交、开仓过滤、退出条件、仓位规则、或然分支和复盘输出复核运行前设置；重点看背景不满足 -> 无信号、信号成立未触发、触发后风险不合格、订单空间、风险空间、持仓空间。</td></tr>

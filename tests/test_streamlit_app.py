@@ -1374,6 +1374,8 @@ def test_readme_usage_guide_html_exists_with_core_sections() -> None:
     assert "data_gap_episodes.csv" in html
     assert "symbol_metadata.csv" in html
     assert "strategy_space.csv" in html
+    assert "artifact_manifest.csv" in html
+    assert "产物索引" in html
     assert "保存运行前的策略执行空间" in html
     assert "数据覆盖率概览" in html
     assert "策略执行空间" in html
@@ -1433,6 +1435,8 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "docs/backtest_kline_guide.html" in readme
     assert "盈利通道回撤止盈" in readme
     assert "strategy_space.csv" in readme
+    assert "artifact_manifest.csv" in readme
+    assert "产物索引" in readme
     assert "avg_accepted_actual_risk_pct" in readme
     assert "primary_rejected_reason" in readme
     assert "primary_strategy_rejected_reason" in readme
@@ -1475,6 +1479,7 @@ def test_backtest_kline_guide_html_exists_with_examples_and_modules() -> None:
     assert "旧突破显示固定止盈止损" in html
     assert "策略执行空间" in html
     assert "strategy_space.csv" in html
+    assert "artifact_manifest.csv" in html
     assert "确认页面写明只运行一个识别模块、适用空间、信号K挂单、触发成交分类、结构止损、满仓进出和复盘输出" in html
     assert "无信号、观察信号、有效信号、有效未触发、触发成交、触发后拒单、持仓冲突、退出完成" in html
     assert "背景不满足 -> 无信号" in html
@@ -1542,6 +1547,8 @@ def test_usage_docs_pin_local_parallels_tdx_test_path() -> None:
     assert "symbol_metadata.csv" in guide
     assert "strategy_space.csv" in readme
     assert "strategy_space.csv" in guide
+    assert "artifact_manifest.csv" in readme
+    assert "artifact_manifest.csv" in guide
     assert "data_gap_episodes.csv" in readme
     assert "data_gap_episodes.csv" in guide
     assert "每段连续缺失K" in readme
